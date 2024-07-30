@@ -19,10 +19,14 @@ import org.apache.http.entity.ByteArrayEntity
 import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.HttpClients
 import org.apache.http.util.EntityUtils
+import org.bukkit.map.MapPalette
+import java.awt.Color
+import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import javax.imageio.ImageIO
 
 class HttpUtil(private val apiKey: String, private val apiEndpoint: String, private val logger: Logger) {
 
@@ -208,6 +212,50 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
         }
 
         return errorMessages
+    }
+
+    fun fetchImageAsByteArray(imageUrl: String): ByteArray? {
+        return try {
+            val url = URL(imageUrl)
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+
+            if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                val image = ImageIO.read(connection.inputStream)
+                imageToMapByteArray(image)
+            } else {
+                logger.warning("Failed to fetch image, response code: ${connection.responseCode}")
+                null
+            }
+        } catch (e: Exception) {
+            logger.severe("Exception occurred while fetching image: ${e.message}")
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun imageToMapByteArray(image: BufferedImage): ByteArray {
+        val scaledImage = scaleImage(image)
+        val byteArray = ByteArray(128 * 128)
+
+        for (y in 0 until 128) {
+            for (x in 0 until 128) {
+                val rgb = scaledImage.getRGB(x, y)
+                val color = Color(rgb, true)
+                val mapColor = MapPalette.matchColor(color)
+                byteArray[y * 128 + x] = mapColor.toByte()
+            }
+        }
+
+        return byteArray
+    }
+
+    private fun scaleImage(image: BufferedImage): BufferedImage {
+        val scaledImage = BufferedImage(128, 128, BufferedImage.TYPE_INT_ARGB)
+        val g = scaledImage.createGraphics()
+        g.drawImage(image, 0, 0, 128, 128, null)
+        g.dispose()
+        return scaledImage
     }
 
 }

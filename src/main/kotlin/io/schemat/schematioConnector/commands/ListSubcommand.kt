@@ -10,6 +10,8 @@ import org.bukkit.event.inventory.ClickType
 import org.bukkit.event.inventory.InventoryClickEvent
 import com.google.gson.Gson
 import com.google.gson.JsonObject
+import xyz.xenondevs.inventoryaccess.map.MapIcon
+import xyz.xenondevs.inventoryaccess.map.MapPatch
 import xyz.xenondevs.invui.gui.Gui
 import xyz.xenondevs.invui.gui.PagedGui
 import xyz.xenondevs.invui.gui.structure.Markers
@@ -22,25 +24,36 @@ import xyz.xenondevs.invui.item.Item
 import xyz.xenondevs.invui.item.ItemProvider
 import xyz.xenondevs.invui.item.impl.AbstractItem
 import xyz.xenondevs.invui.item.impl.controlitem.PageItem
+import xyz.xenondevs.invui.window.CartographyWindow
 import java.net.URLEncoder
 import java.util.function.Consumer
+import javax.swing.text.StyleConstants.setIcon
 
 class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
     private val SCHEMATICS_ENDPOINT = "/schematics"
     private val gson = Gson()
     private var currentPagedGui: PagedGui<Item>? = null
+    private var currentPage = 1
+    private var lastPage = 1
+    private var currentSearch: String? = null
 
     override fun execute(player: Player, args: Array<out String>): Boolean {
         currentPagedGui = null
+        currentPage = 1
+        currentSearch = null
         openSchematicsListGui(player)
         player.sendMessage("Opening schematics list GUI...")
         return true
     }
 
-    private fun openSchematicsListGui(player: Player, search: String? = null) {
+    private fun openSchematicsListGui(player: Player, search: String? = null, page: Int = 1) {
         runBlocking {
             try {
-                val schematics = fetchSchematics(search)
+                val (schematics, meta) = fetchSchematics(search, page)
+                lastPage = meta.getAsJsonPrimitive("last_page").asInt
+                currentPage = page
+                currentSearch = search
+
                 val pagedGui = createPagedGui(schematics, player)
 
                 if (currentPagedGui != null) {
@@ -58,17 +71,12 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
         }
     }
 
-    private suspend fun urlEncode(search: String): String {
-        return withContext(Dispatchers.IO) {
-            URLEncoder.encode(search, "UTF-8")
-        }
-    }
-
-    private suspend fun fetchSchematics(search: String? = null): List<JsonObject> {
+    private suspend fun fetchSchematics(search: String? = null, page: Int = 1): Pair<List<JsonObject>, JsonObject> {
         val queryParams = mutableMapOf<String, String>()
         if (search != null && search != "Enter search term") {
             queryParams["search"] = urlEncode(search)
         }
+        queryParams["page"] = page.toString()
 
         val response = plugin.httpUtil.sendGetRequest("$SCHEMATICS_ENDPOINT?${queryParams.entries.joinToString("&") { "${it.key}=${it.value}" }}")
 
@@ -77,7 +85,7 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
         }
 
         val jsonResponse = gson.fromJson(response, JsonObject::class.java)
-        return jsonResponse.getAsJsonArray("data").map { it.asJsonObject }
+        return Pair(jsonResponse.getAsJsonArray("data").map { it.asJsonObject }, jsonResponse.getAsJsonObject("meta"))
     }
 
     private fun createPagedGui(schematics: List<JsonObject>, player: Player): PagedGui<Item> {
@@ -90,12 +98,13 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
                 "# # # # # # # # #",
                 "# x x x x x x x #",
                 "# x x x x x x x #",
-                "# # # <  # > # # #"
+                "# # # < S # > # #"
             )
-            .addIngredient('x', Markers.CONTENT_LIST_SLOT_HORIZONTAL) // where paged items should be put
+            .addIngredient('x', Markers.CONTENT_LIST_SLOT_HORIZONTAL)
             .addIngredient('#', border)
             .addIngredient('<', BackItem())
             .addIngredient('>', ForwardItem())
+            .addIngredient('S', SearchItem(this))
             .setContent(items)
             .build()
     }
@@ -120,12 +129,69 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
             .addLoreLines(
                 "ID: $id",
                 "Public: ${if (isPublic) "Yes" else "No"}",
-                "Authors: $authors"
+                "Authors: $authors",
+                "§eClick to view details"
             )
 
-        return SimpleItem(itemProvider, Consumer { click: Click ->
-            click.player.performCommand("schematio download $id")
-        })
+        return SimpleItem(itemProvider) { click ->
+            openSchematicDetailsWindow(click.player, schematic)
+        }
+    }
+
+    private fun openSchematicDetailsWindow(player: Player, schematic: JsonObject) {
+        plugin.logger.info(schematic.toString())
+        val id = schematic.get("short_id").asString
+        val name = schematic.get("name").asString
+        val isPublic = schematic.get("is_public").asBoolean
+        val authors = schematic.getAsJsonArray("authors").joinToString(", ") { it.asJsonObject.get("last_seen_name").asString }
+        val tags = schematic.getAsJsonArray("tags").joinToString(", ") { it.asJsonObject.get("name").asString }
+        val imageUrl = schematic.get("preview_image_url").asString
+        val detailsGui = Gui.normal()
+            .setStructure(
+                "I D"
+            )
+            .addIngredient('I', SimpleItem(ItemBuilder(Material.REDSTONE)
+                .setDisplayName("§6$name")
+                .addLoreLines(
+                    "§7ID: §f$id",
+                    "§7Public: §f${if (isPublic) "Yes" else "No"}",
+                    "§7Authors: §f$authors",
+                    "§7Tags: §f$tags",
+                    "",
+                    "§eClick to go back"
+                )) { click ->
+                openSchematicsListGui(click.player, currentSearch, currentPage)
+            })
+            .addIngredient('D', SimpleItem(ItemBuilder(Material.HOPPER)
+                .setDisplayName("§aDownload Schematic")
+                .addLoreLines(
+                    "§7Left-click to download §f$name",
+                    "§eRight-click to open in browser"
+                )) { click ->
+                when (click.clickType) {
+                    ClickType.LEFT -> click.player.performCommand("schematio download $id")
+                    ClickType.RIGHT -> {
+                        click.player.sendMessage("§aOpening $name in your browser...")
+                        // Here you would send a clickable link in chat
+                    }
+                    else -> {}
+                }
+            })
+            .build()
+
+        val cartographyWindow = CartographyWindow
+            .single()
+
+            .setViewer(player)
+            .setGui(detailsGui)
+            .setTitle("Schematic: $name")
+            .build()
+
+        // TODO: This is slow and also blocks the main thread
+        //cartographyWindow.updateMap(
+        //    MapPatch(0, 0, 128, 128, plugin.httpUtil.fetchImageAsByteArray(imageUrl))
+        //)
+        cartographyWindow.open()
     }
 
     private fun openSearchAnvilGui(player: Player, pagedGui: PagedGui<Item>) {
@@ -160,26 +226,38 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
         }
     }
 
-    class BackItem : PageItem(false) {
+    inner class BackItem : PageItem(false) {
+        override fun handleClick(clickType: ClickType, player: Player, event: InventoryClickEvent) {
+            if (currentPage > 1) {
+                openSchematicsListGui(player, currentSearch, currentPage - 1)
+            }
+        }
+
         override fun getItemProvider(gui: PagedGui<*>): ItemProvider {
             val builder = ItemBuilder(Material.RED_STAINED_GLASS_PANE)
             builder.setDisplayName("Previous page")
                 .addLoreLines(
-                    if (gui.hasPreviousPage())
-                        "Go to page " + gui.currentPage + "/" + gui.pageAmount
+                    if (currentPage > 1)
+                        "Go to page ${currentPage - 1}/$lastPage"
                     else "You can't go further back"
                 )
             return builder
         }
     }
 
-    class ForwardItem : PageItem(true) {
+    inner class ForwardItem : PageItem(true) {
+        override fun handleClick(clickType: ClickType, player: Player, event: InventoryClickEvent) {
+            if (currentPage < lastPage) {
+                openSchematicsListGui(player, currentSearch, currentPage + 1)
+            }
+        }
+
         override fun getItemProvider(gui: PagedGui<*>): ItemProvider {
             val builder = ItemBuilder(Material.GREEN_STAINED_GLASS_PANE)
             builder.setDisplayName("Next page")
                 .addLoreLines(
-                    if (gui.hasNextPage())
-                        "Go to page " + (gui.currentPage + 2) + "/" + gui.pageAmount
+                    if (currentPage < lastPage)
+                        "Go to page ${currentPage + 1}/$lastPage"
                     else "You can't go further forward"
                 )
             return builder
@@ -188,5 +266,11 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     override fun tabComplete(player: Player, args: Array<out String>): List<String> {
         return emptyList()
+    }
+
+    private suspend fun urlEncode(search: String): String {
+        return withContext(Dispatchers.IO) {
+            URLEncoder.encode(search, "UTF-8")
+        }
     }
 }
