@@ -16,3 +16,6 @@ permissions:
     schematioconnector.setpassword:
         description: Allows players to set their password
         default: true
+    schematioconnector.list:
+        description: Allows players to list schematics
+        default: true

@@ -114,6 +114,29 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
         }
     }
 
+    suspend fun sendGetRequest(endpoint: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val httpClient = HttpClients.createDefault()
+                val fullUrl = "$apiEndpoint$endpoint"
+                val httpGet = HttpGet(fullUrl)
+                httpGet.addHeader("Authorization", "Bearer $apiKey")
+
+                val response = httpClient.execute(httpGet)
+                val entity = response.entity
+                if (entity != null) {
+                    EntityUtils.toString(entity)
+                } else {
+                    null
+                }
+            } catch (e: IOException) {
+                logger.severe("Exception occurred while sending GET request: ${e.message}")
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
     private fun validateJwtToken(token: String): Boolean {
         return try {
             val decodedJWT = JWT.decode(token)
@@ -121,12 +144,13 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
             val type = payload["type"]?.asString()
             val permissions = payload["permissions"]?.asList(String::class.java)
 
-            type == "system" && permissions?.contains("canManagePassword") == true
+            type == "system" && permissions?.contains("can_manage_password") == true
         } catch (exception: JWTVerificationException) {
             logger.warning("Invalid JWT token: ${exception.message}")
             false
         }
     }
+
 
     suspend fun setPassword(playerUuid: String, password: String): Pair<Int, List<String>> {
         if (!validateJwtToken(apiKey)) {

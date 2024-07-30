@@ -17,7 +17,7 @@ import org.bukkit.command.CommandSender
 
 class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
-    private val SCHEMAT_UPLOAD_URL_ENDPOINT = "/schematic/upload"
+    private val SCHEMAT_UPLOAD_URL_ENDPOINT = "/schematics/upload"
 
     override fun execute(player: Player, args: Array<out String>): Boolean {
         val audience = player.audience()

@@ -18,6 +18,8 @@ repositories {
     maven("https://maven.enginehub.org/repo/") {
         name = "enginehub"
     }
+    maven("https://repo.xenondevs.xyz/releases")
+
 }
 
 dependencies {
@@ -29,6 +31,11 @@ dependencies {
     implementation("org.apache.httpcomponents:httpclient:4.5.14")
     implementation("org.apache.httpcomponents:httpmime:4.5.14")
     implementation("com.auth0:java-jwt:4.3.0")
+    implementation("net.kyori:adventure-text-serializer-plain:4.17.0")
+    implementation("net.kyori:adventure-text-minimessage:4.17.0")
+    implementation("xyz.xenondevs.invui:invui:1.33")
+    implementation("xyz.xenondevs.invui:invui-kotlin:1.33")
+
     compileOnly("org.spigotmc:spigot-api:1.20.4-R0.1-SNAPSHOT")
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.2.0-SNAPSHOT")
 }

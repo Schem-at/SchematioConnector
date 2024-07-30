@@ -15,7 +15,8 @@ class SchematioCommand(private val plugin: SchematioConnector) : CommandExecutor
     private val subcommands = mapOf(
         "upload" to UploadSubcommand(plugin),
         "download" to DownloadSubcommand(plugin),
-        "setpassword" to SetPasswordSubcommand(plugin)
+        "setpassword" to SetPasswordSubcommand(plugin),
+        "list" to ListSubcommand(plugin)
     )
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
@@ -40,6 +41,7 @@ class SchematioCommand(private val plugin: SchematioConnector) : CommandExecutor
             "upload" -> "schematioconnector.upload"
             "download" -> "schematioconnector.download"
             "setpassword" -> "schematioconnector.setpassword"
+            "list" -> "schematioconnector.list"
             else -> null
         }
 
@@ -77,6 +79,9 @@ class SchematioCommand(private val plugin: SchematioConnector) : CommandExecutor
         }
         if (player.hasPermission("schematioconnector.setpassword")) {
             audience.sendMessage(Component.text("/schematio setpassword <new_password> - Set your password").color(NamedTextColor.YELLOW))
+        }
+        if (player.hasPermission("schematioconnector.list")) {
+            audience.sendMessage(Component.text("/schematio list [page] [search] - List schematics").color(NamedTextColor.YELLOW))
         }
     }
 }

@@ -55,7 +55,15 @@ object WorldEditUtil {
     }
 
     fun byteArrayToClipboard(data: ByteArray): Clipboard? {
-        return byteArrayToClipboard(data, BuiltInClipboardFormat.SPONGE_SCHEMATIC)
+        val formatsToTry = listOf(BuiltInClipboardFormat.SPONGE_SCHEMATIC, BuiltInClipboardFormat.MCEDIT_SCHEMATIC)
+        for (format in formatsToTry) {
+            try {
+                return byteArrayToClipboard(data, format)
+            } catch (e: Exception) {
+                continue
+            }
+        }
+        return null
     }
 
     fun byteArrayToClipboard(data: ByteArray, format: BuiltInClipboardFormat): Clipboard? {

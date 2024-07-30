@@ -12,7 +12,7 @@ import java.io.EOFException
 
 class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
-    private val SCHEMAT_DOWNLOAD_URL_ENDPOINT = "/schematic/download/"
+    private val SCHEMAT_DOWNLOAD_URL_ENDPOINT = "/schematics/"
 
     override fun execute(player: Player, args: Array<out String>): Boolean {
         val audience = player.audience()
@@ -22,7 +22,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         }
 
         val schematicId = args[0]
-        val downloadUrl = SCHEMAT_DOWNLOAD_URL_ENDPOINT + schematicId
+        val downloadUrl = "$SCHEMAT_DOWNLOAD_URL_ENDPOINT$schematicId/download"
 
         audience.sendMessage(Component.text("Downloading schematic...").color(NamedTextColor.YELLOW))
         val progressBar = ProgressBarUtil.createProgressBar(player, "Downloading Schematic")
