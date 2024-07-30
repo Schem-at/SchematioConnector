@@ -1,6 +1,14 @@
 package io.schemat.schematioConnector.utils
 
+import com.auth0.jwt.JWT
+import com.auth0.jwt.algorithms.Algorithm
+import com.auth0.jwt.exceptions.JWTVerificationException
+import kotlinx.coroutines.withContext
+import java.net.URI
+import java.util.logging.Logger
+
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.http.HttpEntity
@@ -8,13 +16,13 @@ import org.apache.http.HttpResponse
 import org.apache.http.client.methods.HttpGet
 import org.apache.http.client.methods.HttpPost
 import org.apache.http.entity.ByteArrayEntity
+import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.HttpClients
 import org.apache.http.util.EntityUtils
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.logging.Logger
 
 class HttpUtil(private val apiKey: String, private val apiEndpoint: String, private val logger: Logger) {
 
@@ -106,5 +114,76 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
         }
     }
 
+    private fun validateJwtToken(token: String): Boolean {
+        return try {
+            val decodedJWT = JWT.decode(token)
+            val payload = decodedJWT.claims
+            val type = payload["type"]?.asString()
+            val permissions = payload["permissions"]?.asList(String::class.java)
+
+            type == "system" && permissions?.contains("canManagePassword") == true
+        } catch (exception: JWTVerificationException) {
+            logger.warning("Invalid JWT token: ${exception.message}")
+            false
+        }
+    }
+
+    suspend fun setPassword(playerUuid: String, password: String): Pair<Int, List<String>> {
+        if (!validateJwtToken(apiKey)) {
+            logger.warning("JWT token validation failed")
+            return Pair(403, listOf("You don't have permission to change passwords."))
+        }
+
+        return withContext(Dispatchers.IO) {
+            try {
+                val httpClient = HttpClients.createDefault()
+                val fullUrl = URI("$apiEndpoint/password-set").toString()
+
+                val postRequest = HttpPost(fullUrl)
+                postRequest.addHeader("Content-Type", "application/json")
+                postRequest.addHeader("Accept", "application/json")
+                postRequest.addHeader("Authorization", "Bearer $apiKey")
+
+                val json = """
+                    {
+                        "player_uuid": "$playerUuid",
+                        "password": "$password"
+                    }
+                """.trimIndent()
+                postRequest.entity = StringEntity(json)
+
+                val response = httpClient.execute(postRequest)
+                val statusCode = response.statusLine.statusCode
+                val responseBody = EntityUtils.toString(response.entity)
+                logger.info("Set password response: $responseBody")
+                when (statusCode) {
+                    200 -> Pair(200, listOf("Password successfully changed!"))
+                    422 -> {
+                        val errors = parseErrors(responseBody)
+                        Pair(422, errors)
+                    }
+                    else -> Pair(statusCode, listOf("An unexpected error occurred. Please try again later."))
+                }
+            } catch (e: Exception) {
+                logger.severe("Exception occurred while setting password: ${e.message}")
+                e.printStackTrace()
+                Pair(500, listOf("An internal error occurred. Please try again later."))
+            }
+        }
+    }
+
+    private fun parseErrors(responseBody: String): List<String> {
+        val jsonObject = gson.fromJson(responseBody, JsonObject::class.java)
+        val errors = jsonObject.getAsJsonObject("errors")
+        val errorMessages = mutableListOf<String>()
+
+        errors?.entrySet()?.forEach { (field, messages) ->
+            messages.asJsonArray.forEach { message ->
+                errorMessages.add("$field: ${message.asString}")
+            }
+        }
+
+        return errorMessages
+    }
 
 }

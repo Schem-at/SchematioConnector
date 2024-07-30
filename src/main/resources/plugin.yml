@@ -6,3 +6,13 @@ commands:
     schematio:
         description: Interface with the Schematio system
         usage: /schematio <subcommand>
+permissions:
+    schematioconnector.upload:
+        description: Allows players to upload schematics
+        default: op
+    schematioconnector.download:
+        description: Allows players to download schematics
+        default: op
+    schematioconnector.setpassword:
+        description: Allows players to set their password
+        default: true
