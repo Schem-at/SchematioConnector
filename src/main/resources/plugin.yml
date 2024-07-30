@@ -1,0 +1,8 @@
+name: SchematioConnector
+version: '1.0-SNAPSHOT'
+main: io.schemat.schematioConnector.SchematioConnector
+api-version: '1.20'
+commands:
+    schematio:
+        description: Interface with the Schematio system
+        usage: /schematio <subcommand>
