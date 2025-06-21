@@ -37,7 +37,7 @@ dependencies {
     implementation("xyz.xenondevs.invui:invui-kotlin:1.33")
 
     compileOnly("org.spigotmc:spigot-api:1.20.4-R0.1-SNAPSHOT")
-    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.2.0-SNAPSHOT")
+    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.0-SNAPSHOT")
 }
 
 val targetJavaVersion = 21

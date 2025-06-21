@@ -10,14 +10,10 @@ import org.bukkit.command.CommandSender
 import org.bukkit.command.TabCompleter
 import org.bukkit.entity.Player
 
-class SchematioCommand(private val plugin: SchematioConnector) : CommandExecutor, TabCompleter {
-
-    private val subcommands = mapOf(
-        "upload" to UploadSubcommand(plugin),
-        "download" to DownloadSubcommand(plugin),
-        "setpassword" to SetPasswordSubcommand(plugin),
-        "list" to ListSubcommand(plugin)
-    )
+class SchematioCommand(
+    private val plugin: SchematioConnector,
+    private val subcommands: Map<String, Subcommand> // Now receives the map of available commands
+) : CommandExecutor, TabCompleter {
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (sender !is Player) {
@@ -32,20 +28,23 @@ class SchematioCommand(private val plugin: SchematioConnector) : CommandExecutor
 
         val subcommand = subcommands[args[0].lowercase()]
         if (subcommand == null) {
-            sender.audience().sendMessage(Component.text("Unknown subcommand. Use /schematio for help.").color(NamedTextColor.RED))
+            // If WorldEdit is missing, provide a more helpful message for those specific commands
+            val missingCommand = args[0].lowercase()
+            if (missingCommand in listOf("upload", "download", "list") && !plugin.hasWorldEdit) {
+                sender.audience().sendMessage(
+                    Component.text("This command requires WorldEdit, which was not found on the server.")
+                        .color(NamedTextColor.RED)
+                )
+            } else {
+                sender.audience().sendMessage(
+                    Component.text("Unknown subcommand. Use /schematio for help.").color(NamedTextColor.RED)
+                )
+            }
             return true
         }
 
         // Check permissions
-        val permission = when (args[0].lowercase()) {
-            "upload" -> "schematioconnector.upload"
-            "download" -> "schematioconnector.download"
-            "setpassword" -> "schematioconnector.setpassword"
-            "list" -> "schematioconnector.list"
-            else -> null
-        }
-
-        if (permission != null && !sender.hasPermission(permission)) {
+        if (!sender.hasPermission(subcommand.permission)) {
             sender.audience().sendMessage(Component.text("You don't have permission to use this command.").color(NamedTextColor.RED))
             return true
         }
@@ -59,30 +58,33 @@ class SchematioCommand(private val plugin: SchematioConnector) : CommandExecutor
         }
 
         if (args.size <= 1) {
+            // Suggest only the subcommands the player has permission for
             return subcommands.keys
+                .filter { sender.hasPermission(subcommands[it]!!.permission) }
                 .filter { it.startsWith(args.getOrNull(0) ?: "", ignoreCase = true) }
-                .filter { sender.hasPermission("schematioconnector.$it") }
         }
 
         val subcommand = subcommands[args[0].lowercase()]
-        return subcommand?.tabComplete(sender, args.drop(1).toTypedArray()) ?: emptyList()
+        if (subcommand != null && sender.hasPermission(subcommand.permission)) {
+            return subcommand.tabComplete(sender, args.drop(1).toTypedArray())
+        }
+
+        return emptyList()
     }
 
     private fun sendHelpMessage(player: Player) {
         val audience = player.audience()
         audience.sendMessage(Component.text("Schematio Commands:").color(NamedTextColor.GOLD))
-        if (player.hasPermission("schematioconnector.upload")) {
-            audience.sendMessage(Component.text("/schematio upload - Upload your current clipboard").color(NamedTextColor.YELLOW))
-        }
-        if (player.hasPermission("schematioconnector.download")) {
-            audience.sendMessage(Component.text("/schematio download <id> - Download a schematic to your clipboard").color(NamedTextColor.YELLOW))
-        }
-        if (player.hasPermission("schematioconnector.setpassword")) {
-            audience.sendMessage(Component.text("/schematio setpassword <new_password> - Set your password").color(NamedTextColor.YELLOW))
-        }
-        if (player.hasPermission("schematioconnector.list")) {
-            audience.sendMessage(Component.text("/schematio list [page] [search] - List schematics").color(NamedTextColor.YELLOW))
-        }
+
+        // Dynamically generate help message from available commands
+        subcommands.values
+            .filter { player.hasPermission(it.permission) }
+            .sortedBy { it.name }
+            .forEach { subcommand ->
+                val helpLine = Component.text("/schematio ${subcommand.name}", NamedTextColor.YELLOW)
+                    .append(Component.text(" - ${subcommand.description}", NamedTextColor.GRAY))
+                audience.sendMessage(helpLine)
+            }
     }
 }
 

@@ -8,7 +8,13 @@ import org.bukkit.entity.Player
 
 class SetPasswordSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
+    // Add the required properties from the interface
+    override val name = "setpassword"
+    override val permission = "schematioconnector.setpassword"
+    override val description = "Set your API password for schemat.io"
+
     override fun execute(player: Player, args: Array<out String>): Boolean {
+        // ... (rest of your code is correct)
         val audience = player.audience()
 
         if (args.size != 1) {

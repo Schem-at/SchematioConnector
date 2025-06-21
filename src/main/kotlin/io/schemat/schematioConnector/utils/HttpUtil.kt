@@ -15,6 +15,7 @@ import org.apache.http.HttpEntity
 import org.apache.http.HttpResponse
 import org.apache.http.client.methods.HttpGet
 import org.apache.http.client.methods.HttpPost
+import org.apache.http.client.methods.HttpEntityEnclosingRequestBase
 import org.apache.http.entity.ByteArrayEntity
 import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.HttpClients
@@ -31,6 +32,15 @@ import javax.imageio.ImageIO
 class HttpUtil(private val apiKey: String, private val apiEndpoint: String, private val logger: Logger) {
 
     private val gson = Gson()
+
+    // Custom HttpGet class that supports request body
+    private class HttpGetWithEntity(uri: String) : HttpEntityEnclosingRequestBase() {
+        init {
+            this.uri = URI.create(uri)
+        }
+
+        override fun getMethod(): String = "GET"
+    }
 
     suspend fun checkConnection(): Boolean {
         return withContext(Dispatchers.IO) {
@@ -141,6 +151,81 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
         }
     }
 
+    suspend fun sendGetRequestWithBody(endpoint: String, requestBody: String): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val httpClient = HttpClients.createDefault()
+                val fullUrl = "$apiEndpoint$endpoint"
+
+                val httpGet = HttpGetWithEntity(fullUrl)
+
+                httpGet.addHeader("Authorization", "Bearer $apiKey")
+                httpGet.addHeader("Content-Type", "application/json")
+                httpGet.entity = StringEntity(requestBody)
+
+                val response = httpClient.execute(httpGet)
+                val entity = response.entity
+                if (entity != null) {
+                    EntityUtils.toString(entity)
+                } else {
+                    null
+                }
+            } catch (e: IOException) {
+                logger.severe("Exception occurred while sending GET request with body: ${e.message}")
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
+    suspend fun sendGetRequestWithBodyFullResponse(endpoint: String, requestBody: String, progressCallback: (Float) -> Unit): HttpResponse? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val httpClient = HttpClients.createDefault()
+                val fullUrl = "$apiEndpoint$endpoint"
+
+                val httpGet = HttpGetWithEntity(fullUrl)
+
+                httpGet.addHeader("Authorization", "Bearer $apiKey")
+                httpGet.addHeader("Content-Type", "application/json")
+                httpGet.entity = StringEntity(requestBody)
+
+                logger.info("Sending GET request with body to: $fullUrl")
+                val response = httpClient.execute(httpGet)
+                val entity = response.entity
+                if (entity != null) {
+                    val totalBytes = entity.contentLength
+                    var bytesTransferred: Long = 0
+
+                    val content = ByteArrayOutputStream()
+                    entity.content.use { inputStream ->
+                        val buffer = ByteArray(4096)
+                        var bytesRead: Int
+                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            content.write(buffer, 0, bytesRead)
+                            bytesTransferred += bytesRead
+                            val progress = if (totalBytes > 0) {
+                                bytesTransferred.toFloat() / totalBytes
+                            } else {
+                                0.5f // Unknown progress
+                            }
+                            progressCallback(progress)
+                        }
+                    }
+
+                    // Replace the original entity with a new one that uses our buffered content
+                    EntityUtils.consume(entity)
+                    response.entity = ByteArrayEntity(content.toByteArray())
+                }
+                response
+            } catch (e: IOException) {
+                logger.severe("Exception occurred while sending GET request with body (full response): ${e.message}")
+                e.printStackTrace()
+                null
+            }
+        }
+    }
+
     private fun validateJwtToken(token: String): Boolean {
         return try {
             val decodedJWT = JWT.decode(token)
@@ -154,7 +239,6 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
             false
         }
     }
-
 
     suspend fun setPassword(playerUuid: String, password: String): Pair<Int, List<String>> {
         if (!validateJwtToken(apiKey)) {
@@ -190,6 +274,7 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
                         val errors = parseErrors(responseBody)
                         Pair(422, errors)
                     }
+
                     else -> Pair(statusCode, listOf("An unexpected error occurred. Please try again later."))
                 }
             } catch (e: Exception) {
@@ -257,5 +342,4 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
         g.dispose()
         return scaledImage
     }
-
 }

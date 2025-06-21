@@ -31,7 +31,7 @@ api-endpoint: "https://your-api-endpoint.com"
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/SchematioConnector.git
+   git clone https://github.com/schem-at/SchematioConnector.git
    ```
 2. Navigate to the project directory:
    ```

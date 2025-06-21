@@ -5,7 +5,9 @@ import com.sk89q.worldedit.LocalSession
 import com.sk89q.worldedit.WorldEdit
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.Clipboard
-import com.sk89q.worldedit.extent.clipboard.io.BuiltInClipboardFormat
+import com.sk89q.worldedit.extent.clipboard.io.BuiltInClipboardFormat;
+import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormat;
+import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats
 import com.sk89q.worldedit.session.ClipboardHolder
 import io.schemat.schematioConnector.SchematioConnector
 import org.bukkit.entity.Player
@@ -15,20 +17,25 @@ import java.io.IOException
 
 object WorldEditUtil {
 
-    fun getWorldEditInstance(): WorldEdit {
+    // This function must now return a nullable WorldEdit?
+    fun getWorldEditInstance(): WorldEdit? {
         return SchematioConnector.instance.worldEditInstance
     }
 
-    fun getSessionManager() = getWorldEditInstance().sessionManager
+    // Use the ?. safe call operator. If worldEditInstance is null, this will return null.
+    fun getSessionManager() = getWorldEditInstance()?.sessionManager
 
-    fun getLocalSession(player: Player): LocalSession {
+    // This function must also return a nullable LocalSession?
+    fun getLocalSession(player: Player): LocalSession? {
         val actor = BukkitAdapter.adapt(player)
-        return getSessionManager().get(actor)
+        // The safe call propagates here. If getSessionManager() is null, this whole expression is null.
+        return getSessionManager()?.get(actor)
     }
 
     fun getClipboardHolder(player: Player): ClipboardHolder? {
         return try {
-            getLocalSession(player).clipboard
+            // Safe call needed here too.
+            getLocalSession(player)?.clipboard
         } catch (e: EmptyClipboardException) {
             null
         }
@@ -38,6 +45,7 @@ object WorldEditUtil {
         return getClipboardHolder(player)?.clipboard
     }
 
+    // This function doesn't need changes as it only deals with a Clipboard object
     fun clipboardToStream(clipboard: Clipboard): ByteArrayOutputStream? {
         val outputStream = ByteArrayOutputStream()
         try {
@@ -50,22 +58,32 @@ object WorldEditUtil {
         return outputStream
     }
 
+    // This function doesn't need changes
     fun clipboardToByteArray(clipboard: Clipboard): ByteArray? {
         return clipboardToStream(clipboard)?.toByteArray()
     }
 
+
+    // This function doesn't need changes
     fun byteArrayToClipboard(data: ByteArray): Clipboard? {
-        val formatsToTry = listOf(BuiltInClipboardFormat.SPONGE_SCHEMATIC, BuiltInClipboardFormat.MCEDIT_SCHEMATIC)
+        ClipboardFormats.getAll()
+        val formatsToTry = listOf( BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC, BuiltInClipboardFormat.SPONGE_SCHEMATIC, BuiltInClipboardFormat.MCEDIT_SCHEMATIC)
         for (format in formatsToTry) {
+            //log the format being tried
+            SchematioConnector.instance.logger.info("Trying to convert byte array to clipboard using format: ${format.name}")
+
             try {
                 return byteArrayToClipboard(data, format)
             } catch (e: Exception) {
+                // Log the exception if needed, but continue trying other formats
+                e.printStackTrace()
                 continue
             }
         }
         return null
     }
 
+    // This function doesn't need changes
     fun byteArrayToClipboard(data: ByteArray, format: BuiltInClipboardFormat): Clipboard? {
         val inputStream = ByteArrayInputStream(data)
         return try {
@@ -78,9 +96,10 @@ object WorldEditUtil {
         }
     }
 
+    // Use a 'let' block to safely operate on the session only if it exists
     fun setClipboard(player: Player, clipboard: Clipboard) {
-        val actor = BukkitAdapter.adapt(player)
-        val session = getSessionManager().get(actor)
-        session.clipboard = ClipboardHolder(clipboard)
+        getLocalSession(player)?.let { session ->
+            session.clipboard = ClipboardHolder(clipboard)
+        }
     }
 }

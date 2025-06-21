@@ -1,35 +1,30 @@
 package io.schemat.schematioConnector.commands
 
-import io.schemat.schematioConnector.SchematioConnector
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.bukkit.entity.Player
-import org.bukkit.Material
-import org.bukkit.event.inventory.ClickType
-import org.bukkit.event.inventory.InventoryClickEvent
 import com.google.gson.Gson
 import com.google.gson.JsonObject
-import xyz.xenondevs.inventoryaccess.map.MapIcon
-import xyz.xenondevs.inventoryaccess.map.MapPatch
+import io.schemat.schematioConnector.SchematioConnector
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import org.bukkit.Material
+import org.bukkit.entity.Player
+import org.bukkit.event.inventory.ClickType
+import org.bukkit.event.inventory.InventoryClickEvent
 import xyz.xenondevs.invui.gui.Gui
 import xyz.xenondevs.invui.gui.PagedGui
 import xyz.xenondevs.invui.gui.structure.Markers
-import xyz.xenondevs.invui.item.Click
-import xyz.xenondevs.invui.item.builder.ItemBuilder
-import xyz.xenondevs.invui.item.impl.SimpleItem
-import xyz.xenondevs.invui.window.Window
-import xyz.xenondevs.invui.window.AnvilWindow
 import xyz.xenondevs.invui.item.Item
 import xyz.xenondevs.invui.item.ItemProvider
+import xyz.xenondevs.invui.item.builder.ItemBuilder
 import xyz.xenondevs.invui.item.impl.AbstractItem
+import xyz.xenondevs.invui.item.impl.SimpleItem
 import xyz.xenondevs.invui.item.impl.controlitem.PageItem
+import xyz.xenondevs.invui.window.AnvilWindow
 import xyz.xenondevs.invui.window.CartographyWindow
 import java.net.URLEncoder
-import java.util.function.Consumer
-import javax.swing.text.StyleConstants.setIcon
 
 class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
+    // ... (rest of your properties are correct)
     private val SCHEMATICS_ENDPOINT = "/schematics"
     private val gson = Gson()
     private var currentPagedGui: PagedGui<Item>? = null
@@ -37,6 +32,12 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
     private var lastPage = 1
     private var currentSearch: String? = null
 
+    // Add the required properties from the interface
+    override val name = "list"
+    override val permission = "schematioconnector.list"
+    override val description = "List schematics from schemat.io"
+
+    // ... (rest of your file is correct)
     override fun execute(player: Player, args: Array<out String>): Boolean {
         currentPagedGui = null
         currentPage = 1
@@ -46,6 +47,7 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
         return true
     }
 
+    // The rest of the file stays the same...
     private fun openSchematicsListGui(player: Player, search: String? = null, page: Int = 1) {
         runBlocking {
             try {
