@@ -35,6 +35,9 @@ repositories {
     maven("https://jitpack.io") {
         name = "jitpack"
     }
+    maven("https://repo.codemc.io/repository/maven-public/") {
+        name = "codemc"
+    }
 }
 
 dependencies {
@@ -69,7 +72,7 @@ dependencies {
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.10")
     
     // ProtocolLib (optional - for advanced features like sign input)
-    compileOnly("com.github.dmulloy2:ProtocolLib:5.4.0")
+    compileOnly("net.dmulloy2:ProtocolLib:5.4.0")
 
     // MapEngine (optional - for map preview rendering)
     compileOnly("de.pianoman911:mapengine-api:1.8.11")
