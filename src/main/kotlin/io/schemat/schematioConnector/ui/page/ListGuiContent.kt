@@ -13,6 +13,7 @@ import io.schemat.schematioConnector.utils.safeGetInt
 import io.schemat.schematioConnector.utils.safeGetObject
 import io.schemat.schematioConnector.utils.safeGetString
 import io.schemat.schematioConnector.utils.asJsonObjectOrNull
+import io.schemat.schematioConnector.utils.parseJsonSafe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -448,7 +449,8 @@ class ListGuiContent(
             throw Exception("Connection refused - API may be unavailable")
         }
 
-        val jsonResponse = gson.fromJson(response, JsonObject::class.java)
+        val jsonResponse = parseJsonSafe(response)
+            ?: throw Exception("Invalid JSON response from API")
         return Pair(
             jsonResponse.safeGetArray("data").mapNotNull { it.asJsonObjectOrNull() },
             jsonResponse.safeGetObject("meta") ?: JsonObject()

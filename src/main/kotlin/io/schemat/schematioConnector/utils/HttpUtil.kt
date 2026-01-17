@@ -218,6 +218,7 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
                 val fullUrl = "$apiEndpoint$endpoint"
                 val httpGet = HttpGet(fullUrl)
                 httpGet.addHeader("Authorization", "Bearer $apiKey")
+                httpGet.addHeader("Accept", "application/json")
 
                 val response = httpClient.execute(httpGet)
                 val entity = response.entity
@@ -320,6 +321,7 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
 
                 httpGet.addHeader("Authorization", "Bearer $apiKey")
                 httpGet.addHeader("Content-Type", "application/json")
+                httpGet.addHeader("Accept", "application/json")
                 httpGet.entity = StringEntity(requestBody)
 
                 val response = httpClient.execute(httpGet)
@@ -345,6 +347,7 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
 
                 httpGet.addHeader("Authorization", "Bearer $apiKey")
                 httpGet.addHeader("Content-Type", "application/json")
+                httpGet.addHeader("Accept", "application/json")
                 httpGet.entity = StringEntity(requestBody)
 
                 logger.info("Sending GET request with body to: $fullUrl")
