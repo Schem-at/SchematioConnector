@@ -32,6 +32,9 @@ repositories {
     maven("https://repo.minceraft.dev/releases/") {
         name = "minceraft"
     }
+    maven("https://jitpack.io") {
+        name = "jitpack"
+    }
 }
 
 dependencies {
@@ -66,7 +69,7 @@ dependencies {
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.10")
     
     // ProtocolLib (optional - for advanced features like sign input)
-    compileOnly("com.comphenix.protocol:ProtocolLib:5.1.0")
+    compileOnly("com.github.dmulloy2:ProtocolLib:5.3.0")
 
     // MapEngine (optional - for map preview rendering)
     compileOnly("de.pianoman911:mapengine-api:1.8.11")
