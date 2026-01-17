@@ -103,6 +103,10 @@ tasks.shadowJar {
 }
 
 tasks {
+    jar {
+        enabled = false  // Disable thin JAR, only use shadowJar
+    }
+
     build {
         dependsOn(shadowJar)
     }
