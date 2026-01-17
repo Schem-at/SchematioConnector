@@ -3,270 +3,431 @@ package io.schemat.schematioConnector.commands
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import io.schemat.schematioConnector.SchematioConnector
+import io.schemat.schematioConnector.utils.InputValidator
+import io.schemat.schematioConnector.utils.OfflineMode
+import io.schemat.schematioConnector.utils.SchematicCache
+import io.schemat.schematioConnector.utils.ValidationResult
+import io.schemat.schematioConnector.utils.parseJsonSafe
+import io.schemat.schematioConnector.utils.safeGetArray
+import io.schemat.schematioConnector.utils.safeGetBoolean
+import io.schemat.schematioConnector.utils.safeGetInt
+import io.schemat.schematioConnector.utils.safeGetObject
+import io.schemat.schematioConnector.utils.safeGetString
+import io.schemat.schematioConnector.utils.asJsonObjectOrNull
+import io.schemat.schematioConnector.utils.asStringOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import org.bukkit.Material
+import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.event.ClickEvent
+import net.kyori.adventure.text.event.HoverEvent
+import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.entity.Player
-import org.bukkit.event.inventory.ClickType
-import org.bukkit.event.inventory.InventoryClickEvent
-import xyz.xenondevs.invui.gui.Gui
-import xyz.xenondevs.invui.gui.PagedGui
-import xyz.xenondevs.invui.gui.structure.Markers
-import xyz.xenondevs.invui.item.Item
-import xyz.xenondevs.invui.item.ItemProvider
-import xyz.xenondevs.invui.item.builder.ItemBuilder
-import xyz.xenondevs.invui.item.impl.AbstractItem
-import xyz.xenondevs.invui.item.impl.SimpleItem
-import xyz.xenondevs.invui.item.impl.controlitem.PageItem
-import xyz.xenondevs.invui.window.AnvilWindow
-import xyz.xenondevs.invui.window.CartographyWindow
 import java.net.URLEncoder
 
+/**
+ * Chat-based UI for browsing and searching schematics on schemat.io.
+ *
+ * This is the default list command that displays schematics in chat
+ * with clickable actions for downloading and navigation.
+ *
+ * Usage: /schematio list [search term] [page]
+ *
+ * Examples:
+ * - /schematio list - Show first page of all schematics
+ * - /schematio list castle - Search for "castle"
+ * - /schematio list castle 2 - Show page 2 of "castle" search
+ *
+ * Requires:
+ * - schematio.list permission (base permission for listing)
+ * - schematio.tier.chat permission (tier permission for chat UI)
+ * - WorldEdit plugin for clipboard operations
+ *
+ * @property plugin The main plugin instance
+ */
 class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
-    // ... (rest of your properties are correct)
+
     private val SCHEMATICS_ENDPOINT = "/schematics"
     private val gson = Gson()
-    private var currentPagedGui: PagedGui<Item>? = null
-    private var currentPage = 1
-    private var lastPage = 1
-    private var currentSearch: String? = null
+    private val ITEMS_PER_PAGE = 10
 
-    // Add the required properties from the interface
     override val name = "list"
-    override val permission = "schematioconnector.list"
-    override val description = "List schematics from schemat.io"
+    override val permission = "schematio.list"
+    override val description = "Browse schematics in chat"
 
-    // ... (rest of your file is correct)
+    /** The tier permission required for this UI variant */
+    val tierPermission = "schematio.tier.chat"
+
     override fun execute(player: Player, args: Array<out String>): Boolean {
-        currentPagedGui = null
-        currentPage = 1
-        currentSearch = null
-        openSchematicsListGui(player)
-        player.sendMessage("Opening schematics list GUI...")
+        val audience = player.audience()
+
+        // Check tier permission
+        if (!player.hasPermission(tierPermission)) {
+            audience.sendMessage(
+                Component.text("You don't have permission for chat UI.").color(NamedTextColor.RED)
+            )
+            return true
+        }
+
+        // Early check for API availability
+        if (plugin.httpUtil == null) {
+            audience.sendMessage(Component.text("Cannot browse schematics - not connected to schemat.io").color(NamedTextColor.RED))
+            audience.sendMessage(Component.text("Configure a community token in config.yml and run /schematio reload").color(NamedTextColor.GRAY))
+            return true
+        }
+
+        // Parse arguments: [search] [page]
+        var search: String? = null
+        var page = 1
+
+        if (args.isNotEmpty()) {
+            // Check if last arg is a page number
+            val lastArg = args.last()
+            if (lastArg.toIntOrNull() != null && args.size > 1) {
+                page = lastArg.toInt().coerceAtLeast(1)
+                search = args.dropLast(1).joinToString(" ")
+            } else if (lastArg.toIntOrNull() != null && args.size == 1) {
+                page = lastArg.toInt().coerceAtLeast(1)
+            } else {
+                search = args.joinToString(" ")
+            }
+        }
+
+        // Validate search query
+        val searchResult = InputValidator.validateSearchQuery(search)
+        if (searchResult is ValidationResult.Invalid) {
+            audience.sendMessage(Component.text(searchResult.message).color(NamedTextColor.RED))
+            return true
+        }
+        search = (searchResult as ValidationResult.Valid).value.ifEmpty { null }
+
+        // Validate page number
+        val pageResult = InputValidator.validatePageNumber(page)
+        if (pageResult is ValidationResult.Invalid) {
+            audience.sendMessage(Component.text(pageResult.message).color(NamedTextColor.RED))
+            return true
+        }
+        page = (pageResult as ValidationResult.Valid).value
+
+        // Note: Rate limiting moved to API call only - cache hits are always allowed
+        audience.sendMessage(Component.text("Loading schematics...").color(NamedTextColor.GRAY))
+        displaySchematics(player, search, page)
         return true
     }
 
-    // The rest of the file stays the same...
-    private fun openSchematicsListGui(player: Player, search: String? = null, page: Int = 1) {
-        runBlocking {
+    private fun displaySchematics(player: Player, search: String?, page: Int) {
+        val httpUtil = plugin.httpUtil ?: return
+        val cache = plugin.schematicCache
+        val offlineMode = plugin.offlineMode
+
+        // Build cache key from query parameters
+        val cacheKey = buildCacheKey(search, page)
+
+        // Check cache first
+        val cachedResult = cache.getListings(cacheKey)
+        if (cachedResult != null) {
+            // Cache hit - display immediately
+            plugin.server.scheduler.runTask(plugin, Runnable {
+                displaySchematicResults(player, search, cachedResult.schematics, cachedResult.meta, fromCache = true)
+            })
+            return
+        }
+
+        // Check if we should skip API call (offline mode with backoff)
+        if (offlineMode.shouldSkipApiCall()) {
+            // Try stale cache
+            val staleResult = cache.getListingsStale(cacheKey)
+            if (staleResult != null) {
+                val (data, ageMs) = staleResult
+                plugin.server.scheduler.runTask(plugin, Runnable {
+                    val ageMinutes = (ageMs / 60000).toInt()
+                    displaySchematicResults(player, search, data.schematics, data.meta, fromCache = true, staleMinutes = ageMinutes)
+                })
+                return
+            }
+
+            // No cached data available
+            val waitTime = offlineMode.getTimeUntilRetrySeconds()
+            plugin.server.scheduler.runTask(plugin, Runnable {
+                val audience = player.audience()
+                audience.sendMessage(Component.text("API is offline. Retry in ${waitTime}s").color(NamedTextColor.RED))
+                audience.sendMessage(Component.text("No cached data available for this query.").color(NamedTextColor.GRAY))
+            })
+            return
+        }
+
+        // Rate limit only applies to actual API calls, not cache hits
+        val rateLimitResult = plugin.rateLimiter.tryAcquire(player.uniqueId)
+        if (rateLimitResult == null) {
+            val waitTime = plugin.rateLimiter.getWaitTimeSeconds(player.uniqueId)
+            plugin.server.scheduler.runTask(plugin, Runnable {
+                val audience = player.audience()
+                audience.sendMessage(Component.text("Rate limited. Please wait ${waitTime}s before making another request.").color(NamedTextColor.RED))
+            })
+            return
+        }
+
+        // Run the fetch asynchronously to avoid blocking the main thread
+        plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
+            offlineMode.recordAttempt()
+
             try {
-                val (schematics, meta) = fetchSchematics(search, page)
-                lastPage = meta.getAsJsonPrimitive("last_page").asInt
-                currentPage = page
-                currentSearch = search
+                val (schematics, meta) = runBlocking { fetchSchematics(search, page) }
 
-                val pagedGui = createPagedGui(schematics, player)
+                // Cache the successful result
+                cache.putListings(cacheKey, schematics, meta)
+                offlineMode.recordSuccess()
 
-                if (currentPagedGui != null) {
-                    // Update the existing GUI content
-                    currentPagedGui?.setContent(createSchematicItems(schematics))
-                } else {
-                    // Create a new anvil split window with the initial content
-                    currentPagedGui = pagedGui
-                    openSearchAnvilGui(player, pagedGui)
-                }
+                // Switch back to main thread for Bukkit API calls
+                plugin.server.scheduler.runTask(plugin, Runnable {
+                    displaySchematicResults(player, search, schematics, meta, fromCache = false)
+                })
             } catch (e: Exception) {
-                player.sendMessage("An error occurred while fetching schematics.")
-                plugin.logger.severe("Error fetching schematics: ${e.message}")
+                // Record failure for offline mode
+                val enteredOffline = offlineMode.recordFailure()
+
+                // Try stale cache as fallback
+                val staleResult = cache.getListingsStale(cacheKey)
+
+                plugin.server.scheduler.runTask(plugin, Runnable {
+                    val audience = player.audience()
+
+                    if (staleResult != null) {
+                        // Show stale data with warning
+                        val (data, ageMs) = staleResult
+                        val ageMinutes = (ageMs / 60000).toInt()
+                        audience.sendMessage(Component.text("API unavailable - showing cached data").color(NamedTextColor.YELLOW))
+                        displaySchematicResults(player, search, data.schematics, data.meta, fromCache = true, staleMinutes = ageMinutes)
+                    } else {
+                        // No cache available - show error
+                        val errorMsg = e.message ?: "Unknown error"
+                        when {
+                            errorMsg.contains("API not connected") -> {
+                                audience.sendMessage(Component.text("Cannot browse schematics - not connected to schemat.io").color(NamedTextColor.RED))
+                                audience.sendMessage(Component.text("Configure a community token in config.yml").color(NamedTextColor.GRAY))
+                            }
+                            errorMsg.contains("Connection refused") ||
+                            errorMsg.contains("timed out") ||
+                            errorMsg.contains("No route to host") -> {
+                                audience.sendMessage(Component.text("schemat.io API is currently unavailable").color(NamedTextColor.RED))
+                                if (enteredOffline) {
+                                    audience.sendMessage(Component.text("Entered offline mode - will retry automatically").color(NamedTextColor.GRAY))
+                                } else {
+                                    audience.sendMessage(Component.text("Please try again later").color(NamedTextColor.GRAY))
+                                }
+                            }
+                            else -> {
+                                audience.sendMessage(Component.text("Error loading schematics").color(NamedTextColor.RED))
+                                audience.sendMessage(Component.text(errorMsg.take(50)).color(NamedTextColor.GRAY))
+                                plugin.logger.warning("Error fetching schematics: $errorMsg")
+                            }
+                        }
+                    }
+                })
+            }
+        })
+    }
+
+    private fun buildCacheKey(search: String?, page: Int): String {
+        return "list:search=${search ?: ""}:page=$page:perPage=$ITEMS_PER_PAGE"
+    }
+
+    private fun displaySchematicResults(
+        player: Player,
+        search: String?,
+        schematics: List<JsonObject>,
+        meta: JsonObject,
+        fromCache: Boolean,
+        staleMinutes: Int = 0
+    ) {
+        val audience = player.audience()
+
+        // Use safe JSON parsing
+        val currentPage = meta.safeGetInt("current_page", 1)
+        val lastPage = meta.safeGetInt("last_page", 1)
+        val total = meta.safeGetInt("total", 0)
+
+        // Header
+        audience.sendMessage(Component.empty())
+        val headerText = if (search != null) {
+            Component.text("Schematics matching \"$search\"").color(NamedTextColor.GOLD)
+        } else {
+            Component.text("All Schematics").color(NamedTextColor.GOLD)
+        }
+
+        // Add cache indicator to header
+        val cacheIndicator = when {
+            staleMinutes > 0 -> Component.text(" [cached ${staleMinutes}m ago]").color(NamedTextColor.YELLOW)
+            fromCache -> Component.text(" [cached]").color(NamedTextColor.DARK_GRAY)
+            else -> Component.empty()
+        }
+
+        audience.sendMessage(
+            Component.text("=== ").color(NamedTextColor.DARK_GRAY)
+                .append(headerText)
+                .append(Component.text(" ($total total)").color(NamedTextColor.DARK_GRAY))
+                .append(cacheIndicator)
+                .append(Component.text(" ===").color(NamedTextColor.DARK_GRAY))
+        )
+
+        if (schematics.isEmpty()) {
+            audience.sendMessage(Component.text("No schematics found.").color(NamedTextColor.GRAY))
+        } else {
+            // List schematics with safe JSON access
+            for (schematic in schematics) {
+                val id = schematic.safeGetString("short_id") ?: continue
+                val name = schematic.safeGetString("name") ?: "Unknown"
+                val isPublic = schematic.safeGetBoolean("is_public", false)
+
+                // Safe author extraction
+                val authorsArray = schematic.safeGetArray("authors")
+                val authors = authorsArray
+                    .mapNotNull { it.asJsonObjectOrNull()?.safeGetString("last_seen_name") }
+                    .take(2)
+                    .joinToString(", ")
+                    .ifEmpty { "Unknown" }
+                val authorsSuffix = if (authorsArray.size > 2) "..." else ""
+
+                // Build schematic line with clickable buttons
+                val downloadButton = Component.text("[DL]")
+                    .color(NamedTextColor.GREEN)
+                    .decorate(TextDecoration.BOLD)
+                    .clickEvent(ClickEvent.runCommand("/schematio download $id"))
+                    .hoverEvent(HoverEvent.showText(
+                        Component.text("Click to download to clipboard").color(NamedTextColor.GREEN)
+                    ))
+
+                val schematicUrl = "${plugin.baseUrl}/schematics/$id"
+                val webButton = Component.text("[Web]")
+                    .color(NamedTextColor.AQUA)
+                    .clickEvent(ClickEvent.openUrl(schematicUrl))
+                    .hoverEvent(HoverEvent.showText(
+                        Component.text("Open in browser").color(NamedTextColor.AQUA)
+                    ))
+
+                val nameComponent = Component.text(name)
+                    .color(NamedTextColor.WHITE)
+                    .hoverEvent(HoverEvent.showText(
+                        Component.text("ID: $id\n").color(NamedTextColor.GRAY)
+                            .append(Component.text("Public: ${if (isPublic) "Yes" else "No"}\n").color(NamedTextColor.GRAY))
+                            .append(Component.text("Authors: $authors$authorsSuffix").color(NamedTextColor.GRAY))
+                    ))
+
+                val visibilityIcon = if (isPublic) {
+                    Component.text(" [P]").color(NamedTextColor.GREEN)
+                        .hoverEvent(HoverEvent.showText(Component.text("Public").color(NamedTextColor.GREEN)))
+                } else {
+                    Component.text(" [X]").color(NamedTextColor.RED)
+                        .hoverEvent(HoverEvent.showText(Component.text("Private").color(NamedTextColor.RED)))
+                }
+
+                audience.sendMessage(
+                    downloadButton
+                        .append(Component.text(" ").color(NamedTextColor.DARK_GRAY))
+                        .append(webButton)
+                        .append(Component.text(" ").color(NamedTextColor.DARK_GRAY))
+                        .append(nameComponent)
+                        .append(visibilityIcon)
+                        .append(Component.text(" by $authors$authorsSuffix").color(NamedTextColor.GRAY))
+                )
             }
         }
+
+        // Pagination footer
+        audience.sendMessage(Component.empty())
+        val paginationLine = buildPaginationLine(search, currentPage, lastPage)
+        audience.sendMessage(paginationLine)
+
+        // Show alternative UI hints if player has permissions
+        val alternatives = mutableListOf<Component>()
+        if (player.hasPermission("schematio.tier.inventory")) {
+            alternatives.add(
+                Component.text("/schematio list-inv")
+                    .color(NamedTextColor.AQUA)
+                    .clickEvent(ClickEvent.runCommand("/schematio list-inv"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Open inventory GUI")))
+            )
+        }
+        if (player.hasPermission("schematio.tier.floating")) {
+            alternatives.add(
+                Component.text("/schematio list-gui")
+                    .color(NamedTextColor.AQUA)
+                    .clickEvent(ClickEvent.runCommand("/schematio list-gui"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Open 3D floating GUI")))
+            )
+        }
+        if (alternatives.isNotEmpty()) {
+            var altLine = Component.text("Try: ").color(NamedTextColor.DARK_GRAY)
+            alternatives.forEachIndexed { index, component ->
+                if (index > 0) {
+                    altLine = altLine.append(Component.text(" | ").color(NamedTextColor.DARK_GRAY))
+                }
+                altLine = altLine.append(component)
+            }
+            audience.sendMessage(altLine)
+        }
+    }
+
+    private fun buildPaginationLine(search: String?, currentPage: Int, lastPage: Int): Component {
+        val searchParam = if (search != null) "$search " else ""
+
+        // Previous button
+        val prevButton = if (currentPage > 1) {
+            Component.text("[< Prev]")
+                .color(NamedTextColor.YELLOW)
+                .clickEvent(ClickEvent.runCommand("/schematio list $searchParam${currentPage - 1}"))
+                .hoverEvent(HoverEvent.showText(Component.text("Go to page ${currentPage - 1}")))
+        } else {
+            Component.text("[< Prev]").color(NamedTextColor.DARK_GRAY)
+        }
+
+        // Page indicator
+        val pageIndicator = Component.text(" Page $currentPage/$lastPage ").color(NamedTextColor.GRAY)
+
+        // Next button
+        val nextButton = if (currentPage < lastPage) {
+            Component.text("[Next >]")
+                .color(NamedTextColor.YELLOW)
+                .clickEvent(ClickEvent.runCommand("/schematio list $searchParam${currentPage + 1}"))
+                .hoverEvent(HoverEvent.showText(Component.text("Go to page ${currentPage + 1}")))
+        } else {
+            Component.text("[Next >]").color(NamedTextColor.DARK_GRAY)
+        }
+
+        return prevButton.append(pageIndicator).append(nextButton)
     }
 
     private suspend fun fetchSchematics(search: String? = null, page: Int = 1): Pair<List<JsonObject>, JsonObject> {
         val queryParams = mutableMapOf<String, String>()
-        if (search != null && search != "Enter search term") {
+        if (!search.isNullOrBlank()) {
             queryParams["search"] = urlEncode(search)
         }
         queryParams["page"] = page.toString()
+        queryParams["per_page"] = ITEMS_PER_PAGE.toString()
 
-        val response = plugin.httpUtil.sendGetRequest("$SCHEMATICS_ENDPOINT?${queryParams.entries.joinToString("&") { "${it.key}=${it.value}" }}")
+        val httpUtil = plugin.httpUtil ?: throw Exception("API not connected - no token configured")
+        val response = httpUtil.sendGetRequest("$SCHEMATICS_ENDPOINT?${queryParams.entries.joinToString("&") { "${it.key}=${it.value}" }}")
 
         if (response == null) {
-            throw Exception("Error fetching schematics")
+            throw Exception("Connection refused - API may be unavailable")
         }
 
-        val jsonResponse = gson.fromJson(response, JsonObject::class.java)
-        return Pair(jsonResponse.getAsJsonArray("data").map { it.asJsonObject }, jsonResponse.getAsJsonObject("meta"))
-    }
+        val jsonResponse = parseJsonSafe(response)
+            ?: throw Exception("Invalid JSON response from API")
 
-    private fun createPagedGui(schematics: List<JsonObject>, player: Player): PagedGui<Item> {
-        val border = SimpleItem(ItemBuilder(Material.BLACK_STAINED_GLASS_PANE).setDisplayName(""))
+        // Use safe JSON access to extract data and meta
+        val dataArray = jsonResponse.safeGetArray("data")
+            .mapNotNull { it.asJsonObjectOrNull() }
 
-        val items = createSchematicItems(schematics)
+        val meta = jsonResponse.safeGetObject("meta")
+            ?: JsonObject() // Empty object as fallback
 
-        return PagedGui.items()
-            .setStructure(
-                "# # # # # # # # #",
-                "# x x x x x x x #",
-                "# x x x x x x x #",
-                "# # # < S # > # #"
-            )
-            .addIngredient('x', Markers.CONTENT_LIST_SLOT_HORIZONTAL)
-            .addIngredient('#', border)
-            .addIngredient('<', BackItem())
-            .addIngredient('>', ForwardItem())
-            .addIngredient('S', SearchItem(this))
-            .setContent(items)
-            .build()
-    }
-
-    private fun createSchematicItems(schematics: List<JsonObject>): List<Item> {
-        return schematics.map { createSchematicItem(it) }
-    }
-
-    private fun createSimpleItem(material: Material, name: String): SimpleItem {
-        val itemProvider = ItemBuilder(material).setDisplayName(name)
-        return SimpleItem(itemProvider)
-    }
-
-    private fun createSchematicItem(schematic: JsonObject): Item {
-        val id = schematic.get("short_id").asString
-        val name = schematic.get("name").asString
-        val isPublic = schematic.get("is_public").asBoolean
-        val authors = schematic.getAsJsonArray("authors").joinToString(", ") { it.asJsonObject.get("last_seen_name").asString }
-
-        val itemProvider = ItemBuilder(Material.PAPER)
-            .setDisplayName(name)
-            .addLoreLines(
-                "ID: $id",
-                "Public: ${if (isPublic) "Yes" else "No"}",
-                "Authors: $authors",
-                "§eClick to view details"
-            )
-
-        return SimpleItem(itemProvider) { click ->
-            openSchematicDetailsWindow(click.player, schematic)
-        }
-    }
-
-    private fun openSchematicDetailsWindow(player: Player, schematic: JsonObject) {
-        plugin.logger.info(schematic.toString())
-        val id = schematic.get("short_id").asString
-        val name = schematic.get("name").asString
-        val isPublic = schematic.get("is_public").asBoolean
-        val authors = schematic.getAsJsonArray("authors").joinToString(", ") { it.asJsonObject.get("last_seen_name").asString }
-        val tags = schematic.getAsJsonArray("tags").joinToString(", ") { it.asJsonObject.get("name").asString }
-        val imageUrl = schematic.get("preview_image_url").asString
-        val detailsGui = Gui.normal()
-            .setStructure(
-                "I D"
-            )
-            .addIngredient('I', SimpleItem(ItemBuilder(Material.REDSTONE)
-                .setDisplayName("§6$name")
-                .addLoreLines(
-                    "§7ID: §f$id",
-                    "§7Public: §f${if (isPublic) "Yes" else "No"}",
-                    "§7Authors: §f$authors",
-                    "§7Tags: §f$tags",
-                    "",
-                    "§eClick to go back"
-                )) { click ->
-                openSchematicsListGui(click.player, currentSearch, currentPage)
-            })
-            .addIngredient('D', SimpleItem(ItemBuilder(Material.HOPPER)
-                .setDisplayName("§aDownload Schematic")
-                .addLoreLines(
-                    "§7Left-click to download §f$name",
-                    "§eRight-click to open in browser"
-                )) { click ->
-                when (click.clickType) {
-                    ClickType.LEFT -> click.player.performCommand("schematio download $id")
-                    ClickType.RIGHT -> {
-                        click.player.sendMessage("§aOpening $name in your browser...")
-                        // Here you would send a clickable link in chat
-                    }
-                    else -> {}
-                }
-            })
-            .build()
-
-        val cartographyWindow = CartographyWindow
-            .single()
-
-            .setViewer(player)
-            .setGui(detailsGui)
-            .setTitle("Schematic: $name")
-            .build()
-
-        // TODO: This is slow and also blocks the main thread
-        //cartographyWindow.updateMap(
-        //    MapPatch(0, 0, 128, 128, plugin.httpUtil.fetchImageAsByteArray(imageUrl))
-        //)
-        cartographyWindow.open()
-    }
-
-    private fun openSearchAnvilGui(player: Player, pagedGui: PagedGui<Item>) {
-        val anvilWindow = AnvilWindow.split()
-            .setViewer(player)
-            .setTitle("Search Schematics")
-            .setUpperGui(
-                Gui.normal()
-                    .setStructure("X D #")
-                    .addIngredient('X', createSimpleItem(Material.PAPER, "Enter search term"))
-                    .addIngredient('D', createSimpleItem(Material.AIR, "")) // Empty slot for the confirm button
-                    .addIngredient('#', createSimpleItem(Material.AIR, ""))
-                    .build()
-            )
-            .setLowerGui(pagedGui)
-            .addRenameHandler { searchTerm ->
-                // Update the search results dynamically
-                openSchematicsListGui(player, searchTerm)
-            }
-            .build()
-
-        anvilWindow.open()
-    }
-
-    class SearchItem(private val listSubcommand: ListSubcommand) : AbstractItem() {
-        override fun getItemProvider(): ItemProvider {
-            return ItemBuilder(Material.COMPASS).setDisplayName("Search Schematics")
-        }
-
-        override fun handleClick(clickType: ClickType, player: Player, event: InventoryClickEvent) {
-            listSubcommand.openSearchAnvilGui(player, listSubcommand.createPagedGui(emptyList(), player))
-        }
-    }
-
-    inner class BackItem : PageItem(false) {
-        override fun handleClick(clickType: ClickType, player: Player, event: InventoryClickEvent) {
-            if (currentPage > 1) {
-                openSchematicsListGui(player, currentSearch, currentPage - 1)
-            }
-        }
-
-        override fun getItemProvider(gui: PagedGui<*>): ItemProvider {
-            val builder = ItemBuilder(Material.RED_STAINED_GLASS_PANE)
-            builder.setDisplayName("Previous page")
-                .addLoreLines(
-                    if (currentPage > 1)
-                        "Go to page ${currentPage - 1}/$lastPage"
-                    else "You can't go further back"
-                )
-            return builder
-        }
-    }
-
-    inner class ForwardItem : PageItem(true) {
-        override fun handleClick(clickType: ClickType, player: Player, event: InventoryClickEvent) {
-            if (currentPage < lastPage) {
-                openSchematicsListGui(player, currentSearch, currentPage + 1)
-            }
-        }
-
-        override fun getItemProvider(gui: PagedGui<*>): ItemProvider {
-            val builder = ItemBuilder(Material.GREEN_STAINED_GLASS_PANE)
-            builder.setDisplayName("Next page")
-                .addLoreLines(
-                    if (currentPage < lastPage)
-                        "Go to page ${currentPage + 1}/$lastPage"
-                    else "You can't go further forward"
-                )
-            return builder
-        }
+        return Pair(dataArray, meta)
     }
 
     override fun tabComplete(player: Player, args: Array<out String>): List<String> {
+        // Could add search term suggestions or page numbers
         return emptyList()
     }
 

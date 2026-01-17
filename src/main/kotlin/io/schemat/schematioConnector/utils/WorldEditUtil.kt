@@ -5,8 +5,7 @@ import com.sk89q.worldedit.LocalSession
 import com.sk89q.worldedit.WorldEdit
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.Clipboard
-import com.sk89q.worldedit.extent.clipboard.io.BuiltInClipboardFormat;
-import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormat;
+import com.sk89q.worldedit.extent.clipboard.io.BuiltInClipboardFormat
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats
 import com.sk89q.worldedit.session.ClipboardHolder
 import io.schemat.schematioConnector.SchematioConnector
@@ -15,11 +14,44 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 
+/**
+ * Utility functions for interacting with WorldEdit clipboards.
+ *
+ * Provides methods to get and set player clipboards, and convert between
+ * clipboard objects and byte arrays in various schematic formats.
+ *
+ * ## Supported Formats
+ *
+ * When reading schematics, formats are tried in order:
+ * 1. SPONGE_V3_SCHEMATIC (.schem) - Modern format, preferred
+ * 2. SPONGE_SCHEMATIC - Older sponge format
+ * 3. MCEDIT_SCHEMATIC (.schematic) - Legacy MCEdit format
+ *
+ * When writing schematics, SPONGE_SCHEMATIC format is used by default.
+ *
+ * ## Usage
+ *
+ * ```kotlin
+ * // Get player's current clipboard
+ * val clipboard = WorldEditUtil.getClipboard(player) ?: return
+ *
+ * // Convert to bytes for upload
+ * val bytes = WorldEditUtil.clipboardToByteArray(clipboard)
+ *
+ * // Load bytes into clipboard
+ * val newClipboard = WorldEditUtil.byteArrayToClipboard(downloadedBytes)
+ * WorldEditUtil.setClipboard(player, newClipboard)
+ * ```
+ */
 object WorldEditUtil {
 
-    // This function must now return a nullable WorldEdit?
+    // Get WorldEdit instance directly - this util only works when WorldEdit is available
     fun getWorldEditInstance(): WorldEdit? {
-        return SchematioConnector.instance.worldEditInstance
+        return try {
+            WorldEdit.getInstance()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     // Use the ?. safe call operator. If worldEditInstance is null, this will return null.
@@ -49,7 +81,8 @@ object WorldEditUtil {
     fun clipboardToStream(clipboard: Clipboard): ByteArrayOutputStream? {
         val outputStream = ByteArrayOutputStream()
         try {
-            BuiltInClipboardFormat.SPONGE_SCHEMATIC.getWriter(outputStream).use { writer ->
+            // Use SPONGE_V3_SCHEMATIC (modern format, .schem extension)
+            BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC.getWriter(outputStream).use { writer ->
                 writer.write(clipboard)
             }
         } catch (e: Exception) {
@@ -64,34 +97,44 @@ object WorldEditUtil {
     }
 
 
-    // This function doesn't need changes
+    /**
+     * Convert a byte array to a Clipboard, trying multiple formats for compatibility.
+     * Tries formats in order: V3 (modern), V2 (legacy sponge), MCEdit (very old).
+     */
+    @Suppress("DEPRECATION") // SPONGE_SCHEMATIC is deprecated but needed for legacy file support
     fun byteArrayToClipboard(data: ByteArray): Clipboard? {
-        ClipboardFormats.getAll()
-        val formatsToTry = listOf( BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC, BuiltInClipboardFormat.SPONGE_SCHEMATIC, BuiltInClipboardFormat.MCEDIT_SCHEMATIC)
-        for (format in formatsToTry) {
-            //log the format being tried
-            SchematioConnector.instance.logger.info("Trying to convert byte array to clipboard using format: ${format.name}")
+        // Try formats in order: modern V3 first, then legacy formats for compatibility
+        val formatsToTry = listOf(
+            BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC,
+            BuiltInClipboardFormat.SPONGE_SCHEMATIC,
+            BuiltInClipboardFormat.MCEDIT_SCHEMATIC
+        )
 
-            try {
-                return byteArrayToClipboard(data, format)
-            } catch (e: Exception) {
-                // Log the exception if needed, but continue trying other formats
-                e.printStackTrace()
-                continue
+        for (format in formatsToTry) {
+            val clipboard = byteArrayToClipboard(data, format)
+            if (clipboard != null) {
+                SchematioConnector.instance.logger.info("Successfully loaded schematic using format: ${format.name}")
+                return clipboard
             }
         }
+
+        SchematioConnector.instance.logger.warning("Failed to load schematic - no compatible format found")
         return null
     }
 
-    // This function doesn't need changes
+    /**
+     * Attempt to read clipboard data using a specific format.
+     * Catches all exceptions since different formats throw different error types.
+     */
     fun byteArrayToClipboard(data: ByteArray, format: BuiltInClipboardFormat): Clipboard? {
         val inputStream = ByteArrayInputStream(data)
         return try {
             format.getReader(inputStream).use { reader ->
                 reader.read()
             }
-        } catch (e: IOException) {
-            e.printStackTrace()
+        } catch (e: Exception) {
+            // Different formats throw different exceptions (IOException, NoSuchElementException, etc.)
+            // Return null to allow fallback to other formats
             null
         }
     }

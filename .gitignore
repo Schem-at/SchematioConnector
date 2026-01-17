@@ -60,3 +60,5 @@ outTmp/
 kotlin-ide/
 .kotlin/
 .teamcity/
+.claude/
+.history

@@ -1,21 +1,39 @@
 name: SchematioConnector
-version: '1.0-SNAPSHOT'
+version: '${version}'
 main: io.schemat.schematioConnector.SchematioConnector
-api-version: '1.20'
+api-version: '1.21'
+# Optional dependencies - enable additional features if present
+softdepend: [WorldEdit, ProtocolLib, MapEngine]
 commands:
     schematio:
-        description: Interface with the Schematio system
+        description: Interface with schemat.io
         usage: /schematio <subcommand>
+        aliases: [schem, sch]
 permissions:
-    schematioconnector.upload:
-        description: Allows players to upload schematics
+    # Base permissions (what you can do)
+    schematio.upload:
+        description: Upload schematics to schemat.io
         default: op
-    schematioconnector.download:
-        description: Allows players to download schematics
+    schematio.download:
+        description: Download schematics from schemat.io
+        default: true
+    schematio.list:
+        description: List and browse schematics
+        default: true
+    schematio.quickshare:
+        description: Create and retrieve quick share links
+        default: true
+    schematio.admin:
+        description: Admin commands (reload, setpassword)
         default: op
-    schematioconnector.setpassword:
-        description: Allows players to set their password
+
+    # UI tier permissions (how you can do it)
+    schematio.tier.chat:
+        description: Use chat-based commands (default tier)
         default: true
-    schematioconnector.list:
-        description: Allows players to list schematics
+    schematio.tier.inventory:
+        description: Use inventory GUI commands (-inv suffix)
         default: true
+    schematio.tier.floating:
+        description: Use floating 3D GUI commands (-gui suffix)
+        default: op

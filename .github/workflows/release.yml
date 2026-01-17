@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew build
+
+      - name: Run tests
+        run: ./gradlew test
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SchematioConnector v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## SchematioConnector v${{ steps.version.outputs.VERSION }}
+
+            ### Installation
+            1. Download `SchematioConnector-${{ steps.version.outputs.VERSION }}.jar`
+            2. Place in your server's `plugins/` folder
+            3. Restart server or use PlugMan to load
+
+            ### Requirements
+            - Paper 1.21.4+ (or compatible fork)
+            - WorldEdit or FastAsyncWorldEdit
+            - Java 21+
+          files: |
+            build/libs/SchematioConnector-${{ steps.version.outputs.VERSION }}.jar
+          draft: false
+          prerelease: false
