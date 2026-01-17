@@ -29,9 +29,6 @@ repositories {
         name = "enginehub"
     }
     maven("https://repo.xenondevs.xyz/releases")
-    maven("https://repo.dmulloy2.net/repository/public/") {
-        name = "dmulloy2-repo"
-    }
     maven("https://repo.minceraft.dev/releases/") {
         name = "minceraft"
     }
@@ -69,7 +66,7 @@ dependencies {
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.10")
     
     // ProtocolLib (optional - for advanced features like sign input)
-    compileOnly("com.comphenix.protocol:ProtocolLib:5.3.0")
+    compileOnly("com.comphenix.protocol:ProtocolLib:5.1.0")
 
     // MapEngine (optional - for map preview rendering)
     compileOnly("de.pianoman911:mapengine-api:1.8.11")
