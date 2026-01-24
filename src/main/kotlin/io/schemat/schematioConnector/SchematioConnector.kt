@@ -9,6 +9,7 @@ import io.schemat.schematioConnector.utils.OfflineMode
 import io.schemat.schematioConnector.utils.RateLimiter
 import io.schemat.schematioConnector.utils.SchematicCache
 import io.schemat.schematioConnector.utils.SchematicPreviewUI
+import io.schemat.schematioConnector.utils.SchematicsApiService
 import io.schemat.schematioConnector.utils.ValidationConstants
 import kotlinx.coroutines.runBlocking
 import org.bukkit.plugin.java.JavaPlugin
@@ -85,6 +86,10 @@ class SchematioConnector : JavaPlugin(), Listener {
     lateinit var offlineMode: OfflineMode
         private set
 
+    // Centralized API service for fetching schematics
+    lateinit var schematicsApiService: SchematicsApiService
+        private set
+
     // Track plugin state
     var hasProtocolLib = false
         private set
@@ -125,6 +130,9 @@ class SchematioConnector : JavaPlugin(), Listener {
 
         // Initialize cache and offline mode
         initializeCacheAndOfflineMode()
+
+        // Initialize API service
+        schematicsApiService = SchematicsApiService(this)
 
         // Load configuration
         loadConfiguration()
@@ -401,10 +409,11 @@ class SchematioConnector : JavaPlugin(), Listener {
             subcommands.add(UploadSubcommand(this))
             subcommands.add(DownloadSubcommand(this))
 
-            // List commands - three tiers
+            // List commands - four tiers
             subcommands.add(ListSubcommand(this))        // Chat tier (default)
             subcommands.add(ListInvSubcommand(this))     // Inventory tier
             subcommands.add(ListGuiSubcommand(this))     // Floating GUI tier
+            subcommands.add(ListDialogSubcommand(this))  // Native dialog tier (1.21.7+)
 
             // QuickShare commands - two tiers (chat and GUI)
             subcommands.add(QuickShareSubcommand(this))      // Chat tier (default, instant)

@@ -3,17 +3,13 @@ package io.schemat.schematioConnector.commands
 import com.google.gson.JsonObject
 import io.schemat.schematioConnector.SchematioConnector
 import io.schemat.schematioConnector.utils.InputValidator
+import io.schemat.schematioConnector.utils.SchematicsApiService
 import io.schemat.schematioConnector.utils.ValidationResult
 import io.schemat.schematioConnector.utils.asJsonObjectOrNull
-import io.schemat.schematioConnector.utils.parseJsonSafe
 import io.schemat.schematioConnector.utils.safeGetArray
 import io.schemat.schematioConnector.utils.safeGetBoolean
 import io.schemat.schematioConnector.utils.safeGetInt
-import io.schemat.schematioConnector.utils.safeGetObject
 import io.schemat.schematioConnector.utils.safeGetString
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.event.HoverEvent
@@ -34,7 +30,6 @@ import xyz.xenondevs.invui.item.impl.SimpleItem
 import xyz.xenondevs.invui.item.impl.controlitem.PageItem
 import xyz.xenondevs.invui.window.AnvilWindow
 import xyz.xenondevs.invui.window.Window
-import java.net.URLEncoder
 
 /**
  * Inventory-based UI for browsing and searching schematics on schemat.io.
@@ -53,7 +48,8 @@ import java.net.URLEncoder
  */
 class ListInvSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
-    private val SCHEMATICS_ENDPOINT = "/schematics"
+    private val ITEMS_PER_PAGE = 14  // 7 items per row × 2 rows in the GUI
+    private val CACHE_KEY_PREFIX = "list-inv"
     private var currentPagedGui: PagedGui<Item>? = null
     private var currentPage = 1
     private var lastPage = 1
@@ -104,112 +100,56 @@ class ListInvSubcommand(private val plugin: SchematioConnector) : Subcommand {
     }
 
     private fun openSchematicsListGui(player: Player, search: String? = null, page: Int = 1) {
-        val httpUtil = plugin.httpUtil ?: return
-        val cache = plugin.schematicCache
-        val offlineMode = plugin.offlineMode
+        val apiService = plugin.schematicsApiService
 
-        // Build cache key from query parameters
-        val cacheKey = buildCacheKey(search, page)
+        apiService.fetchSchematicsWithCache(
+            playerId = player.uniqueId,
+            search = search,
+            page = page,
+            perPage = ITEMS_PER_PAGE,
+            cacheKeyPrefix = CACHE_KEY_PREFIX
+        ) { result ->
+            val audience = player.audience()
 
-        // Check cache first - cache hits bypass rate limiting for fast UX
-        val cachedResult = cache.getListings(cacheKey)
-        if (cachedResult != null) {
-            // Cache hit - display immediately without rate limiting
-            displaySchematicResults(player, page, cachedResult.schematics, cachedResult.meta)
-            return
-        }
+            when (result) {
+                is SchematicsApiService.FetchResult.Success -> {
+                    if (result.staleMinutes > 0) {
+                        audience.sendMessage(Component.text("API unavailable - showing cached data (${result.staleMinutes}m old)").color(NamedTextColor.YELLOW))
+                    }
+                    displaySchematicResults(player, page, result.schematics, result.meta)
+                }
 
-        // Check if we should skip API call (offline mode with backoff)
-        if (offlineMode.shouldSkipApiCall()) {
-            // Try stale cache
-            val staleResult = cache.getListingsStale(cacheKey)
-            if (staleResult != null) {
-                val (data, ageMs) = staleResult
-                val ageMinutes = (ageMs / 60000).toInt()
-                player.audience().sendMessage(Component.text("Using cached data (${ageMinutes}m old)").color(NamedTextColor.YELLOW))
-                displaySchematicResults(player, page, data.schematics, data.meta)
-                return
-            }
+                is SchematicsApiService.FetchResult.RateLimited -> {
+                    audience.sendMessage(Component.text("Rate limited. Please wait ${result.waitSeconds}s before making another request.").color(NamedTextColor.RED))
+                }
 
-            // No cached data available
-            val waitTime = offlineMode.getTimeUntilRetrySeconds()
-            player.audience().sendMessage(Component.text("API is offline. Retry in ${waitTime}s").color(NamedTextColor.RED))
-            return
-        }
+                is SchematicsApiService.FetchResult.OfflineNoCache -> {
+                    audience.sendMessage(Component.text("API is offline. Retry in ${result.retrySeconds}s").color(NamedTextColor.RED))
+                }
 
-        // Rate limit only applies to actual API calls
-        val rateLimitResult = plugin.rateLimiter.tryAcquire(player.uniqueId)
-        if (rateLimitResult == null) {
-            val waitTime = plugin.rateLimiter.getWaitTimeSeconds(player.uniqueId)
-            player.audience().sendMessage(Component.text("Rate limited. Please wait ${waitTime}s before making another request.").color(NamedTextColor.RED))
-            return
-        }
-
-        // Run fetch asynchronously to avoid blocking the main thread
-        plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
-            offlineMode.recordAttempt()
-
-            try {
-                val (schematics, meta) = runBlocking { fetchSchematics(search, page) }
-
-                // Cache the successful result
-                cache.putListings(cacheKey, schematics, meta)
-                offlineMode.recordSuccess()
-
-                // Switch back to main thread for Bukkit/InvUI operations
-                plugin.server.scheduler.runTask(plugin, Runnable {
-                    displaySchematicResults(player, page, schematics, meta)
-                })
-            } catch (e: Exception) {
-                // Record failure for offline mode
-                val enteredOffline = offlineMode.recordFailure()
-
-                // Try stale cache as fallback
-                val staleResult = cache.getListingsStale(cacheKey)
-
-                // Handle errors and notify on main thread
-                plugin.server.scheduler.runTask(plugin, Runnable {
-                    val audience = player.audience()
-
-                    if (staleResult != null) {
-                        // Show stale data with warning
-                        val (data, ageMs) = staleResult
-                        val ageMinutes = (ageMs / 60000).toInt()
-                        audience.sendMessage(Component.text("API unavailable - showing cached data (${ageMinutes}m old)").color(NamedTextColor.YELLOW))
-                        displaySchematicResults(player, page, data.schematics, data.meta)
-                    } else {
-                        // No cache available - show error
-                        val errorMsg = e.message ?: "Unknown error"
-                        when {
-                            errorMsg.contains("API not connected") -> {
-                                audience.sendMessage(Component.text("Cannot browse schematics - not connected to schemat.io").color(NamedTextColor.RED))
-                                audience.sendMessage(Component.text("Configure a community token in config.yml").color(NamedTextColor.GRAY))
-                            }
-                            errorMsg.contains("Connection refused") ||
-                            errorMsg.contains("timed out") ||
-                            errorMsg.contains("No route to host") -> {
-                                audience.sendMessage(Component.text("schemat.io API is currently unavailable").color(NamedTextColor.RED))
-                                if (enteredOffline) {
-                                    audience.sendMessage(Component.text("Entered offline mode - will retry automatically").color(NamedTextColor.GRAY))
-                                } else {
-                                    audience.sendMessage(Component.text("Please try again later").color(NamedTextColor.GRAY))
-                                }
-                            }
-                            else -> {
-                                audience.sendMessage(Component.text("Error loading schematics").color(NamedTextColor.RED))
-                                audience.sendMessage(Component.text(errorMsg.take(50)).color(NamedTextColor.GRAY))
-                                plugin.logger.warning("Error fetching schematics: $errorMsg")
+                is SchematicsApiService.FetchResult.Error -> {
+                    when (apiService.categorizeError(result.message)) {
+                        SchematicsApiService.ErrorCategory.NOT_CONNECTED -> {
+                            audience.sendMessage(Component.text("Cannot browse schematics - not connected to schemat.io").color(NamedTextColor.RED))
+                            audience.sendMessage(Component.text("Configure a community token in config.yml").color(NamedTextColor.GRAY))
+                        }
+                        SchematicsApiService.ErrorCategory.API_UNAVAILABLE -> {
+                            audience.sendMessage(Component.text("schemat.io API is currently unavailable").color(NamedTextColor.RED))
+                            if (result.enteredOffline) {
+                                audience.sendMessage(Component.text("Entered offline mode - will retry automatically").color(NamedTextColor.GRAY))
+                            } else {
+                                audience.sendMessage(Component.text("Please try again later").color(NamedTextColor.GRAY))
                             }
                         }
+                        SchematicsApiService.ErrorCategory.OTHER -> {
+                            audience.sendMessage(Component.text("Error loading schematics").color(NamedTextColor.RED))
+                            audience.sendMessage(Component.text(result.message.take(50)).color(NamedTextColor.GRAY))
+                            plugin.logger.warning("Error fetching schematics: ${result.message}")
+                        }
                     }
-                })
+                }
             }
-        })
-    }
-
-    private fun buildCacheKey(search: String?, page: Int): String {
-        val normalizedSearch = if (search == "Enter search term") null else search
-        return "list-inv:search=${normalizedSearch ?: ""}:page=$page"
+        }
     }
 
     private fun displaySchematicResults(player: Player, page: Int, schematics: List<JsonObject>, meta: JsonObject) {
@@ -228,33 +168,6 @@ class ListInvSubcommand(private val plugin: SchematioConnector) : Subcommand {
             currentPagedGui = pagedGui
             openSearchAnvilGui(player, pagedGui)
         }
-    }
-
-    private suspend fun fetchSchematics(search: String? = null, page: Int = 1): Pair<List<JsonObject>, JsonObject> {
-        val queryParams = mutableMapOf<String, String>()
-        if (search != null && search != "Enter search term") {
-            queryParams["search"] = urlEncode(search)
-        }
-        queryParams["page"] = page.toString()
-
-        val httpUtil = plugin.httpUtil ?: throw Exception("API not connected - no token configured")
-        val response = httpUtil.sendGetRequest("$SCHEMATICS_ENDPOINT?${queryParams.entries.joinToString("&") { "${it.key}=${it.value}" }}")
-
-        if (response == null) {
-            throw Exception("Connection refused - API may be unavailable")
-        }
-
-        val jsonResponse = parseJsonSafe(response)
-            ?: throw Exception("Invalid JSON response from API")
-
-        // Use safe JSON access
-        val dataArray = jsonResponse.safeGetArray("data")
-            .mapNotNull { it.asJsonObjectOrNull() }
-
-        val meta = jsonResponse.safeGetObject("meta")
-            ?: JsonObject()
-
-        return Pair(dataArray, meta)
     }
 
     private fun createPagedGui(schematics: List<JsonObject>, player: Player): PagedGui<Item> {
@@ -472,11 +385,5 @@ class ListInvSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     override fun tabComplete(player: Player, args: Array<out String>): List<String> {
         return emptyList()
-    }
-
-    private suspend fun urlEncode(search: String): String {
-        return withContext(Dispatchers.IO) {
-            URLEncoder.encode(search, "UTF-8")
-        }
     }
 }

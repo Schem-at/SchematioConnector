@@ -65,8 +65,8 @@ dependencies {
     implementation("xyz.xenondevs.invui:invui:1.49")
     implementation("xyz.xenondevs.invui:invui-kotlin:1.49")
     
-    // Paper API (1.21.4 is forward-compatible with 1.21.8)
-    compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+    // Paper API (1.21.8 for Dialog API support)
+    compileOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
     
     // WorldEdit
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.10")

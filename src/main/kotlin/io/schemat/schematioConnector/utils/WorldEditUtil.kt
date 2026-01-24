@@ -99,11 +99,25 @@ object WorldEditUtil {
 
     /**
      * Convert a byte array to a Clipboard, trying multiple formats for compatibility.
-     * Tries formats in order: V3 (modern), V2 (legacy sponge), MCEdit (very old).
+     * First tries WorldEdit's auto-detection, then falls back to explicit formats.
      */
     @Suppress("DEPRECATION") // SPONGE_SCHEMATIC is deprecated but needed for legacy file support
     fun byteArrayToClipboard(data: ByteArray): Clipboard? {
-        // Try formats in order: modern V3 first, then legacy formats for compatibility
+        // First, try WorldEdit's built-in format detection which handles all sponge versions (1, 2, 3)
+        try {
+            val detectedFormat = ClipboardFormats.findByInputStream { ByteArrayInputStream(data) }
+            if (detectedFormat != null) {
+                detectedFormat.getReader(ByteArrayInputStream(data)).use { reader ->
+                    val clipboard = reader.read()
+                    SchematioConnector.instance.logger.info("Successfully loaded schematic using auto-detected format: ${detectedFormat.name}")
+                    return clipboard
+                }
+            }
+        } catch (e: Exception) {
+            SchematioConnector.instance.logger.warning("Auto-detection failed: ${e.javaClass.simpleName}: ${e.message}")
+        }
+
+        // Fallback: try formats explicitly in order
         val formatsToTry = listOf(
             BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC,
             BuiltInClipboardFormat.SPONGE_SCHEMATIC,
@@ -134,6 +148,8 @@ object WorldEditUtil {
             }
         } catch (e: Exception) {
             // Different formats throw different exceptions (IOException, NoSuchElementException, etc.)
+            // Log the actual error to help debug format compatibility issues
+            SchematioConnector.instance.logger.warning("Format ${format.name} failed: ${e.javaClass.simpleName}: ${e.message}")
             // Return null to allow fallback to other formats
             null
         }

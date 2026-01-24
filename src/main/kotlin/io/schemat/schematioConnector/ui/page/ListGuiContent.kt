@@ -1,6 +1,5 @@
 package io.schemat.schematioConnector.ui.page
 
-import com.google.gson.Gson
 import com.google.gson.JsonObject
 import io.schemat.schematioConnector.SchematioConnector
 import io.schemat.schematioConnector.ui.FloatingUI
@@ -8,18 +7,14 @@ import io.schemat.schematioConnector.ui.layout.CrossAxisAlignment
 import io.schemat.schematioConnector.ui.layout.Layout
 import io.schemat.schematioConnector.ui.layout.MainAxisAlignment
 import io.schemat.schematioConnector.ui.layout.Padding
+import io.schemat.schematioConnector.utils.SchematicsApiService
 import io.schemat.schematioConnector.utils.safeGetArray
 import io.schemat.schematioConnector.utils.safeGetInt
-import io.schemat.schematioConnector.utils.safeGetObject
 import io.schemat.schematioConnector.utils.safeGetString
 import io.schemat.schematioConnector.utils.asJsonObjectOrNull
-import io.schemat.schematioConnector.utils.parseJsonSafe
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import org.bukkit.Material
 import org.bukkit.entity.Player
-import java.net.URLEncoder
 
 /**
  * Page content that displays a browsable list of schematics from schemat.io.
@@ -34,9 +29,6 @@ class ListGuiContent(
     private val player: Player,
     private var initialSearch: String? = null
 ) : PageContent("list_gui", "Schematics") {
-
-    private val gson = Gson()
-    private val SCHEMATICS_ENDPOINT = "/schematics"
 
     // Pagination state
     private var currentPage = 1
@@ -403,11 +395,13 @@ class ListGuiContent(
         errorMessage = null
         rebuild()
 
+        val apiService = plugin.schematicsApiService
+
         // Run async fetch
         plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
             try {
                 val result = runBlocking {
-                    fetchSchematics(currentSearch, currentPage)
+                    apiService.fetchSchematics(currentSearch, currentPage, itemsPerPage)
                 }
                 schematics = result.first
                 val meta = result.second
@@ -418,10 +412,11 @@ class ListGuiContent(
             } catch (e: Exception) {
                 schematics = emptyList()
                 isLoading = false
-                errorMessage = when {
-                    e.message?.contains("API not connected") == true -> "Not connected to API"
-                    e.message?.contains("Connection refused") == true -> "API unavailable"
-                    else -> e.message?.take(25) ?: "Error loading"
+                val errorMsg = e.message ?: "Error loading"
+                errorMessage = when (apiService.categorizeError(errorMsg)) {
+                    SchematicsApiService.ErrorCategory.NOT_CONNECTED -> "Not connected to API"
+                    SchematicsApiService.ErrorCategory.API_UNAVAILABLE -> "API unavailable"
+                    SchematicsApiService.ErrorCategory.OTHER -> errorMsg.take(25)
                 }
             }
 
@@ -430,31 +425,6 @@ class ListGuiContent(
                 rebuild()
             })
         })
-    }
-
-    private suspend fun fetchSchematics(search: String? = null, page: Int = 1): Pair<List<JsonObject>, JsonObject> {
-        val queryParams = mutableMapOf<String, String>()
-        if (!search.isNullOrBlank()) {
-            queryParams["search"] = withContext(Dispatchers.IO) {
-                URLEncoder.encode(search, "UTF-8")
-            }
-        }
-        queryParams["page"] = page.toString()
-        queryParams["per_page"] = itemsPerPage.toString()
-
-        val httpUtil = plugin.httpUtil ?: throw Exception("API not connected - no token configured")
-        val response = httpUtil.sendGetRequest("$SCHEMATICS_ENDPOINT?${queryParams.entries.joinToString("&") { "${it.key}=${it.value}" }}")
-
-        if (response == null) {
-            throw Exception("Connection refused - API may be unavailable")
-        }
-
-        val jsonResponse = parseJsonSafe(response)
-            ?: throw Exception("Invalid JSON response from API")
-        return Pair(
-            jsonResponse.safeGetArray("data").mapNotNull { it.asJsonObjectOrNull() },
-            jsonResponse.safeGetObject("meta") ?: JsonObject()
-        )
     }
 
     /**
