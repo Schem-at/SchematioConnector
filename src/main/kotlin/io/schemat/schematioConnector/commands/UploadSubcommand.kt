@@ -2,7 +2,6 @@ package io.schemat.schematioConnector.commands
 
 import io.schemat.schematioConnector.SchematioConnector
 import io.schemat.schematioConnector.utils.InputValidator
-import io.schemat.schematioConnector.utils.ValidationConstants
 import io.schemat.schematioConnector.utils.ValidationResult
 import io.schemat.schematioConnector.utils.WorldEditUtil
 import io.schemat.schematioConnector.utils.parseJsonSafe
@@ -20,16 +19,9 @@ import org.bukkit.entity.Player
 /**
  * Uploads the player's current WorldEdit clipboard to schemat.io.
  *
- * This command takes the player's current WorldEdit clipboard, converts it
- * to schematic format, and uploads it to the schemat.io API. On success,
- * a clickable link is provided to view the uploaded schematic.
+ * Results are always shown in chat - no dialog needed for simple confirmations.
  *
  * Usage: /schematio upload
- *
- * Requires:
- * - schematio.upload permission
- * - WorldEdit plugin with something copied to clipboard
- * - Active API connection
  *
  * @property plugin The main plugin instance
  */
@@ -39,12 +31,12 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     override val name = "upload"
     override val permission = "schematio.upload"
-    override val description = "Upload your current WorldEdit clipboard to schemat.io"
+    override val description = "Upload your clipboard to schemat.io"
 
     override fun execute(player: Player, args: Array<out String>): Boolean {
         val audience = player.audience()
 
-        // Get clipboard synchronously on main thread (WorldEdit requirement)
+        // Get clipboard synchronously on main thread
         val clipboard = WorldEditUtil.getClipboard(player)
         if (clipboard == null) {
             audience.sendMessage(Component.text("No clipboard found").color(NamedTextColor.RED))
@@ -72,18 +64,25 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
             return true
         }
 
-        // Check API connection before starting async task
+        // Check API connection
         val httpUtil = plugin.httpUtil
         if (httpUtil == null) {
             audience.sendMessage(Component.text("API not connected. Run /schematio reload after configuring token.").color(NamedTextColor.RED))
             return true
         }
 
+        // Upload always shows results in chat - no dialog needed for simple confirmation
         audience.sendMessage(Component.text("Uploading schematic...").color(NamedTextColor.YELLOW))
+        uploadSchematic(player, schematicBytes)
 
+        return true
+    }
+
+    private fun uploadSchematic(player: Player, schematicBytes: ByteArray) {
+        val audience = player.audience()
+        val httpUtil = plugin.httpUtil!!
         val authorUUID = player.uniqueId.toString()
 
-        // Run the upload asynchronously to avoid blocking the main thread
         plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
             try {
                 val builder = MultipartEntityBuilder.create()
@@ -94,7 +93,6 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                     httpUtil.sendMultiPartRequest(SCHEMAT_UPLOAD_URL_ENDPOINT, builder.build())
                 }
 
-                // Switch back to main thread for Bukkit API calls
                 plugin.server.scheduler.runTask(plugin, Runnable {
                     if (response == null) {
                         audience.sendMessage(Component.text("Could not connect to schemat.io API").color(NamedTextColor.RED))
@@ -113,7 +111,6 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
                         val link = jsonResponse.safeGetString("link")
                         if (link == null) {
-                            // Check for error message in response
                             val error = jsonResponse.safeGetString("message") ?: jsonResponse.safeGetString("error")
                             if (error != null) {
                                 audience.sendMessage(Component.text("Error: $error").color(NamedTextColor.RED))
@@ -123,20 +120,14 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                             return@Runnable
                         }
 
-                        val linkComponent = Component.text("Click here to view the schematic")
-                            .color(NamedTextColor.AQUA)
-                            .clickEvent(ClickEvent.openUrl(link))
-                            .hoverEvent(HoverEvent.showText(Component.text("Open the schematic link")))
-
-                        audience.sendMessage(Component.text("Schematic uploaded successfully!").color(NamedTextColor.GREEN))
-                        audience.sendMessage(linkComponent)
+                        // Always show result in chat - no dialog needed for simple confirmation
+                        showChatResult(player, link)
                     } catch (e: Exception) {
                         plugin.logger.warning("Error parsing upload response: ${e.message}")
                         audience.sendMessage(Component.text("Error processing server response").color(NamedTextColor.RED))
                     }
                 })
             } catch (e: Exception) {
-                // Handle network errors on async thread, then notify on main thread
                 plugin.server.scheduler.runTask(plugin, Runnable {
                     val msg = e.message ?: "Unknown error"
                     when {
@@ -152,8 +143,25 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                 })
             }
         })
+    }
 
-        return true
+    private fun showChatResult(player: Player, link: String) {
+        val audience = player.audience()
+
+        val linkComponent = Component.text("Click here to view the schematic")
+            .color(NamedTextColor.AQUA)
+            .clickEvent(ClickEvent.openUrl(link))
+            .hoverEvent(HoverEvent.showText(Component.text("Open the schematic link")))
+
+        audience.sendMessage(Component.text("Schematic uploaded successfully!").color(NamedTextColor.GREEN))
+        audience.sendMessage(linkComponent)
+
+        audience.sendMessage(
+            Component.text("[Click to copy link]")
+                .color(NamedTextColor.YELLOW)
+                .clickEvent(ClickEvent.copyToClipboard(link))
+                .hoverEvent(HoverEvent.showText(Component.text("Copy link to clipboard")))
+        )
     }
 
     override fun tabComplete(player: Player, args: Array<out String>): List<String> {

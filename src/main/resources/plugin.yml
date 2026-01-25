@@ -29,11 +29,16 @@ permissions:
 
     # UI tier permissions (how you can do it)
     schematio.tier.chat:
-        description: Use chat-based commands (default tier)
+        description: Use chat-based UI (text with clickable actions)
         default: true
+    schematio.tier.dialog:
+        description: Use native dialog UI (1.21.7+ clients)
+        default: true
+
+    # Deprecated UI tiers (kept for backwards compatibility)
     schematio.tier.inventory:
-        description: Use inventory GUI commands (-inv suffix)
+        description: "[DEPRECATED] Use inventory GUI commands"
         default: true
     schematio.tier.floating:
-        description: Use floating 3D GUI commands (-gui suffix)
+        description: "[DEPRECATED] Use floating 3D GUI commands"
         default: op

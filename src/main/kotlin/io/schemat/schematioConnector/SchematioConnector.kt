@@ -10,6 +10,8 @@ import io.schemat.schematioConnector.utils.RateLimiter
 import io.schemat.schematioConnector.utils.SchematicCache
 import io.schemat.schematioConnector.utils.SchematicPreviewUI
 import io.schemat.schematioConnector.utils.SchematicsApiService
+import io.schemat.schematioConnector.utils.UIModeResolver
+import io.schemat.schematioConnector.utils.UserPreferences
 import io.schemat.schematioConnector.utils.ValidationConstants
 import kotlinx.coroutines.runBlocking
 import org.bukkit.plugin.java.JavaPlugin
@@ -90,6 +92,14 @@ class SchematioConnector : JavaPlugin(), Listener {
     lateinit var schematicsApiService: SchematicsApiService
         private set
 
+    // User preferences (stored in PersistentDataContainer)
+    lateinit var userPreferences: UserPreferences
+        private set
+
+    // UI mode resolver (handles config → user pref → flag → permissions hierarchy)
+    lateinit var uiModeResolver: UIModeResolver
+        private set
+
     // Track plugin state
     var hasProtocolLib = false
         private set
@@ -133,6 +143,10 @@ class SchematioConnector : JavaPlugin(), Listener {
 
         // Initialize API service
         schematicsApiService = SchematicsApiService(this)
+
+        // Initialize user preferences and UI mode resolver
+        userPreferences = UserPreferences(this)
+        uiModeResolver = UIModeResolver(this)
 
         // Load configuration
         loadConfiguration()
@@ -396,7 +410,7 @@ class SchematioConnector : JavaPlugin(), Listener {
         // Always available commands
         subcommands.add(InfoSubcommand(this))
         subcommands.add(ReloadSubcommand(this))
-        subcommands.add(UITestSubcommand(this))
+        subcommands.add(SettingsSubcommand(this))  // User UI preferences
 
         // Only add SetPassword if the token has permission
         if (httpUtil?.canManagePasswords() == true) {
@@ -406,19 +420,21 @@ class SchematioConnector : JavaPlugin(), Listener {
 
         // WorldEdit-dependent commands - always register but they check API at runtime
         if (hasWorldEdit) {
+            // Core commands with unified chat/dialog support
             subcommands.add(UploadSubcommand(this))
             subcommands.add(DownloadSubcommand(this))
+            subcommands.add(ListSubcommand(this))            // Unified list with chat/dialog support
+            subcommands.add(SearchSubcommand(this))          // Shorthand for list with search
+            subcommands.add(QuickShareSubcommand(this))      // Unified quickshare with chat/dialog
+            subcommands.add(QuickShareGetSubcommand(this))   // Unified quickshareget with chat/dialog
 
-            // List commands - four tiers
-            subcommands.add(ListSubcommand(this))        // Chat tier (default)
-            subcommands.add(ListInvSubcommand(this))     // Inventory tier
-            subcommands.add(ListGuiSubcommand(this))     // Floating GUI tier
-            subcommands.add(ListDialogSubcommand(this))  // Native dialog tier (1.21.7+)
-
-            // QuickShare commands - two tiers (chat and GUI)
-            subcommands.add(QuickShareSubcommand(this))      // Chat tier (default, instant)
-            subcommands.add(QuickShareGuiSubcommand(this))   // Floating GUI tier
-            subcommands.add(QuickShareGetSubcommand(this))
+            // DEPRECATED: Legacy UI-specific commands (kept for backwards compatibility)
+            // These commands still work but are hidden from tab completion
+            // Users should use --chat or --dialog flags or /schematio settings instead
+            subcommands.add(ListInvSubcommand(this))         // DEPRECATED: Use 'list' with settings
+            subcommands.add(ListGuiSubcommand(this))         // DEPRECATED: Use 'list' with settings
+            subcommands.add(ListDialogSubcommand(this))      // DEPRECATED: Use 'list --dialog'
+            subcommands.add(QuickShareGuiSubcommand(this))   // DEPRECATED: Use 'quickshare' with settings
         }
 
         val schematioCommand = SchematioCommand(this, subcommands.associateBy { it.name })

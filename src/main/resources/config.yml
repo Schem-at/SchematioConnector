@@ -40,3 +40,12 @@ cache-enabled: true
 # Minimum: 30 seconds, Maximum: 3600 seconds (1 hour)
 # Default: 300 seconds (5 minutes)
 cache-ttl-seconds: 300
+
+# UI Settings
+# ===========
+# Default UI mode for commands (chat or dialog)
+# Players can override this with their personal preference using /schematio settings
+# They can also use --chat or --dialog flags on individual commands.
+# Valid values: chat, dialog
+# Default: chat
+default-ui-mode: chat

@@ -15,6 +15,11 @@ class SchematioCommand(
     private val subcommands: Map<String, Subcommand> // Now receives the map of available commands
 ) : CommandExecutor, TabCompleter {
 
+    companion object {
+        // Deprecated commands - hidden from tab completion and help, but still functional
+        val DEPRECATED_COMMANDS = setOf("list-inv", "list-gui", "list-dialog", "quickshare-gui")
+    }
+
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<out String>): Boolean {
         if (sender !is Player) {
             sender.audience().sendMessage(Component.text("This command can only be used by players.").color(NamedTextColor.RED))
@@ -59,7 +64,9 @@ class SchematioCommand(
 
         if (args.size <= 1) {
             // Suggest only the subcommands the player has permission for
+            // Hide deprecated commands from tab completion
             return subcommands.keys
+                .filter { it !in DEPRECATED_COMMANDS }
                 .filter { sender.hasPermission(subcommands[it]!!.permission) }
                 .filter { it.startsWith(args.getOrNull(0) ?: "", ignoreCase = true) }
         }
@@ -77,7 +84,9 @@ class SchematioCommand(
         audience.sendMessage(Component.text("Schematio Commands:").color(NamedTextColor.GOLD))
 
         // Dynamically generate help message from available commands
+        // Hide deprecated commands from help
         subcommands.values
+            .filter { it.name !in DEPRECATED_COMMANDS }
             .filter { player.hasPermission(it.permission) }
             .sortedBy { it.name }
             .forEach { subcommand ->
