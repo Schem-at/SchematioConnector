@@ -411,6 +411,7 @@ class SchematioConnector : JavaPlugin(), Listener {
         subcommands.add(InfoSubcommand(this))
         subcommands.add(ReloadSubcommand(this))
         subcommands.add(SettingsSubcommand(this))  // User UI preferences
+        subcommands.add(SetTokenSubcommand(this))  // Secure token setting for ops
 
         // Only add SetPassword if the token has permission
         if (httpUtil?.canManagePasswords() == true) {

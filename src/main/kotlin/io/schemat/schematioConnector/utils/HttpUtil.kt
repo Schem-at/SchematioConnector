@@ -410,10 +410,28 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
     }
     
     /**
-     * Check if the token allows password management
+     * Check if the token allows password management.
+     * Checks multiple possible locations:
+     * 1. Top-level claim "can_manage_passwords" (boolean)
+     * 2. Permissions array containing "can_manage_password" or "canManagePasswords"
      */
     fun canManagePasswords(): Boolean {
-        return hasPermission("canManagePasswords")
+        return try {
+            val decodedJWT = JWT.decode(apiKey)
+
+            // Check top-level boolean claim first (newer token format)
+            val topLevelClaim = decodedJWT.claims["can_manage_passwords"]?.asBoolean()
+            if (topLevelClaim == true) {
+                return true
+            }
+
+            // Check permissions array (supports both naming conventions)
+            val permissions = decodedJWT.claims["permissions"]?.asList(String::class.java)
+            permissions?.any { it == "can_manage_password" || it == "canManagePasswords" } == true
+        } catch (e: Exception) {
+            logger.warning("Failed to decode JWT token for password permission check: ${e.message}")
+            false
+        }
     }
 
     suspend fun setPassword(playerUuid: String, password: String): Pair<Int, List<String>> {

@@ -23,7 +23,7 @@ object ValidationConstants {
     val QUICKSHARE_CODE_REGEX = Regex("^(qs_)?[a-zA-Z0-9]{6,16}$")
 
     // Passwords
-    const val MIN_PASSWORD_LENGTH = 8
+    const val MIN_PASSWORD_LENGTH = 10
     const val MAX_PASSWORD_LENGTH = 128
 
     // File sizes
