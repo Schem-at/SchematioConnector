@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "schematioconnector",
+  "version": "${version}",
+  "name": "Schematio Connector",
+  "description": "Upload and download schematics from schemat.io",
+  "authors": [
+    "Schemat.io Team"
+  ],
+  "contact": {
+    "homepage": "https://schemat.io",
+    "sources": "https://github.com/schemat-io/SchematioConnector"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      {
+        "adapter": "kotlin",
+        "value": "io.schemat.connector.fabric.SchematioConnectorMod"
+      }
+    ]
+  },
+  "mixins": [],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "fabric-language-kotlin": ">=1.13.0+kotlin.2.1.0",
+    "minecraft": ">=${minecraft_version}",
+    "java": ">=21"
+  },
+  "suggests": {
+    "worldedit": "*"
+  }
+}

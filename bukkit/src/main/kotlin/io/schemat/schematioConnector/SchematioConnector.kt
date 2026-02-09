@@ -1,18 +1,22 @@
 package io.schemat.schematioConnector
 
+import io.schemat.connector.bukkit.adapter.BukkitPlatformAdapter
+import io.schemat.connector.bukkit.adapter.BukkitWorldEditAdapter
+import io.schemat.connector.core.api.PlatformAdapter
+import io.schemat.connector.core.api.WorldEditAdapter
+import io.schemat.connector.core.cache.RateLimiter
+import io.schemat.connector.core.cache.SchematicCache
+import io.schemat.connector.core.http.HttpUtil
+import io.schemat.connector.core.offline.OfflineMode
+import io.schemat.connector.core.service.SchematicsApiService
+import io.schemat.connector.core.validation.ValidationConstants
 import io.schemat.schematioConnector.commands.*
 import io.schemat.schematioConnector.ui.FloatingUI
-import io.schemat.schematioConnector.utils.HttpUtil
 import io.schemat.schematioConnector.utils.MapEngineHandler
 import io.schemat.schematioConnector.utils.MapImageCache
-import io.schemat.schematioConnector.utils.OfflineMode
-import io.schemat.schematioConnector.utils.RateLimiter
-import io.schemat.schematioConnector.utils.SchematicCache
 import io.schemat.schematioConnector.utils.SchematicPreviewUI
-import io.schemat.schematioConnector.utils.SchematicsApiService
 import io.schemat.schematioConnector.utils.UIModeResolver
 import io.schemat.schematioConnector.utils.UserPreferences
-import io.schemat.schematioConnector.utils.ValidationConstants
 import kotlinx.coroutines.runBlocking
 import org.bukkit.plugin.java.JavaPlugin
 import org.bukkit.event.Listener
@@ -52,11 +56,18 @@ import org.bukkit.event.player.PlayerQuitEvent
  *
  * @see HttpUtil for API communication
  * @see FloatingUI for 3D UI system
+ */
 class SchematioConnector : JavaPlugin(), Listener {
 
     var httpUtil: HttpUtil? = null
         private set
     private var _hasWorldEdit = false
+
+    // Platform adapters for core module integration
+    lateinit var platformAdapter: PlatformAdapter
+        private set
+    var worldEditAdapter: WorldEditAdapter? = null
+        private set
 
     // ProtocolLib handler (loaded dynamically)
     private var protocolLibHandler: Any? = null
@@ -134,25 +145,35 @@ class SchematioConnector : JavaPlugin(), Listener {
         instance = this
         saveDefaultConfig()
 
+        // Initialize platform adapter
+        platformAdapter = BukkitPlatformAdapter(this)
+
         // Initialize rate limiter with config values
         initializeRateLimiter()
 
         // Initialize cache and offline mode
         initializeCacheAndOfflineMode()
 
-        // Initialize API service
-        schematicsApiService = SchematicsApiService(this)
-
         // Initialize user preferences and UI mode resolver
         userPreferences = UserPreferences(this)
         uiModeResolver = UIModeResolver(this)
 
-        // Load configuration
+        // Load configuration (creates httpUtil)
         loadConfiguration()
-        
+
+        // Initialize API service (after httpUtil is created)
+        schematicsApiService = SchematicsApiService(
+            httpUtil = httpUtil,
+            platform = platformAdapter,
+            cache = schematicCache,
+            offlineMode = offlineMode,
+            rateLimiter = rateLimiter
+        )
+
         // Check for WorldEdit
         _hasWorldEdit = server.pluginManager.isPluginEnabled("WorldEdit")
         if (_hasWorldEdit) {
+            worldEditAdapter = BukkitWorldEditAdapter(logger)
             logger.info("WorldEdit integration enabled")
         } else {
             logger.warning("WorldEdit not found - upload/download commands disabled")
