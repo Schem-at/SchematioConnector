@@ -25,8 +25,8 @@ echo "========================================"
 # Build Bukkit once (it's version-agnostic for Paper 1.21+)
 echo ""
 echo "Building Bukkit plugin..."
-./gradlew :bukkit:shadowJar --quiet
-cp bukkit/build/libs/bukkit-*.jar "$RELEASE_DIR/SchematioConnector-Bukkit-1.0.1.jar"
+./gradlew :core:build :bukkit:build --quiet
+cp bukkit/build/libs/SchematioConnector-Paper-*.jar "$RELEASE_DIR/"
 echo "✓ Bukkit build complete"
 
 # Build Fabric for each version

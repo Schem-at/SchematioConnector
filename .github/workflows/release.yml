@@ -6,17 +6,11 @@ on:
       - 'v*'
 
 jobs:
-  release:
+  build-paper:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -27,11 +21,85 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build
-        run: ./gradlew build
+      - name: Build Paper
+        run: ./gradlew :core:build :bukkit:build
 
       - name: Run tests
         run: ./gradlew :core:test
+
+      - name: Upload Paper JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper
+          path: bukkit/build/libs/SchematioConnector-Paper-*.jar
+
+  build-fabric:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mc: "1.21.8"
+            fabric_api: "0.136.0+1.21.8"
+            yarn: "1.21.8+build.1"
+            loader: "0.17.2"
+          - mc: "1.21.9"
+            fabric_api: "0.134.0+1.21.9"
+            yarn: "1.21.9+build.1"
+            loader: "0.17.2"
+          - mc: "1.21.10"
+            fabric_api: "0.138.0+1.21.10"
+            yarn: "1.21.10+build.2"
+            loader: "0.17.2"
+          - mc: "1.21.11"
+            fabric_api: "0.139.4+1.21.11"
+            yarn: "1.21.11+build.1"
+            loader: "0.17.2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Fabric for MC ${{ matrix.mc }}
+        run: |
+          ./gradlew :fabric:remapJar \
+            -Pfabric_minecraft_version="${{ matrix.mc }}" \
+            -Pfabric_api_version="${{ matrix.fabric_api }}" \
+            -Pfabric_yarn_mappings="${{ matrix.yarn }}" \
+            -Pfabric_loader_version="${{ matrix.loader }}"
+
+      - name: Upload Fabric JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: fabric-${{ matrix.mc }}
+          path: |
+            fabric/build/libs/SchematioConnector-Fabric-*.jar
+            !fabric/build/libs/*-sources.jar
+
+  release:
+    runs-on: ubuntu-latest
+    needs: [build-paper, build-fabric]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
       - name: Get version from tag
         id: version
@@ -47,11 +115,15 @@ jobs:
             echo "EOFTAGBODY"
           } >> $GITHUB_OUTPUT
 
-      - name: Rename artifacts for release
+      - name: Collect release JARs
         run: |
-          # Shadow JAR has no classifier (archiveClassifier = ""), exclude -sources.jar
-          cp bukkit/build/libs/bukkit-*.jar "SchematioConnector-Paper-${{ steps.version.outputs.VERSION }}.jar"
-          find fabric/build/libs -name 'SchematioConnector-Fabric-*.jar' ! -name '*-sources.jar' -exec cp {} "SchematioConnector-Fabric-${{ steps.version.outputs.VERSION }}.jar" \; 2>/dev/null || true
+          mkdir -p release
+          cp artifacts/paper/*.jar release/
+          for dir in artifacts/fabric-*/; do
+            cp "$dir"*.jar release/
+          done
+          echo "Release artifacts:"
+          ls -la release/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -70,17 +142,14 @@ jobs:
             3. Restart the server
 
             **Fabric:**
-            1. Download `SchematioConnector-Fabric-${{ steps.version.outputs.VERSION }}.jar`
+            1. Download the JAR matching your Minecraft version (e.g. `SchematioConnector-Fabric-mc1.21.8-${{ steps.version.outputs.VERSION }}.jar`)
             2. Place in your server's `mods/` folder (requires Fabric API + Fabric Language Kotlin)
             3. Restart the server
 
             ### Requirements
-            - Minecraft 1.21.8+
             - Java 21+
             - WorldEdit (optional but required for clipboard operations)
-          files: |
-            SchematioConnector-Paper-${{ steps.version.outputs.VERSION }}.jar
-            SchematioConnector-Fabric-${{ steps.version.outputs.VERSION }}.jar
+          files: release/*
           fail_on_unmatched_files: false
           draft: false
           prerelease: false

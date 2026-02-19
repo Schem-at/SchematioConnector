@@ -7,9 +7,8 @@ on:
     branches: [master, main]
 
 jobs:
-  build:
+  build-paper:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,8 +22,8 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build
-        run: ./gradlew build
+      - name: Build Paper
+        run: ./gradlew :core:build :bukkit:build
 
       - name: Run tests
         run: ./gradlew :core:test
@@ -33,13 +32,56 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: SchematioConnector-Paper
-          path: bukkit/build/libs/bukkit-*.jar
+          path: bukkit/build/libs/SchematioConnector-Paper-*.jar
+
+  build-fabric:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mc: "1.21.8"
+            fabric_api: "0.136.0+1.21.8"
+            yarn: "1.21.8+build.1"
+            loader: "0.17.2"
+          - mc: "1.21.9"
+            fabric_api: "0.134.0+1.21.9"
+            yarn: "1.21.9+build.1"
+            loader: "0.17.2"
+          - mc: "1.21.10"
+            fabric_api: "0.138.0+1.21.10"
+            yarn: "1.21.10+build.2"
+            loader: "0.17.2"
+          - mc: "1.21.11"
+            fabric_api: "0.139.4+1.21.11"
+            yarn: "1.21.11+build.1"
+            loader: "0.17.2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Fabric for MC ${{ matrix.mc }}
+        run: |
+          ./gradlew :fabric:remapJar \
+            -Pfabric_minecraft_version="${{ matrix.mc }}" \
+            -Pfabric_api_version="${{ matrix.fabric_api }}" \
+            -Pfabric_yarn_mappings="${{ matrix.yarn }}" \
+            -Pfabric_loader_version="${{ matrix.loader }}"
 
       - name: Upload Fabric artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SchematioConnector-Fabric
+          name: SchematioConnector-Fabric-mc${{ matrix.mc }}
           path: |
-            fabric/build/libs/SchematioConnector-*.jar
+            fabric/build/libs/SchematioConnector-Fabric-*.jar
             !fabric/build/libs/*-sources.jar
           if-no-files-found: warn

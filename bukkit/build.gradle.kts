@@ -3,6 +3,10 @@ plugins {
     id("com.gradleup.shadow")
 }
 
+base {
+    archivesName.set("SchematioConnector-Paper")
+}
+
 // Dev server path for hot-reload deployment
 val devServerPath = file("${System.getProperty("user.home")}/Desktop/mc_dev_server_1.21.8")
 val pluginsFolder = devServerPath.resolve("plugins")
