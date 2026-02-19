@@ -10,7 +10,12 @@ commands:
         usage: /schematio <subcommand>
         aliases: [schem, sch]
 permissions:
-    # Base permissions (what you can do)
+    # Base permission (required to use any command)
+    schematio.use:
+        description: Basic access to the plugin (info, settings)
+        default: true
+
+    # Feature permissions (what you can do)
     schematio.upload:
         description: Upload schematics to schemat.io
         default: op
@@ -24,7 +29,7 @@ permissions:
         description: Create and retrieve quick share links
         default: true
     schematio.admin:
-        description: Admin commands (reload, setpassword)
+        description: Admin commands (reload, settoken, setpassword)
         default: op
 
     # UI tier permissions (how you can do it)

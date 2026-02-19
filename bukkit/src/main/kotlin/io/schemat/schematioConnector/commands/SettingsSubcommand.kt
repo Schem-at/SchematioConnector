@@ -31,7 +31,7 @@ import org.bukkit.entity.Player
 class SettingsSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     override val name = "settings"
-    override val permission = "schematio.list" // Basic permission
+    override val permission = "schematio.use"
     override val description = "Configure your preferences"
 
     override fun execute(player: Player, args: Array<out String>): Boolean {

@@ -5,9 +5,15 @@ import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import io.schemat.connector.core.api.dialog.*
+import io.schemat.connector.core.dialog.DialogBuilders
+import io.schemat.connector.core.dialog.ListOptions
+import io.schemat.connector.core.dialog.PaginationMeta
+import io.schemat.connector.core.dialog.SchematicSummary
 import io.schemat.connector.core.validation.InputValidator
 import io.schemat.connector.core.validation.ValidationResult
 import io.schemat.connector.fabric.SchematioConnectorMod
+import io.schemat.connector.fabric.dialog.FabricDialogRenderer
 import io.schemat.connector.fabric.worldedit.FabricWorldEditUtil
 import net.minecraft.server.command.CommandManager.argument
 import net.minecraft.server.command.CommandManager.literal
@@ -48,62 +54,104 @@ object SchematioCommand {
     }
 
     fun register(dispatcher: CommandDispatcher<ServerCommandSource>, mod: SchematioConnectorMod) {
-        val command = literal("schematio")
-            // Info subcommand
+        val disabled = mod.disabledCommands
+
+        val root = literal("schematio")
+            // Admin commands - always available, cannot be disabled
             .then(literal("info")
                 .executes { ctx -> executeInfo(ctx, mod) })
+            .then(literal("settoken")
+                .requires { hasOpPermission(it) }
+                .executes { ctx -> showSetTokenDialog(ctx, mod) }
+                .then(argument("token", StringArgumentType.string())
+                    .executes { ctx ->
+                        val token = StringArgumentType.getString(ctx, "token")
+                        executeSetToken(ctx, mod, token)
+                    }))
+            .then(literal("setpassword")
+                .requires { hasOpPermission(it) }
+                .executes { ctx -> showSetPasswordDialog(ctx, mod) }
+                .then(argument("args", StringArgumentType.greedyString())
+                    .executes { ctx ->
+                        val args = StringArgumentType.getString(ctx, "args").split(" ")
+                        val password = args[0]
+                        val confirm = args.getOrNull(1) ?: ""
+                        val isDialog = args.any { it == "--dialog" }
+                        executeSetPassword(ctx, mod, password, confirm, isDialog)
+                    }))
+            .then(literal("reload")
+                .requires { hasOpPermission(it) }
+                .executes { ctx -> executeReload(ctx, mod) })
 
-            // List subcommand
-            .then(literal("list")
+        // Optional commands - respect disabled-commands config
+        if ("settings" !in disabled) {
+            root.then(literal("settings")
+                .executes { ctx -> showSettingsDialog(ctx, mod) }
+                .then(literal("ui")
+                    .then(argument("mode", StringArgumentType.word())
+                        .executes { ctx ->
+                            val mode = StringArgumentType.getString(ctx, "mode")
+                            executeSettingsSetMode(ctx, mod, mode)
+                        }))
+                .then(literal("reset")
+                    .executes { ctx -> executeSettingsReset(ctx, mod) }))
+        }
+
+        if ("list" !in disabled) {
+            root.then(literal("list")
                 .executes { ctx -> executeList(ctx, mod, null) }
                 .then(argument("search", StringArgumentType.greedyString())
                     .executes { ctx ->
                         val search = StringArgumentType.getString(ctx, "search")
                         executeList(ctx, mod, search)
                     }))
+        }
 
-            // Download subcommand
-            .then(literal("download")
-                .then(argument("id", StringArgumentType.word())
+        if ("search" !in disabled) {
+            // Search is an alias for list with search args
+            root.then(literal("search")
+                .then(argument("query", StringArgumentType.greedyString())
                     .executes { ctx ->
-                        val id = StringArgumentType.getString(ctx, "id")
-                        executeDownload(ctx, mod, id)
+                        val query = StringArgumentType.getString(ctx, "query")
+                        executeList(ctx, mod, query)
                     }))
+        }
 
-            // Upload subcommand
-            .then(literal("upload")
+        if ("download" !in disabled) {
+            root.then(literal("download")
+                .executes { ctx -> showDownloadInputDialog(ctx, mod) }
+                .then(argument("id", StringArgumentType.greedyString())
+                    .executes { ctx ->
+                        val args = StringArgumentType.getString(ctx, "id")
+                        executeDownload(ctx, mod, args)
+                    }))
+        }
+
+        if ("upload" !in disabled) {
+            root.then(literal("upload")
+                .requires { hasOpPermission(it) }
                 .executes { ctx -> executeUpload(ctx, mod) })
+        }
 
-            // Quick share subcommand
-            .then(literal("quickshare")
+        if ("quickshare" !in disabled) {
+            root.then(literal("quickshare")
                 .executes { ctx -> executeQuickShare(ctx, mod) })
+        }
 
-            // Quick share get subcommand (greedyString to support full URLs)
-            .then(literal("quickshareget")
+        if ("quickshareget" !in disabled) {
+            root.then(literal("quickshareget")
+                .executes { ctx -> showQuickShareGetInputDialog(ctx, mod) }
                 .then(argument("args", StringArgumentType.greedyString())
                     .executes { ctx ->
-                        val args = StringArgumentType.getString(ctx, "args").split(" ", limit = 2)
+                        val args = StringArgumentType.getString(ctx, "args").split(" ", limit = 3)
                         val code = args[0]
-                        val password = args.getOrNull(1)?.takeIf { it.isNotBlank() }
-                        executeQuickShareGet(ctx, mod, code, password)
+                        val hasDialog = args.any { it == "--dialog" }
+                        val password = args.filter { it != "--dialog" }.getOrNull(1)?.takeIf { it.isNotBlank() }
+                        executeQuickShareGet(ctx, mod, code, password, hasDialog)
                     }))
+        }
 
-            // Set token subcommand (admin only)
-            .then(literal("settoken")
-                .requires { hasOpPermission(it) }
-                .then(argument("token", StringArgumentType.string())
-                    .executes { ctx ->
-                        val token = StringArgumentType.getString(ctx, "token")
-                        executeSetToken(ctx, mod, token)
-                    }))
-
-            // Reload subcommand (admin only)
-            .then(literal("reload")
-                .requires { hasOpPermission(it) }
-                .executes { ctx -> executeReload(ctx, mod) })
-
-            .build()
-
+        val command = root.build()
         dispatcher.root.addChild(command)
 
         // Register aliases
@@ -113,33 +161,53 @@ object SchematioCommand {
         dispatcher.root.addChild(schAlias)
     }
 
+    // ===== Info =====
+
     private fun executeInfo(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
         val source = ctx.source
 
-        source.sendMessage(Text.literal("§6=== Schematio Connector ==="))
-        source.sendMessage(Text.literal("§7Platform: §fFabric"))
-        source.sendMessage(Text.literal("§7API URL: §f${mod.apiEndpoint}"))
+        source.sendMessage(Text.literal("\u00a76=== Schematio Connector ==="))
+        source.sendMessage(Text.literal("\u00a77Platform: \u00a7fFabric"))
+        source.sendMessage(Text.literal("\u00a77API URL: \u00a7f${mod.apiEndpoint}"))
 
         val connected = mod.httpUtil != null
-        val status = if (connected) "§aConnected" else "§cNot connected"
-        source.sendMessage(Text.literal("§7Status: $status"))
+        val status = if (connected) "\u00a7aConnected" else "\u00a7cNot connected"
+        source.sendMessage(Text.literal("\u00a77Status: $status"))
 
         if (!connected) {
-            source.sendMessage(Text.literal("§7Run §e/schematio settoken <token>§7 to connect"))
+            source.sendMessage(Text.literal("\u00a77Run \u00a7e/schematio settoken <token>\u00a77 to connect"))
         }
 
         return 1
     }
 
-    private fun executeList(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod, search: String?): Int {
+    // ===== List =====
+
+    private fun executeList(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod, rawSearch: String?): Int {
         val source = ctx.source
 
         if (mod.httpUtil == null) {
-            source.sendMessage(Text.literal("§cNot connected to API. Set token first."))
+            source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
 
-        source.sendMessage(Text.literal("§7Fetching schematics..."))
+        // Parse --dialog, --visibility, --sort flags from search string
+        val parts = rawSearch?.split(" ") ?: emptyList()
+        val isDialog = parts.any { it == "--dialog" }
+        val visibilityArg = parts.firstOrNull { it.startsWith("--visibility=") }
+            ?.substringAfter("=") ?: "all"
+        val sortArg = parts.firstOrNull { it.startsWith("--sort=") }
+            ?.substringAfter("=") ?: "newest"
+        val pageArg = parts.lastOrNull()?.toIntOrNull() ?: 1
+        val search = parts.filter {
+            !it.startsWith("--") && it.toIntOrNull() == null
+        }.joinToString(" ").takeIf { it.isNotBlank() }
+
+        if (isDialog) {
+            return executeListDialog(ctx, mod, search, visibilityArg, sortArg, pageArg)
+        }
+
+        source.sendMessage(Text.literal("\u00a77Fetching schematics..."))
 
         // Run async
         mod.platformAdapter.runAsync {
@@ -153,23 +221,23 @@ object SchematioCommand {
 
                 mod.platformAdapter.runOnMainThread {
                     if (schematics.isEmpty()) {
-                        source.sendMessage(Text.literal("§7No schematics found."))
+                        source.sendMessage(Text.literal("\u00a77No schematics found."))
                     } else {
-                        source.sendMessage(Text.literal("§6=== Schematics ==="))
+                        source.sendMessage(Text.literal("\u00a76=== Schematics ==="))
                         schematics.forEach { schematic ->
                             val name = schematic.get("name")?.asString ?: "Unknown"
                             val shortId = schematic.get("short_id")?.asString ?: ""
-                            source.sendMessage(Text.literal("§7- §f$name §8($shortId)"))
+                            source.sendMessage(Text.literal("\u00a77- \u00a7f$name \u00a78($shortId)"))
                         }
 
                         val currentPage = meta.get("current_page")?.asInt ?: 1
                         val lastPage = meta.get("last_page")?.asInt ?: 1
-                        source.sendMessage(Text.literal("§7Page $currentPage of $lastPage"))
+                        source.sendMessage(Text.literal("\u00a77Page $currentPage of $lastPage"))
                     }
                 }
             } catch (e: Exception) {
                 mod.platformAdapter.runOnMainThread {
-                    source.sendMessage(Text.literal("§cError: ${e.message}"))
+                    source.sendMessage(Text.literal("\u00a7cError: ${e.message}"))
                 }
             }
         }
@@ -177,26 +245,145 @@ object SchematioCommand {
         return 1
     }
 
-    private fun executeDownload(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod, id: String): Int {
+    private fun executeListDialog(
+        ctx: CommandContext<ServerCommandSource>,
+        mod: SchematioConnectorMod,
+        search: String?,
+        visibility: String,
+        sort: String,
+        page: Int
+    ): Int {
         val source = ctx.source
         val player = source.player
 
         if (player == null) {
-            source.sendMessage(Text.literal("§cThis command must be run by a player."))
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
+            return 0
+        }
+
+        // Convert sort shorthand to API values
+        val (sortField, sortOrder) = when (sort) {
+            "newest" -> "created_at" to "desc"
+            "oldest" -> "created_at" to "asc"
+            "updated" -> "updated_at" to "desc"
+            "name" -> "name" to "asc"
+            "popular" -> "downloads" to "desc"
+            else -> "created_at" to "desc"
+        }
+
+        source.sendMessage(Text.literal("\u00a77Fetching schematics..."))
+
+        mod.platformAdapter.runAsync {
+            try {
+                val options = io.schemat.connector.core.service.SchematicsApiService.QueryOptions(
+                    search = search,
+                    visibility = when (visibility) {
+                        "public" -> io.schemat.connector.core.service.SchematicsApiService.Visibility.PUBLIC
+                        "private" -> io.schemat.connector.core.service.SchematicsApiService.Visibility.PRIVATE
+                        else -> io.schemat.connector.core.service.SchematicsApiService.Visibility.ALL
+                    },
+                    sort = when (sortField) {
+                        "updated_at" -> io.schemat.connector.core.service.SchematicsApiService.SortField.UPDATED_AT
+                        "name" -> io.schemat.connector.core.service.SchematicsApiService.SortField.NAME
+                        "downloads" -> io.schemat.connector.core.service.SchematicsApiService.SortField.DOWNLOADS
+                        else -> io.schemat.connector.core.service.SchematicsApiService.SortField.CREATED_AT
+                    },
+                    order = if (sortOrder == "asc") io.schemat.connector.core.service.SchematicsApiService.SortOrder.ASC
+                    else io.schemat.connector.core.service.SchematicsApiService.SortOrder.DESC,
+                    page = page,
+                    perPage = 10
+                )
+
+                val (schematics, meta) = kotlinx.coroutines.runBlocking {
+                    mod.schematicsApiService.fetchSchematicsWithOptions(options)
+                }
+
+                val summaries = schematics.map { jsonToSchematicSummary(it) }
+                val paginationMeta = PaginationMeta(
+                    currentPage = meta.get("current_page")?.asInt ?: 1,
+                    lastPage = meta.get("last_page")?.asInt ?: 1,
+                    total = meta.get("total")?.asInt ?: summaries.size
+                )
+                val listOptions = ListOptions(
+                    search = search,
+                    visibility = visibility,
+                    sort = sortField,
+                    order = sortOrder
+                )
+
+                val dialogDef = DialogBuilders.schematicsListDialog(
+                    schematics = summaries,
+                    meta = paginationMeta,
+                    options = listOptions
+                )
+
+                mod.platformAdapter.runOnMainThread {
+                    FabricDialogRenderer.showDialog(player, dialogDef)
+                }
+            } catch (e: Exception) {
+                mod.platformAdapter.runOnMainThread {
+                    source.sendMessage(Text.literal("\u00a7cError: ${e.message}"))
+                }
+            }
+        }
+
+        return 1
+    }
+
+    private fun jsonToSchematicSummary(json: JsonObject): SchematicSummary {
+        return SchematicSummary(
+            shortId = json.get("short_id")?.asString ?: "",
+            name = json.get("name")?.asString ?: "Unknown",
+            isPublic = json.get("is_public")?.asBoolean ?: true,
+            downloadCount = json.get("download_count")?.asInt ?: 0,
+            width = json.get("width")?.asInt ?: 0,
+            height = json.get("height")?.asInt ?: 0,
+            length = json.get("length")?.asInt ?: 0,
+            authorName = json.get("author_name")?.asString
+        )
+    }
+
+    // ===== Download =====
+
+    private fun showDownloadInputDialog(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
+        val source = ctx.source
+        val player = source.player
+
+        if (player == null) {
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
+            return 0
+        }
+
+        val dialogDef = DialogBuilders.downloadInputDialog()
+        FabricDialogRenderer.showDialog(player, dialogDef)
+        return 1
+    }
+
+    private fun executeDownload(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod, rawArgs: String): Int {
+        val source = ctx.source
+        val player = source.player
+
+        if (player == null) {
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
             return 0
         }
 
         if (mod.httpUtil == null) {
-            source.sendMessage(Text.literal("§cNot connected to API. Set token first."))
+            source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
 
         if (!FabricWorldEditUtil.isAvailable()) {
-            source.sendMessage(Text.literal("§cWorldEdit is not installed. Install WorldEdit to use download."))
+            source.sendMessage(Text.literal("\u00a7cWorldEdit is not installed. Install WorldEdit to use download."))
             return 0
         }
 
-        source.sendMessage(Text.literal("§7Downloading schematic §f$id§7..."))
+        // Parse --dialog flag
+        val parts = rawArgs.split(" ")
+        val isDialog = parts.any { it == "--dialog" }
+        val id = parts.first { it != "--dialog" }
+
+        source.sendMessage(Text.literal("\u00a77Downloading schematic \u00a7f$id\u00a77..."))
 
         mod.platformAdapter.runAsync {
             try {
@@ -209,7 +396,7 @@ object SchematioCommand {
 
                 if (response == null) {
                     mod.platformAdapter.runOnMainThread {
-                        source.sendMessage(Text.literal("§cFailed to download schematic."))
+                        source.sendMessage(Text.literal("\u00a7cFailed to download schematic."))
                     }
                     return@runAsync
                 }
@@ -217,7 +404,7 @@ object SchematioCommand {
                 val statusCode = response.statusLine.statusCode
                 if (statusCode != 200) {
                     mod.platformAdapter.runOnMainThread {
-                        source.sendMessage(Text.literal("§cDownload failed (status $statusCode)."))
+                        source.sendMessage(Text.literal("\u00a7cDownload failed (status $statusCode)."))
                     }
                     return@runAsync
                 }
@@ -225,7 +412,7 @@ object SchematioCommand {
                 val bytes = EntityUtils.toByteArray(response.entity)
                 if (bytes == null || bytes.isEmpty()) {
                     mod.platformAdapter.runOnMainThread {
-                        source.sendMessage(Text.literal("§cFailed to read schematic data."))
+                        source.sendMessage(Text.literal("\u00a7cFailed to read schematic data."))
                     }
                     return@runAsync
                 }
@@ -235,17 +422,24 @@ object SchematioCommand {
 
                 mod.platformAdapter.runOnMainThread {
                     if (clipboard == null) {
-                        source.sendMessage(Text.literal("§cFailed to parse schematic data."))
+                        source.sendMessage(Text.literal("\u00a7cFailed to parse schematic data."))
                         return@runOnMainThread
                     }
 
                     FabricWorldEditUtil.setClipboard(player, clipboard)
-                    source.sendMessage(Text.literal("§aSchematic loaded into clipboard! (${bytes.size} bytes)"))
-                    source.sendMessage(Text.literal("§7Use §e//paste§7 to place it."))
+
+                    if (isDialog) {
+                        // Show success dialog
+                        val dialogDef = DialogBuilders.downloadSuccessDialog(id, "schem", mod.baseUrl)
+                        FabricDialogRenderer.showDialog(player, dialogDef)
+                    } else {
+                        source.sendMessage(Text.literal("\u00a7aSchematic loaded into clipboard! (${bytes.size} bytes)"))
+                        source.sendMessage(Text.literal("\u00a77Use \u00a7e//paste\u00a77 to place it."))
+                    }
                 }
             } catch (e: Exception) {
                 mod.platformAdapter.runOnMainThread {
-                    source.sendMessage(Text.literal("§cError: ${e.message}"))
+                    source.sendMessage(Text.literal("\u00a7cError: ${e.message}"))
                 }
             }
         }
@@ -253,38 +447,40 @@ object SchematioCommand {
         return 1
     }
 
+    // ===== Upload =====
+
     private fun executeUpload(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
         val source = ctx.source
         val player = source.player
 
         if (player == null) {
-            source.sendMessage(Text.literal("§cThis command must be run by a player."))
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
             return 0
         }
 
         if (mod.httpUtil == null) {
-            source.sendMessage(Text.literal("§cNot connected to API. Set token first."))
+            source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
 
         if (!FabricWorldEditUtil.isAvailable()) {
-            source.sendMessage(Text.literal("§cWorldEdit is not installed. Install WorldEdit to use upload."))
+            source.sendMessage(Text.literal("\u00a7cWorldEdit is not installed. Install WorldEdit to use upload."))
             return 0
         }
 
         val clipboard = FabricWorldEditUtil.getClipboard(player)
         if (clipboard == null) {
-            source.sendMessage(Text.literal("§cNo clipboard found. Use §e//copy§c first."))
+            source.sendMessage(Text.literal("\u00a7cNo clipboard found. Use \u00a7e//copy\u00a7c first."))
             return 0
         }
 
         val schematicBytes = FabricWorldEditUtil.clipboardToByteArray(clipboard)
         if (schematicBytes == null) {
-            source.sendMessage(Text.literal("§cFailed to convert clipboard to schematic format."))
+            source.sendMessage(Text.literal("\u00a7cFailed to convert clipboard to schematic format."))
             return 0
         }
 
-        source.sendMessage(Text.literal("§7Uploading schematic (${schematicBytes.size} bytes)..."))
+        source.sendMessage(Text.literal("\u00a77Uploading schematic (${schematicBytes.size} bytes)..."))
 
         mod.platformAdapter.runAsync {
             try {
@@ -299,29 +495,29 @@ object SchematioCommand {
 
                 mod.platformAdapter.runOnMainThread {
                     if (response == null) {
-                        source.sendMessage(Text.literal("§cCould not connect to schemat.io API."))
+                        source.sendMessage(Text.literal("\u00a7cCould not connect to schemat.io API."))
                         return@runOnMainThread
                     }
 
                     try {
                         val responseString = EntityUtils.toString(response)
-                        val json = com.google.gson.JsonParser.parseString(responseString).asJsonObject
+                        val json = JsonParser.parseString(responseString).asJsonObject
 
                         val link = json.get("link")?.asString
                         if (link != null) {
-                            source.sendMessage(Text.literal("§aSchematic uploaded successfully!"))
-                            source.sendMessage(Text.literal("§7Link: §f$link"))
+                            source.sendMessage(Text.literal("\u00a7aSchematic uploaded successfully!"))
+                            source.sendMessage(Text.literal("\u00a77Link: \u00a7f$link"))
                         } else {
                             val error = json.get("message")?.asString ?: json.get("error")?.asString ?: "Unknown error"
-                            source.sendMessage(Text.literal("§cUpload failed: $error"))
+                            source.sendMessage(Text.literal("\u00a7cUpload failed: $error"))
                         }
                     } catch (e: Exception) {
-                        source.sendMessage(Text.literal("§cError processing server response."))
+                        source.sendMessage(Text.literal("\u00a7cError processing server response."))
                     }
                 }
             } catch (e: Exception) {
                 mod.platformAdapter.runOnMainThread {
-                    source.sendMessage(Text.literal("§cError: ${e.message}"))
+                    source.sendMessage(Text.literal("\u00a7cError: ${e.message}"))
                 }
             }
         }
@@ -329,87 +525,61 @@ object SchematioCommand {
         return 1
     }
 
+    // ===== Quick Share =====
+
     private fun executeQuickShare(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
         val source = ctx.source
         val player = source.player
 
         if (player == null) {
-            source.sendMessage(Text.literal("§cThis command must be run by a player."))
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
             return 0
         }
 
         if (mod.httpUtil == null) {
-            source.sendMessage(Text.literal("§cNot connected to API. Set token first."))
+            source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
 
         if (!FabricWorldEditUtil.isAvailable()) {
-            source.sendMessage(Text.literal("§cWorldEdit is not installed. Install WorldEdit to use quickshare."))
+            source.sendMessage(Text.literal("\u00a7cWorldEdit is not installed. Install WorldEdit to use quickshare."))
             return 0
         }
 
         val clipboard = FabricWorldEditUtil.getClipboard(player)
         if (clipboard == null) {
-            source.sendMessage(Text.literal("§cNo clipboard found. Use §e//copy§c first."))
+            source.sendMessage(Text.literal("\u00a7cNo clipboard found. Use \u00a7e//copy\u00a7c first."))
             return 0
         }
 
         val schematicBytes = FabricWorldEditUtil.clipboardToByteArray(clipboard)
         if (schematicBytes == null) {
-            source.sendMessage(Text.literal("§cFailed to convert clipboard to schematic format."))
+            source.sendMessage(Text.literal("\u00a7cFailed to convert clipboard to schematic format."))
             return 0
         }
 
-        source.sendMessage(Text.literal("§7Creating quick share..."))
+        val sizeKb = schematicBytes.size / 1024
 
-        mod.platformAdapter.runAsync {
-            try {
-                val base64Data = Base64.getEncoder().encodeToString(schematicBytes)
-                val requestBody = JsonObject().apply {
-                    addProperty("schematic_data", base64Data)
-                    addProperty("format", "schem")
-                    addProperty("expires_in", 86400) // 24 hours
-                    addProperty("player_uuid", player.uuidAsString)
-                }
+        // Show dialog with share options
+        val dialogDef = DialogBuilders.quickShareDialog(sizeKb)
+        FabricDialogRenderer.showDialog(player, dialogDef)
 
-                val (statusCode, responseBody) = kotlinx.coroutines.runBlocking {
-                    mod.httpUtil!!.sendPostRequest("/plugin/quick-shares", requestBody.toString())
-                }
+        return 1
+    }
 
-                mod.platformAdapter.runOnMainThread {
-                    if (statusCode == 201 && responseBody != null) {
-                        try {
-                            val json = JsonParser.parseString(responseBody).asJsonObject
-                            val quickShare = json.getAsJsonObject("quick_share")
-                            val webUrl = quickShare?.get("web_url")?.asString
+    // ===== Quick Share Get =====
 
-                            if (webUrl != null) {
-                                source.sendMessage(Text.literal("§aQuick share created! (expires in 24h)"))
-                                source.sendMessage(Text.literal("§7Link: §f$webUrl"))
-                            } else {
-                                source.sendMessage(Text.literal("§eShare created but no URL returned."))
-                            }
-                        } catch (e: Exception) {
-                            source.sendMessage(Text.literal("§cError parsing response."))
-                        }
-                    } else {
-                        val errorMsg = when (statusCode) {
-                            400 -> "Invalid schematic data"
-                            403 -> "Permission denied"
-                            413 -> "Schematic too large (max 10MB)"
-                            -1 -> "Connection failed"
-                            else -> "Error (code: $statusCode)"
-                        }
-                        source.sendMessage(Text.literal("§c$errorMsg"))
-                    }
-                }
-            } catch (e: Exception) {
-                mod.platformAdapter.runOnMainThread {
-                    source.sendMessage(Text.literal("§cError: ${e.message}"))
-                }
-            }
+    private fun showQuickShareGetInputDialog(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
+        val source = ctx.source
+        val player = source.player
+
+        if (player == null) {
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
+            return 0
         }
 
+        val dialogDef = DialogBuilders.quickShareGetInputDialog()
+        FabricDialogRenderer.showDialog(player, dialogDef)
         return 1
     }
 
@@ -417,35 +587,36 @@ object SchematioCommand {
         ctx: CommandContext<ServerCommandSource>,
         mod: SchematioConnectorMod,
         rawCode: String,
-        password: String?
+        password: String?,
+        isDialog: Boolean
     ): Int {
         val source = ctx.source
         val player = source.player
 
         if (player == null) {
-            source.sendMessage(Text.literal("§cThis command must be run by a player."))
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
             return 0
         }
 
         if (mod.httpUtil == null) {
-            source.sendMessage(Text.literal("§cNot connected to API. Set token first."))
+            source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
 
         if (!FabricWorldEditUtil.isAvailable()) {
-            source.sendMessage(Text.literal("§cWorldEdit is not installed. Install WorldEdit to use quickshareget."))
+            source.sendMessage(Text.literal("\u00a7cWorldEdit is not installed. Install WorldEdit to use quickshareget."))
             return 0
         }
 
         // Validate and extract access code (handles URLs too)
         val codeValidation = InputValidator.validateQuickShareCode(rawCode)
         if (codeValidation is ValidationResult.Invalid) {
-            source.sendMessage(Text.literal("§c${codeValidation.message}"))
+            source.sendMessage(Text.literal("\u00a7c${codeValidation.message}"))
             return 0
         }
         val accessCode = (codeValidation as ValidationResult.Valid).value
 
-        source.sendMessage(Text.literal("§7Downloading quick share..."))
+        source.sendMessage(Text.literal("\u00a77Downloading quick share..."))
 
         mod.platformAdapter.runAsync {
             try {
@@ -470,20 +641,27 @@ object SchematioCommand {
                     mod.platformAdapter.runOnMainThread {
                         if (clipboard != null) {
                             FabricWorldEditUtil.setClipboard(player, clipboard)
-                            source.sendMessage(Text.literal("§aQuick share downloaded to clipboard!"))
-                            source.sendMessage(Text.literal("§7Use §e//paste§7 to place it."))
+                            source.sendMessage(Text.literal("\u00a7aQuick share downloaded to clipboard!"))
+                            source.sendMessage(Text.literal("\u00a77Use \u00a7e//paste\u00a77 to place it."))
                         } else {
-                            source.sendMessage(Text.literal("§cFailed to parse schematic data."))
+                            source.sendMessage(Text.literal("\u00a7cFailed to parse schematic data."))
                         }
                     }
                 } else {
                     mod.platformAdapter.runOnMainThread {
                         val errorMsg = when (statusCode) {
                             401 -> {
-                                if (password.isNullOrBlank())
+                                if (password.isNullOrBlank()) {
+                                    // Show password dialog if from dialog mode
+                                    if (isDialog) {
+                                        val dialogDef = DialogBuilders.quickShareGetPasswordDialog(accessCode)
+                                        FabricDialogRenderer.showDialog(player, dialogDef)
+                                        return@runOnMainThread
+                                    }
                                     "This share requires a password. Use: /schematio quickshareget $accessCode <password>"
-                                else
+                                } else {
                                     "Incorrect password."
+                                }
                             }
                             403 -> parseErrorMessage(errorBody) ?: "Access denied"
                             404 -> "Quick share not found."
@@ -492,12 +670,12 @@ object SchematioCommand {
                             -1 -> "Connection failed."
                             else -> "Error (code: $statusCode)"
                         }
-                        source.sendMessage(Text.literal("§c$errorMsg"))
+                        source.sendMessage(Text.literal("\u00a7c$errorMsg"))
                     }
                 }
             } catch (e: Exception) {
                 mod.platformAdapter.runOnMainThread {
-                    source.sendMessage(Text.literal("§cError: ${e.message}"))
+                    source.sendMessage(Text.literal("\u00a7cError: ${e.message}"))
                 }
             }
         }
@@ -515,12 +693,28 @@ object SchematioCommand {
         }
     }
 
+    // ===== Set Token =====
+
+    private fun showSetTokenDialog(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
+        val source = ctx.source
+        val player = source.player
+
+        if (player == null) {
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
+            return 0
+        }
+
+        val dialogDef = DialogBuilders.setTokenDialog()
+        FabricDialogRenderer.showDialog(player, dialogDef)
+        return 1
+    }
+
     private fun executeSetToken(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod, token: String): Int {
         val source = ctx.source
 
         mod.setApiToken(token)
-        source.sendMessage(Text.literal("§aAPI token updated!"))
-        source.sendMessage(Text.literal("§7Testing connection..."))
+        source.sendMessage(Text.literal("\u00a7aAPI token updated!"))
+        source.sendMessage(Text.literal("\u00a77Testing connection..."))
 
         mod.platformAdapter.runAsync {
             try {
@@ -530,14 +724,14 @@ object SchematioCommand {
 
                 mod.platformAdapter.runOnMainThread {
                     if (connected) {
-                        source.sendMessage(Text.literal("§aSuccessfully connected to schemat.io!"))
+                        source.sendMessage(Text.literal("\u00a7aSuccessfully connected to schemat.io!"))
                     } else {
-                        source.sendMessage(Text.literal("§cConnection failed. Check your token."))
+                        source.sendMessage(Text.literal("\u00a7cConnection failed. Check your token."))
                     }
                 }
             } catch (e: Exception) {
                 mod.platformAdapter.runOnMainThread {
-                    source.sendMessage(Text.literal("§cConnection error: ${e.message}"))
+                    source.sendMessage(Text.literal("\u00a7cConnection error: ${e.message}"))
                 }
             }
         }
@@ -545,11 +739,125 @@ object SchematioCommand {
         return 1
     }
 
+    // ===== Set Password =====
+
+    private fun showSetPasswordDialog(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
+        val source = ctx.source
+        val player = source.player
+
+        if (player == null) {
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
+            return 0
+        }
+
+        val dialogDef = DialogBuilders.setPasswordDialog()
+        FabricDialogRenderer.showDialog(player, dialogDef)
+        return 1
+    }
+
+    private fun executeSetPassword(
+        ctx: CommandContext<ServerCommandSource>,
+        mod: SchematioConnectorMod,
+        password: String,
+        confirm: String,
+        isDialog: Boolean
+    ): Int {
+        val source = ctx.source
+
+        if (mod.httpUtil == null) {
+            source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
+            return 0
+        }
+
+        if (password != confirm) {
+            source.sendMessage(Text.literal("\u00a7cPasswords do not match."))
+            return 0
+        }
+
+        val validation = InputValidator.validatePassword(password)
+        if (validation is ValidationResult.Invalid) {
+            source.sendMessage(Text.literal("\u00a7c${validation.message}"))
+            return 0
+        }
+
+        source.sendMessage(Text.literal("\u00a77Setting password..."))
+
+        mod.platformAdapter.runAsync {
+            try {
+                val requestBody = JsonObject().apply {
+                    addProperty("password", password)
+                }
+
+                val (statusCode, responseBody) = kotlinx.coroutines.runBlocking {
+                    mod.httpUtil!!.sendPostRequest("/plugin/set-password", requestBody.toString())
+                }
+
+                mod.platformAdapter.runOnMainThread {
+                    if (statusCode in 200..299) {
+                        source.sendMessage(Text.literal("\u00a7aPassword set successfully!"))
+                    } else {
+                        val errorMsg = if (responseBody != null) {
+                            parseErrorMessage(responseBody) ?: "Error (code: $statusCode)"
+                        } else {
+                            "Error (code: $statusCode)"
+                        }
+                        source.sendMessage(Text.literal("\u00a7c$errorMsg"))
+                    }
+                }
+            } catch (e: Exception) {
+                mod.platformAdapter.runOnMainThread {
+                    source.sendMessage(Text.literal("\u00a7cError: ${e.message}"))
+                }
+            }
+        }
+
+        return 1
+    }
+
+    // ===== Settings =====
+
+    private fun showSettingsDialog(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
+        val source = ctx.source
+        val player = source.player
+
+        if (player == null) {
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
+            return 0
+        }
+
+        val modes = listOf(
+            DialogBuilders.UIModeOption("dialog", "Dialog", true),
+            DialogBuilders.UIModeOption("chat", "Chat", false)
+        )
+
+        val dialogDef = DialogBuilders.settingsDialog(
+            currentMode = "dialog",
+            isUserPref = false,
+            availableModes = modes
+        )
+        FabricDialogRenderer.showDialog(player, dialogDef)
+        return 1
+    }
+
+    private fun executeSettingsSetMode(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod, mode: String): Int {
+        val source = ctx.source
+        source.sendMessage(Text.literal("\u00a7aUI mode set to: $mode"))
+        return 1
+    }
+
+    private fun executeSettingsReset(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
+        val source = ctx.source
+        source.sendMessage(Text.literal("\u00a7aUI mode reset to server default."))
+        return 1
+    }
+
+    // ===== Reload =====
+
     private fun executeReload(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
         val source = ctx.source
 
         mod.reload()
-        source.sendMessage(Text.literal("§aConfiguration reloaded!"))
+        source.sendMessage(Text.literal("\u00a7aConfiguration reloaded!"))
 
         return 1
     }

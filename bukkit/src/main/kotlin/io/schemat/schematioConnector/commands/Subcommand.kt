@@ -51,11 +51,12 @@ interface Subcommand {
      *
      * This permission is checked by [SchematioCommand] before the subcommand
      * is even shown in help or tab completion. Common permissions:
+     * - `schematio.use` - Basic access (info, settings)
      * - `schematio.list` - List and browse schematics
      * - `schematio.upload` - Upload schematics
      * - `schematio.download` - Download schematics
      * - `schematio.quickshare` - Create and retrieve quick share links
-     * - `schematio.admin` - Administrative commands
+     * - `schematio.admin` - Administrative commands (reload, settoken, setpassword)
      *
      * Note: Tiered commands may also check a tier-specific permission
      * (e.g., `schematio.tier.floating`) within their [execute] method.

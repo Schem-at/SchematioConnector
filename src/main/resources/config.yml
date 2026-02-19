@@ -49,3 +49,14 @@ cache-ttl-seconds: 300
 # Valid values: chat, dialog
 # Default: chat
 default-ui-mode: chat
+
+# Command Availability
+# ====================
+# Disable specific subcommands by listing them here.
+# Disabled commands will not be registered, won't appear in help or tab completion.
+# This is useful for servers that want to restrict functionality.
+# Available commands: upload, download, list, search, quickshare, quickshareget, settings
+# Admin commands (reload, settoken, setpassword, info) cannot be disabled.
+disabled-commands:
+  - list
+  - search

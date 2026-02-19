@@ -7,6 +7,7 @@ import io.schemat.connector.core.offline.OfflineMode
 import io.schemat.connector.core.service.SchematicsApiService
 import io.schemat.connector.fabric.adapter.FabricPlatformAdapter
 import io.schemat.connector.fabric.command.SchematioCommand
+import io.schemat.connector.fabric.dialog.FabricDialogService
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -49,6 +50,8 @@ class SchematioConnectorMod : ModInitializer {
         private set
     lateinit var schematicsApiService: SchematicsApiService
         private set
+    var dialogService: FabricDialogService? = null
+        private set
 
     // Configuration
     var apiEndpoint: String = "https://schemat.io/api/v1"
@@ -58,6 +61,10 @@ class SchematioConnectorMod : ModInitializer {
     val baseUrl: String
         get() = apiEndpoint.replace(Regex("/api/v\\d+$"), "")
     private var apiToken: String? = null
+
+    // Commands disabled via config
+    var disabledCommands: Set<String> = emptySet()
+        private set
 
     // Server reference
     var server: MinecraftServer? = null
@@ -121,6 +128,18 @@ class SchematioConnectorMod : ModInitializer {
                 }
             apiEndpoint = configuredEndpoint ?: "https://schemat.io/api/v1"
             apiToken = props.getProperty("api_token")
+
+            // Load disabled commands
+            disabledCommands = props.getProperty("disabled_commands")
+                ?.split(",")
+                ?.map { it.trim().lowercase() }
+                ?.filter { it.isNotEmpty() }
+                ?.toSet()
+                ?: emptySet()
+
+            if (disabledCommands.isNotEmpty()) {
+                LOGGER.info("Disabled commands: ${disabledCommands.joinToString(", ")}")
+            }
         } else {
             // Create default config
             saveDefaultConfig()
@@ -145,6 +164,11 @@ class SchematioConnectorMod : ModInitializer {
             # API token - set this to your schemat.io API token
             # Get your token from: https://schemat.io/settings/api
             api_token=
+
+            # Disable specific subcommands (comma-separated)
+            # Available: upload, download, list, search, quickshare, quickshareget, settings
+            # Admin commands (reload, settoken, setpassword, info) cannot be disabled.
+            disabled_commands=list,search
         """.trimIndent())
     }
 
@@ -158,6 +182,7 @@ class SchematioConnectorMod : ModInitializer {
         ServerLifecycleEvents.SERVER_STARTING.register { server ->
             this.server = server
             platformAdapter = FabricPlatformAdapter(server, logger)
+            dialogService = FabricDialogService(server)
 
             // Initialize API service with platform adapter
             schematicsApiService = SchematicsApiService(

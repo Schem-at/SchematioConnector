@@ -16,14 +16,14 @@ import org.bukkit.entity.Player
  * Usage: /schematio info
  *
  * Requires:
- * - schematio.list permission (basic access)
+ * - schematio.use permission
  *
  * @property plugin The main plugin instance
  */
 class InfoSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     override val name = "info"
-    override val permission = "schematio.list" // Basic permission, anyone can view info
+    override val permission = "schematio.use"
     override val description = "Show plugin status and connection info"
 
     override fun execute(sender: Player, args: Array<out String>): Boolean {

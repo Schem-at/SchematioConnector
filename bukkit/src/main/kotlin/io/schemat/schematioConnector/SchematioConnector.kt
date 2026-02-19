@@ -425,13 +425,21 @@ class SchematioConnector : JavaPlugin(), Listener {
     }
 
     private fun setupCommands() {
+        val disabledCommands = config.getStringList("disabled-commands")
+            .map { it.lowercase() }
+            .toSet()
+
+        if (disabledCommands.isNotEmpty()) {
+            logger.info("Disabled commands: ${disabledCommands.joinToString(", ")}")
+        }
+
         val subcommands = mutableListOf<Subcommand>()
 
-        // Always available commands
+        // Admin commands - always available, cannot be disabled
         subcommands.add(InfoSubcommand(this))
         subcommands.add(ReloadSubcommand(this))
-        subcommands.add(SettingsSubcommand(this))  // User UI preferences
-        subcommands.add(SetTokenSubcommand(this))  // Secure token setting for ops
+        subcommands.add(SettingsSubcommand(this))
+        subcommands.add(SetTokenSubcommand(this))
 
         // Only add SetPassword if the token has permission
         if (httpUtil?.canManagePasswords() == true) {
@@ -441,21 +449,32 @@ class SchematioConnector : JavaPlugin(), Listener {
 
         // WorldEdit-dependent commands - always register but they check API at runtime
         if (hasWorldEdit) {
-            // Core commands with unified chat/dialog support
-            subcommands.add(UploadSubcommand(this))
-            subcommands.add(DownloadSubcommand(this))
-            subcommands.add(ListSubcommand(this))            // Unified list with chat/dialog support
-            subcommands.add(SearchSubcommand(this))          // Shorthand for list with search
-            subcommands.add(QuickShareSubcommand(this))      // Unified quickshare with chat/dialog
-            subcommands.add(QuickShareGetSubcommand(this))   // Unified quickshareget with chat/dialog
+            // Core commands with unified chat/dialog support (respects disabled-commands config)
+            val optionalCommands = listOf(
+                UploadSubcommand(this),
+                DownloadSubcommand(this),
+                ListSubcommand(this),
+                SearchSubcommand(this),
+                QuickShareSubcommand(this),
+                QuickShareGetSubcommand(this),
+            )
+
+            for (cmd in optionalCommands) {
+                if (cmd.name !in disabledCommands) {
+                    subcommands.add(cmd)
+                }
+            }
 
             // DEPRECATED: Legacy UI-specific commands (kept for backwards compatibility)
-            // These commands still work but are hidden from tab completion
-            // Users should use --chat or --dialog flags or /schematio settings instead
-            subcommands.add(ListInvSubcommand(this))         // DEPRECATED: Use 'list' with settings
-            subcommands.add(ListGuiSubcommand(this))         // DEPRECATED: Use 'list' with settings
-            subcommands.add(ListDialogSubcommand(this))      // DEPRECATED: Use 'list --dialog'
-            subcommands.add(QuickShareGuiSubcommand(this))   // DEPRECATED: Use 'quickshare' with settings
+            // These are also subject to disabled-commands config
+            if ("list" !in disabledCommands) {
+                subcommands.add(ListInvSubcommand(this))
+                subcommands.add(ListGuiSubcommand(this))
+                subcommands.add(ListDialogSubcommand(this))
+            }
+            if ("quickshare" !in disabledCommands) {
+                subcommands.add(QuickShareGuiSubcommand(this))
+            }
         }
 
         val schematioCommand = SchematioCommand(this, subcommands.associateBy { it.name })
