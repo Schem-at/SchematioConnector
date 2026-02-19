@@ -1,5 +1,6 @@
 package io.schemat.schematioConnector.commands
 
+import com.google.gson.JsonObject
 import io.papermc.paper.dialog.Dialog
 import io.papermc.paper.registry.data.dialog.ActionButton
 import io.papermc.paper.registry.data.dialog.DialogBase
@@ -7,6 +8,8 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction
 import io.papermc.paper.registry.data.dialog.body.DialogBody
 import io.papermc.paper.registry.data.dialog.input.DialogInput
 import io.papermc.paper.registry.data.dialog.type.DialogType
+import io.schemat.connector.core.json.parseJsonSafe
+import io.schemat.connector.core.json.safeGetString
 import io.schemat.connector.core.validation.InputValidator
 import io.schemat.connector.core.validation.ValidationResult
 import io.schemat.schematioConnector.SchematioConnector
@@ -23,19 +26,22 @@ import org.bukkit.entity.Player
 import java.io.EOFException
 
 /**
- * Downloads a schematic from schemat.io and loads it into the player's WorldEdit clipboard.
+ * Downloads a schematic from schemat.io or a quick share link and loads it
+ * into the player's WorldEdit clipboard.
  *
- * Supports both chat and dialog UI modes:
- * - Chat mode: Standard download with progress bar and chat output
- * - Dialog mode: Shows download input dialog and success dialog
+ * Supports both schematic IDs and quick share codes/URLs:
+ * - Schematic ID: alphanumeric identifier for a posted schematic
+ * - Quick share: access code (with optional qs_ prefix) or full URL
  *
- * Usage: /schematio download <schematic-id> [format] [--chat|--dialog]
+ * Usage: /schematio download <id|code|url> [format|password] [--chat|--dialog]
+ * Alias: /schematio get
  *
  * @property plugin The main plugin instance
  */
 class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     private val SCHEMAT_DOWNLOAD_URL_ENDPOINT = "/schematics/"
+    private val QUICKSHARE_ENDPOINT = "/plugin/quick-shares"
 
     override val name = "download"
     override val permission = "schematio.download"
@@ -43,6 +49,13 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     override fun execute(player: Player, args: Array<out String>): Boolean {
         val audience = player.audience()
+
+        // Show usage if help requested
+        if (args.any { it == "--help" || it == "-h" }) {
+            showUsage(player)
+            return true
+        }
+
         val resolver = plugin.uiModeResolver
 
         // Check if player has any UI permission
@@ -63,6 +76,20 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
     }
 
     // ===========================================
+    // INPUT TYPE DETECTION
+    // ===========================================
+
+    /**
+     * Detects whether the input looks like a quick share code/URL.
+     * URLs and qs_ prefixed codes are always treated as quick shares.
+     */
+    private fun isQuickShareInput(input: String): Boolean {
+        if (input.startsWith("http://") || input.startsWith("https://")) return true
+        if (input.startsWith("qs_")) return true
+        return false
+    }
+
+    // ===========================================
     // CHAT MODE
     // ===========================================
 
@@ -70,20 +97,34 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         val audience = player.audience()
 
         if (args.isEmpty()) {
-            audience.sendMessage(Component.text("Usage: /schematio download <schematic-id> [format]").color(NamedTextColor.RED))
-            audience.sendMessage(Component.text("Available formats: schem, schematic, mcedit").color(NamedTextColor.GRAY))
+            audience.sendMessage(Component.text("Usage: /schematio download <id|code|url> [format|password]").color(NamedTextColor.RED))
+            audience.sendMessage(Component.text("Accepts schematic IDs, quick share codes, or URLs").color(NamedTextColor.GRAY))
             return false
         }
 
-        // Validate schematic ID
-        val schematicIdResult = InputValidator.validateSchematicId(args[0])
+        val input = args[0]
+
+        // Route based on input type
+        if (isQuickShareInput(input)) {
+            val codeValidation = InputValidator.validateQuickShareCode(input)
+            if (codeValidation is ValidationResult.Invalid) {
+                audience.sendMessage(Component.text(codeValidation.message).color(NamedTextColor.RED))
+                return false
+            }
+            val accessCode = codeValidation.getOrNull()!!
+            val password = args.getOrNull(1)?.takeIf { it.isNotBlank() }
+            downloadQuickShare(player, accessCode, password)
+            return true
+        }
+
+        // Treat as schematic ID
+        val schematicIdResult = InputValidator.validateSchematicId(input)
         if (schematicIdResult is ValidationResult.Invalid) {
             audience.sendMessage(Component.text(schematicIdResult.message).color(NamedTextColor.RED))
             return false
         }
         val schematicId = (schematicIdResult as ValidationResult.Valid).value
 
-        // Validate format
         val validFormats = listOf("schem", "schematic", "mcedit")
         val formatResult = InputValidator.validateDownloadFormat(args.getOrNull(1), validFormats)
         if (formatResult is ValidationResult.Invalid) {
@@ -102,28 +143,43 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     private fun executeDialogMode(player: Player, args: Array<String>): Boolean {
         if (args.isEmpty()) {
-            // No args - show input dialog to get schematic ID
             showDownloadDialog(player)
-        } else {
-            // Args provided - just download and show result in chat (no dialog needed for confirmation)
-            val schematicIdResult = InputValidator.validateSchematicId(args[0])
-            if (schematicIdResult is ValidationResult.Invalid) {
-                player.audience().sendMessage(Component.text(schematicIdResult.message).color(NamedTextColor.RED))
-                return false
-            }
-            val schematicId = (schematicIdResult as ValidationResult.Valid).value
-
-            val validFormats = listOf("schem", "schematic", "mcedit")
-            val formatResult = InputValidator.validateDownloadFormat(args.getOrNull(1), validFormats)
-            if (formatResult is ValidationResult.Invalid) {
-                player.audience().sendMessage(Component.text(formatResult.message).color(NamedTextColor.RED))
-                return false
-            }
-            val downloadFormat = (formatResult as ValidationResult.Valid).value
-
-            // Use CHAT mode for result display - dialogs are only for input, not confirmation
-            downloadSchematic(player, schematicId, downloadFormat, UIMode.CHAT)
+            return true
         }
+
+        val input = args[0]
+
+        // Route based on input type
+        if (isQuickShareInput(input)) {
+            val codeValidation = InputValidator.validateQuickShareCode(input)
+            if (codeValidation is ValidationResult.Invalid) {
+                player.audience().sendMessage(Component.text(codeValidation.message).color(NamedTextColor.RED))
+                return false
+            }
+            val accessCode = codeValidation.getOrNull()!!
+            val password = args.getOrNull(1)?.takeIf { it.isNotBlank() }
+            downloadQuickShare(player, accessCode, password, showPasswordDialogOn401 = true)
+            return true
+        }
+
+        // Treat as schematic ID
+        val schematicIdResult = InputValidator.validateSchematicId(input)
+        if (schematicIdResult is ValidationResult.Invalid) {
+            player.audience().sendMessage(Component.text(schematicIdResult.message).color(NamedTextColor.RED))
+            return false
+        }
+        val schematicId = (schematicIdResult as ValidationResult.Valid).value
+
+        val validFormats = listOf("schem", "schematic", "mcedit")
+        val formatResult = InputValidator.validateDownloadFormat(args.getOrNull(1), validFormats)
+        if (formatResult is ValidationResult.Invalid) {
+            player.audience().sendMessage(Component.text(formatResult.message).color(NamedTextColor.RED))
+            return false
+        }
+        val downloadFormat = (formatResult as ValidationResult.Valid).value
+
+        // Use CHAT mode for result display - dialogs are only for input, not confirmation
+        downloadSchematic(player, schematicId, downloadFormat, UIMode.CHAT)
         return true
     }
 
@@ -134,31 +190,36 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
         val bodyElements = mutableListOf<DialogBody>()
         bodyElements.add(DialogBody.plainMessage(
-            Component.text("Enter the schematic ID or URL to download").color(NamedTextColor.GRAY)
+            Component.text("Enter a schematic ID, quick share code, or URL").color(NamedTextColor.GRAY)
         ))
 
         val inputs = mutableListOf<DialogInput>()
         inputs.add(
-            DialogInput.text("schematic_id", Component.text("Schematic ID or URL").color(NamedTextColor.WHITE))
+            DialogInput.text("id", Component.text("Schematic ID, Code, or URL").color(NamedTextColor.WHITE))
                 .width(300)
                 .initial("")
-                .maxLength(100)
+                .maxLength(200)
+                .build()
+        )
+        inputs.add(
+            DialogInput.text("password", Component.text("Password (if required)").color(NamedTextColor.WHITE))
+                .width(200)
+                .initial("")
+                .maxLength(50)
                 .build()
         )
 
         val actionButtons = mutableListOf<ActionButton>()
-        // Download button uses command template to get the input value
         actionButtons.add(
             ActionButton.builder(Component.text("Download").color(NamedTextColor.GREEN).decorate(TextDecoration.BOLD))
                 .width(150)
-                .action(DialogAction.commandTemplate("/schematio download \$(schematic_id) --dialog"))
+                .action(DialogAction.commandTemplate("/schematio download \$(id) \$(password) --dialog"))
                 .build()
         )
 
         actionButtons.add(
             ActionButton.builder(Component.text("Cancel").color(NamedTextColor.RED))
                 .width(100)
-                // No action - clicking closes the dialog (default behavior)
                 .build()
         )
 
@@ -179,13 +240,13 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         } catch (e: Exception) {
             plugin.logger.warning("Failed to show download dialog: ${e.message}")
             player.audience().sendMessage(
-                Component.text("Failed to open dialog. Use: /schematio download <schematic-id>").color(NamedTextColor.RED)
+                Component.text("Failed to open dialog. Use: /schematio download <id|code|url>").color(NamedTextColor.RED)
             )
         }
     }
 
     // ===========================================
-    // SHARED LOGIC
+    // SCHEMATIC DOWNLOAD (by ID)
     // ===========================================
 
     private fun downloadSchematic(player: Player, schematicId: String, format: String, uiMode: UIMode) {
@@ -285,6 +346,167 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         })
     }
 
+    // ===========================================
+    // QUICK SHARE DOWNLOAD (by code/URL)
+    // ===========================================
+
+    private fun downloadQuickShare(
+        player: Player,
+        accessCode: String,
+        password: String?,
+        showPasswordDialogOn401: Boolean = false
+    ) {
+        val audience = player.audience()
+
+        // Check rate limit
+        val remaining = plugin.rateLimiter.tryAcquire(player.uniqueId)
+        if (remaining == null) {
+            val waitTime = plugin.rateLimiter.getWaitTimeSeconds(player.uniqueId)
+            audience.sendMessage(Component.text("Rate limited. Please wait ${waitTime}s before making another request.").color(NamedTextColor.RED))
+            return
+        }
+
+        val httpUtil = plugin.httpUtil
+        if (httpUtil == null) {
+            audience.sendMessage(Component.text("Not connected to API. Set token first.").color(NamedTextColor.RED))
+            return
+        }
+
+        audience.sendMessage(Component.text("Downloading quick share...").color(NamedTextColor.YELLOW))
+
+        plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
+            try {
+                val requestBody = JsonObject().apply {
+                    addProperty("player_uuid", player.uniqueId.toString())
+                    if (!password.isNullOrBlank()) {
+                        addProperty("password", password)
+                    }
+                }
+
+                val (statusCode, bytes, errorBody) = runBlocking {
+                    httpUtil.sendPostRequestForBinary(
+                        "$QUICKSHARE_ENDPOINT/$accessCode/download",
+                        requestBody.toString()
+                    )
+                }
+
+                plugin.server.scheduler.runTask(plugin, Runnable {
+                    when (statusCode) {
+                        200 -> {
+                            if (bytes != null) {
+                                val clipboard = WorldEditUtil.byteArrayToClipboard(bytes)
+                                if (clipboard != null) {
+                                    WorldEditUtil.setClipboard(player, clipboard)
+                                    audience.sendMessage(Component.text("Quick share downloaded to clipboard!").color(NamedTextColor.GREEN))
+                                    audience.sendMessage(Component.text("Use //paste to place it.").color(NamedTextColor.GRAY))
+                                } else {
+                                    audience.sendMessage(Component.text("Failed to parse schematic data.").color(NamedTextColor.RED))
+                                }
+                            } else {
+                                audience.sendMessage(Component.text("No data received.").color(NamedTextColor.RED))
+                            }
+                        }
+                        401 -> {
+                            if (showPasswordDialogOn401) {
+                                showPasswordDialog(player, accessCode)
+                            } else {
+                                audience.sendMessage(Component.text("This share requires a password.").color(NamedTextColor.RED))
+                                audience.sendMessage(Component.text("Usage: /schematio download $accessCode <password>").color(NamedTextColor.GRAY))
+                            }
+                        }
+                        403 -> {
+                            val msg = parseQuickShareError(errorBody) ?: "Access denied"
+                            audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
+                        }
+                        404 -> {
+                            audience.sendMessage(Component.text("Quick share not found.").color(NamedTextColor.RED))
+                        }
+                        410 -> {
+                            val msg = parseQuickShareError(errorBody) ?: "This share has expired or been revoked"
+                            audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
+                        }
+                        429 -> {
+                            val msg = parseQuickShareError(errorBody) ?: "Download limit reached or rate limited"
+                            audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
+                        }
+                        -1 -> {
+                            audience.sendMessage(Component.text("Connection failed.").color(NamedTextColor.RED))
+                        }
+                        else -> {
+                            audience.sendMessage(Component.text("Error downloading share (code: $statusCode)").color(NamedTextColor.RED))
+                        }
+                    }
+                })
+            } catch (e: Exception) {
+                plugin.server.scheduler.runTask(plugin, Runnable {
+                    audience.sendMessage(Component.text("Error: ${e.message}").color(NamedTextColor.RED))
+                })
+            }
+        })
+    }
+
+    private fun showPasswordDialog(player: Player, accessCode: String) {
+        val title = Component.text("Password Required")
+            .color(NamedTextColor.GOLD)
+            .decorate(TextDecoration.BOLD)
+
+        val bodyElements = mutableListOf<DialogBody>()
+        bodyElements.add(DialogBody.plainMessage(
+            Component.text("This share is password-protected").color(NamedTextColor.GRAY)
+        ))
+
+        val inputs = mutableListOf<DialogInput>()
+        inputs.add(
+            DialogInput.text("password", Component.text("Password").color(NamedTextColor.WHITE))
+                .width(200)
+                .initial("")
+                .maxLength(50)
+                .build()
+        )
+
+        val actionButtons = mutableListOf<ActionButton>()
+        actionButtons.add(
+            ActionButton.builder(Component.text("Download").color(NamedTextColor.GREEN).decorate(TextDecoration.BOLD))
+                .width(150)
+                .action(DialogAction.commandTemplate("/schematio download $accessCode \$(password) --dialog"))
+                .build()
+        )
+
+        actionButtons.add(
+            ActionButton.builder(Component.text("Cancel").color(NamedTextColor.RED))
+                .width(100)
+                .build()
+        )
+
+        val dialogBase = DialogBase.builder(title)
+            .externalTitle(Component.text("Quick Share Password"))
+            .body(bodyElements)
+            .inputs(inputs)
+            .canCloseWithEscape(true)
+            .build()
+
+        try {
+            val dialog = Dialog.create { builder ->
+                builder.empty()
+                    .base(dialogBase)
+                    .type(DialogType.multiAction(actionButtons, null, 1))
+            }
+            player.showDialog(dialog)
+        } catch (e: Exception) {
+            player.audience().sendMessage(Component.text("This share requires a password.").color(NamedTextColor.RED))
+            player.audience().sendMessage(Component.text("Usage: /schematio download $accessCode <password>").color(NamedTextColor.GRAY))
+        }
+    }
+
+    private fun parseQuickShareError(errorBody: String?): String? {
+        val json = parseJsonSafe(errorBody) ?: return null
+        return json.safeGetString("message") ?: json.safeGetString("error")
+    }
+
+    // ===========================================
+    // SUCCESS DISPLAY
+    // ===========================================
+
     private fun showChatSuccess(player: Player, schematicId: String, format: String) {
         val audience = player.audience()
         audience.sendMessage(Component.text("Schematic downloaded and loaded into clipboard ($format format)").color(NamedTextColor.GREEN))
@@ -317,7 +539,6 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         actionButtons.add(
             ActionButton.builder(Component.text("Close").color(NamedTextColor.GRAY))
                 .width(80)
-                // No action - clicking closes the dialog (default behavior)
                 .build()
         )
 
@@ -339,26 +560,40 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         }
     }
 
+    private fun showUsage(player: Player) {
+        val audience = player.audience()
+        audience.sendMessage(Component.text("Download Usage:").color(NamedTextColor.GOLD))
+        audience.sendMessage(Component.text("  /schematio download <id|code|url> [format|password]").color(NamedTextColor.YELLOW))
+        audience.sendMessage(Component.text("  /schematio get <id|code|url> [format|password]").color(NamedTextColor.YELLOW))
+        audience.sendMessage(Component.text("Input types:").color(NamedTextColor.GOLD))
+        audience.sendMessage(Component.text("  Schematic ID  ").color(NamedTextColor.AQUA)
+            .append(Component.text("Alphanumeric ID, second arg is format (schem/schematic/mcedit)").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("  Quick share   ").color(NamedTextColor.AQUA)
+            .append(Component.text("URL or qs_-prefixed code, second arg is password").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("Options:").color(NamedTextColor.GOLD))
+        audience.sendMessage(Component.text("  -c, --chat    ").color(NamedTextColor.AQUA)
+            .append(Component.text("Force chat mode (default)").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("  -d, --dialog  ").color(NamedTextColor.AQUA)
+            .append(Component.text("Use dialog UI").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("Examples:").color(NamedTextColor.GOLD))
+        audience.sendMessage(Component.text("  /sio download abc123").color(NamedTextColor.GRAY))
+        audience.sendMessage(Component.text("  /sio get https://schemat.io/share/xyz").color(NamedTextColor.GRAY))
+        audience.sendMessage(Component.text("  /sio get qs_abc123 mypassword").color(NamedTextColor.GRAY))
+    }
+
     override fun tabComplete(player: Player, args: Array<out String>): List<String> {
         if (args.isEmpty()) return emptyList()
 
         val partial = args.last().lowercase()
-        val suggestions = mutableListOf<String>()
+        val flags = listOf("-d", "-c", "--help")
 
         if (args.size == 1) {
-            if (partial.isEmpty()) suggestions.add("<schematic-id>")
-            if ("--chat".startsWith(partial)) suggestions.add("--chat")
-            if ("--dialog".startsWith(partial)) suggestions.add("--dialog")
+            return flags.filter { it.startsWith(partial, ignoreCase = true) }
         } else if (args.size == 2) {
             val formats = listOf("schem", "schematic", "mcedit")
-            suggestions.addAll(formats.filter { it.startsWith(partial, ignoreCase = true) })
-            if ("--chat".startsWith(partial)) suggestions.add("--chat")
-            if ("--dialog".startsWith(partial)) suggestions.add("--dialog")
-        } else {
-            if ("--chat".startsWith(partial)) suggestions.add("--chat")
-            if ("--dialog".startsWith(partial)) suggestions.add("--dialog")
+            return (formats + flags).filter { it.startsWith(partial, ignoreCase = true) }
         }
 
-        return suggestions.filter { it.startsWith(partial, ignoreCase = true) }
+        return flags.filter { it.startsWith(partial, ignoreCase = true) }
     }
 }

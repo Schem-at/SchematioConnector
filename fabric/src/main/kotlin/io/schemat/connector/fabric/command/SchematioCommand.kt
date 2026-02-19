@@ -125,6 +125,14 @@ object SchematioCommand {
                         val args = StringArgumentType.getString(ctx, "id")
                         executeDownload(ctx, mod, args)
                     }))
+            // "get" is an alias for "download"
+            root.then(literal("get")
+                .executes { ctx -> showDownloadInputDialog(ctx, mod) }
+                .then(argument("id", StringArgumentType.greedyString())
+                    .executes { ctx ->
+                        val args = StringArgumentType.getString(ctx, "id")
+                        executeDownload(ctx, mod, args)
+                    }))
         }
 
         if ("upload" !in disabled) {
@@ -135,19 +143,11 @@ object SchematioCommand {
 
         if ("quickshare" !in disabled) {
             root.then(literal("quickshare")
-                .executes { ctx -> executeQuickShare(ctx, mod) })
-        }
-
-        if ("quickshareget" !in disabled) {
-            root.then(literal("quickshareget")
-                .executes { ctx -> showQuickShareGetInputDialog(ctx, mod) }
+                .executes { ctx -> executeQuickShare(ctx, mod) }
                 .then(argument("args", StringArgumentType.greedyString())
                     .executes { ctx ->
-                        val args = StringArgumentType.getString(ctx, "args").split(" ", limit = 3)
-                        val code = args[0]
-                        val hasDialog = args.any { it == "--dialog" }
-                        val password = args.filter { it != "--dialog" }.getOrNull(1)?.takeIf { it.isNotBlank() }
-                        executeQuickShareGet(ctx, mod, code, password, hasDialog)
+                        val args = StringArgumentType.getString(ctx, "args")
+                        executeQuickShareWithArgs(ctx, mod, args)
                     }))
         }
 
@@ -157,8 +157,10 @@ object SchematioCommand {
         // Register aliases
         val schemAlias = literal("schem").redirect(command).build()
         val schAlias = literal("sch").redirect(command).build()
+        val sioAlias = literal("sio").redirect(command).build()
         dispatcher.root.addChild(schemAlias)
         dispatcher.root.addChild(schAlias)
+        dispatcher.root.addChild(sioAlias)
     }
 
     // ===== Info =====
@@ -368,7 +370,8 @@ object SchematioCommand {
             return 0
         }
 
-        if (mod.httpUtil == null) {
+        val http = mod.httpUtil
+        if (http == null) {
             source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
@@ -378,10 +381,23 @@ object SchematioCommand {
             return 0
         }
 
-        // Parse --dialog flag
+        // Parse flags and input
         val parts = rawArgs.split(" ")
         val isDialog = parts.any { it == "--dialog" }
-        val id = parts.first { it != "--dialog" }
+        val nonFlagParts = parts.filter { !it.startsWith("--") }
+        val id = nonFlagParts.firstOrNull() ?: ""
+
+        // Detect quickshare input (URLs, qs_ prefix)
+        if (id.startsWith("http://") || id.startsWith("https://") || id.startsWith("qs_")) {
+            val codeValidation = InputValidator.validateQuickShareCode(id)
+            if (codeValidation is ValidationResult.Invalid) {
+                source.sendMessage(Text.literal("\u00a7c${codeValidation.message}"))
+                return 0
+            }
+            val accessCode = (codeValidation as ValidationResult.Valid).value
+            val password = nonFlagParts.getOrNull(1)?.takeIf { it.isNotBlank() }
+            return executeQuickShareGet(ctx, mod, accessCode, password, isDialog)
+        }
 
         source.sendMessage(Text.literal("\u00a77Downloading schematic \u00a7f$id\u00a77..."))
 
@@ -389,7 +405,7 @@ object SchematioCommand {
             try {
                 val requestBody = """{"format":"schem"}"""
                 val response: HttpResponse? = kotlinx.coroutines.runBlocking {
-                    mod.httpUtil!!.sendGetRequestWithBodyFullResponse(
+                    http.sendGetRequestWithBodyFullResponse(
                         "/schematics/$id/download", requestBody
                     ) { _ -> }
                 }
@@ -458,7 +474,8 @@ object SchematioCommand {
             return 0
         }
 
-        if (mod.httpUtil == null) {
+        val http = mod.httpUtil
+        if (http == null) {
             source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
@@ -490,7 +507,7 @@ object SchematioCommand {
                     .build()
 
                 val response = kotlinx.coroutines.runBlocking {
-                    mod.httpUtil!!.sendMultiPartRequest("/schematics/upload", multipart)
+                    http.sendMultiPartRequest("/schematics/upload", multipart)
                 }
 
                 mod.platformAdapter.runOnMainThread {
@@ -567,6 +584,119 @@ object SchematioCommand {
         return 1
     }
 
+    private fun executeQuickShareWithArgs(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod, rawArgs: String): Int {
+        val source = ctx.source
+        val player = source.player
+
+        if (player == null) {
+            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
+            return 0
+        }
+
+        val http = mod.httpUtil
+        if (http == null) {
+            source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
+            return 0
+        }
+
+        if (!FabricWorldEditUtil.isAvailable()) {
+            source.sendMessage(Text.literal("\u00a7cWorldEdit is not installed."))
+            return 0
+        }
+
+        val clipboard = FabricWorldEditUtil.getClipboard(player)
+        if (clipboard == null) {
+            source.sendMessage(Text.literal("\u00a7cNo clipboard found. Use \u00a7e//copy\u00a7c first."))
+            return 0
+        }
+
+        val schematicBytes = FabricWorldEditUtil.clipboardToByteArray(clipboard)
+        if (schematicBytes == null) {
+            source.sendMessage(Text.literal("\u00a7cFailed to convert clipboard to schematic format."))
+            return 0
+        }
+
+        // Parse option flags (supports --expires=1h / -e 1h, --limit=10 / -l 10, --password=x / -p x)
+        val parts = rawArgs.split(" ")
+        var expiresIn = 86400
+        var maxDownloads: Int? = null
+        var password: String? = null
+
+        var idx = 0
+        while (idx < parts.size) {
+            val part = parts[idx]
+            when {
+                part.startsWith("--expires=") || part.startsWith("-e=") ->
+                    expiresIn = InputValidator.parseDuration(part.substringAfter("=")) ?: 86400
+                part == "--expires" || part == "-e" ->
+                    if (idx + 1 < parts.size) expiresIn = InputValidator.parseDuration(parts[++idx]) ?: 86400
+                part.startsWith("--limit=") || part.startsWith("-l=") ->
+                    maxDownloads = InputValidator.parseDownloadLimit(part.substringAfter("="))
+                part == "--limit" || part == "-l" ->
+                    if (idx + 1 < parts.size) maxDownloads = InputValidator.parseDownloadLimit(parts[++idx])
+                part.startsWith("--password=") || part.startsWith("-p=") ->
+                    password = part.substringAfter("=").ifBlank { null }
+                part == "--password" || part == "-p" ->
+                    if (idx + 1 < parts.size) password = parts[++idx].ifBlank { null }
+            }
+            idx++
+        }
+
+        source.sendMessage(Text.literal("\u00a77Creating quick share..."))
+
+        mod.platformAdapter.runAsync {
+            try {
+                val base64Data = Base64.getEncoder().encodeToString(schematicBytes)
+                val requestBody = JsonObject().apply {
+                    addProperty("schematic_data", base64Data)
+                    addProperty("format", "schem")
+                    addProperty("expires_in", expiresIn)
+                    addProperty("player_uuid", player.uuidAsString)
+                    if (maxDownloads != null) addProperty("max_downloads", maxDownloads)
+                    if (!password.isNullOrBlank()) addProperty("password", password)
+                }
+
+                val (statusCode, responseBody) = kotlinx.coroutines.runBlocking {
+                    http.sendPostRequest("/plugin/quick-shares", requestBody.toString())
+                }
+
+                mod.platformAdapter.runOnMainThread {
+                    if (statusCode == 201 && responseBody != null) {
+                        try {
+                            val json = JsonParser.parseString(responseBody).asJsonObject
+                            val quickShare = json.getAsJsonObject("quick_share")
+                            val webUrl = quickShare?.get("web_url")?.asString
+
+                            if (webUrl != null) {
+                                source.sendMessage(Text.literal("\u00a7aQuick share created!"))
+                                source.sendMessage(Text.literal("\u00a77Link: \u00a7f$webUrl"))
+                            } else {
+                                source.sendMessage(Text.literal("\u00a7eShare created but no URL returned."))
+                            }
+                        } catch (e: Exception) {
+                            source.sendMessage(Text.literal("\u00a7cError parsing response: ${e.message}"))
+                        }
+                    } else {
+                        val errorMsg = when (statusCode) {
+                            400 -> "Invalid schematic data"
+                            403 -> "Permission denied"
+                            413 -> "Schematic too large (max 10MB)"
+                            -1 -> "Connection failed"
+                            else -> "Error (code: $statusCode)"
+                        }
+                        source.sendMessage(Text.literal("\u00a7c$errorMsg"))
+                    }
+                }
+            } catch (e: Exception) {
+                mod.platformAdapter.runOnMainThread {
+                    source.sendMessage(Text.literal("\u00a7cError: ${e.message}"))
+                }
+            }
+        }
+
+        return 1
+    }
+
     // ===== Quick Share Get =====
 
     private fun showQuickShareGetInputDialog(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
@@ -598,7 +728,8 @@ object SchematioCommand {
             return 0
         }
 
-        if (mod.httpUtil == null) {
+        val http = mod.httpUtil
+        if (http == null) {
             source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
@@ -628,7 +759,7 @@ object SchematioCommand {
                 }
 
                 val (statusCode, bytes, errorBody) = kotlinx.coroutines.runBlocking {
-                    mod.httpUtil!!.sendPostRequestForBinary(
+                    http.sendPostRequestForBinary(
                         "/plugin/quick-shares/$accessCode/download",
                         requestBody.toString()
                     )
@@ -658,7 +789,7 @@ object SchematioCommand {
                                         FabricDialogRenderer.showDialog(player, dialogDef)
                                         return@runOnMainThread
                                     }
-                                    "This share requires a password. Use: /schematio quickshareget $accessCode <password>"
+                                    "This share requires a password. Use: /schematio download $accessCode <password>"
                                 } else {
                                     "Incorrect password."
                                 }
@@ -764,7 +895,8 @@ object SchematioCommand {
     ): Int {
         val source = ctx.source
 
-        if (mod.httpUtil == null) {
+        val http = mod.httpUtil
+        if (http == null) {
             source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
             return 0
         }
@@ -789,7 +921,7 @@ object SchematioCommand {
                 }
 
                 val (statusCode, responseBody) = kotlinx.coroutines.runBlocking {
-                    mod.httpUtil!!.sendPostRequest("/plugin/set-password", requestBody.toString())
+                    http.sendPostRequest("/plugin/set-password", requestBody.toString())
                 }
 
                 mod.platformAdapter.runOnMainThread {

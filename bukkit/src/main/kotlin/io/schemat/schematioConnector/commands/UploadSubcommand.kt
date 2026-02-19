@@ -81,7 +81,7 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
     private fun uploadSchematic(player: Player, schematicBytes: ByteArray) {
         val audience = player.audience()
-        val httpUtil = plugin.httpUtil!!
+        val httpUtil = plugin.httpUtil ?: return
         val authorUUID = player.uniqueId.toString()
 
         plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {

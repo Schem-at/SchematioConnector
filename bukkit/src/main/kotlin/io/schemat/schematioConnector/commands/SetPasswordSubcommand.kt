@@ -87,7 +87,7 @@ class SetPasswordSubcommand(private val plugin: SchematioConnector) : Subcommand
 
         if (args.isEmpty()) {
             audience.sendMessage(Component.text("Usage: /schematio setpassword <new_password>").color(NamedTextColor.RED))
-            audience.sendMessage(Component.text("Or use --dialog for a secure input dialog").color(NamedTextColor.GRAY))
+            audience.sendMessage(Component.text("Or use -d for a secure input dialog").color(NamedTextColor.GRAY))
             return true
         }
 
@@ -219,7 +219,7 @@ class SetPasswordSubcommand(private val plugin: SchematioConnector) : Subcommand
             return
         }
 
-        val httpUtil = plugin.httpUtil!!
+        val httpUtil = plugin.httpUtil ?: return
         audience.sendMessage(Component.text("Setting your new password...").color(NamedTextColor.YELLOW))
 
         val playerUuid = player.uniqueId.toString()
@@ -270,6 +270,6 @@ class SetPasswordSubcommand(private val plugin: SchematioConnector) : Subcommand
         if (args.isEmpty()) return emptyList()
 
         val partial = args.last().lowercase()
-        return listOf("--chat", "--dialog").filter { it.startsWith(partial, ignoreCase = true) }
+        return listOf("-c", "-d", "--chat", "--dialog").filter { it.startsWith(partial, ignoreCase = true) }
     }
 }

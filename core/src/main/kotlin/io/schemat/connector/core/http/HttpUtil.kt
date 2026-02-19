@@ -120,7 +120,7 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
                 if (responseCode == HttpURLConnection.HTTP_OK) {
                     val response = connection.inputStream.bufferedReader().use { it.readText() }
                     val jsonResponse = gson.fromJson(response, Map::class.java)
-                    jsonResponse["success"] as Boolean
+                    jsonResponse["success"] as? Boolean ?: false
                 } else {
                     logger.warning("Failed to connect to the API, response code: $responseCode")
                     false
@@ -537,7 +537,6 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
                 "schemat.io",
                 "cdn.schemat.io",
                 "api.schemat.io",
-                "localhost",
             )
 
             val isAllowed = allowedDomains.any { domain ->

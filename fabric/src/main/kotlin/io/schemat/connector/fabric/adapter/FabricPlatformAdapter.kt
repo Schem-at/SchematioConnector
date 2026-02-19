@@ -20,7 +20,7 @@ class FabricPlatformAdapter(
 ) : PlatformAdapter {
 
     // Executor for async tasks
-    private val asyncExecutor: ScheduledExecutorService = Executors.newScheduledThreadPool(2) { runnable ->
+    private val asyncExecutor: ScheduledExecutorService = Executors.newScheduledThreadPool(4) { runnable ->
         Thread(runnable, "Schematio-Async").apply {
             isDaemon = true
         }

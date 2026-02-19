@@ -682,8 +682,8 @@ class ListSubcommand(private val plugin: SchematioConnector) : Subcommand {
             if ("--order=".startsWith(partial)) {
                 suggestions.addAll(listOf("--order=desc", "--order=asc"))
             }
-        } else if (partial.isEmpty() || partial == "-") {
-            suggestions.addAll(listOf("--chat", "--dialog", "--visibility=", "--sort=", "--order="))
+        } else if (partial.isEmpty() || partial.startsWith("-")) {
+            suggestions.addAll(listOf("-c", "-d", "--visibility=", "--sort=", "--order="))
         }
 
         return suggestions.filter { it.startsWith(partial, ignoreCase = true) }

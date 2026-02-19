@@ -9,6 +9,7 @@ import io.papermc.paper.registry.data.dialog.body.DialogBody
 import io.papermc.paper.registry.data.dialog.input.DialogInput
 import io.papermc.paper.registry.data.dialog.input.SingleOptionDialogInput
 import io.papermc.paper.registry.data.dialog.type.DialogType
+import io.schemat.connector.core.validation.InputValidator
 import io.schemat.schematioConnector.SchematioConnector
 import io.schemat.schematioConnector.utils.UIMode
 import io.schemat.schematioConnector.utils.UIModeResolver
@@ -32,7 +33,7 @@ import java.util.Base64
  * - Chat mode: Creates share immediately with default settings
  * - Dialog mode: Opens a configuration dialog for expiration, password, etc.
  *
- * Usage: /schematio quickshare [--chat|--dialog]
+ * Usage: /schematio quickshare [-e duration] [-l limit] [-p password] [--chat|--dialog]
  *
  * @property plugin The main plugin instance
  */
@@ -53,6 +54,12 @@ class QuickShareSubcommand(private val plugin: SchematioConnector) : Subcommand 
             audience.sendMessage(
                 Component.text("You don't have permission to use any UI mode.").color(NamedTextColor.RED)
             )
+            return true
+        }
+
+        // Show usage if help requested
+        if (args.any { it == "--help" || it == "-h" }) {
+            showUsage(player)
             return true
         }
 
@@ -78,10 +85,10 @@ class QuickShareSubcommand(private val plugin: SchematioConnector) : Subcommand 
         }
 
         // Resolve UI mode and clean args
-        val (uiMode, _) = resolver.resolveWithArgs(player, args)
+        val (uiMode, cleanedArgs) = resolver.resolveWithArgs(player, args)
 
         return when (uiMode) {
-            UIMode.CHAT -> executeChatMode(player, schematicBytes)
+            UIMode.CHAT -> executeChatMode(player, schematicBytes, cleanedArgs)
             UIMode.DIALOG -> executeDialogMode(player, schematicBytes)
         }
     }
@@ -90,8 +97,36 @@ class QuickShareSubcommand(private val plugin: SchematioConnector) : Subcommand 
     // CHAT MODE - Immediate creation with defaults
     // ===========================================
 
-    private fun executeChatMode(player: Player, schematicBytes: ByteArray): Boolean {
+    private fun executeChatMode(player: Player, schematicBytes: ByteArray, args: Array<String> = emptyArray()): Boolean {
         val audience = player.audience()
+
+        // Parse option flags (set by dialog or command line)
+        // Supports: --expires=1h / -e 1h, --limit=10 / -l 10, --password=x / -p x
+        var expiresIn = 86400 // default 24 hours
+        var maxDownloads: Int? = null
+        var password: String? = null
+
+        var i = 0
+        while (i < args.size) {
+            val arg = args[i]
+            when {
+                arg.startsWith("--expires=") || arg.startsWith("-e=") ->
+                    expiresIn = InputValidator.parseDuration(arg.substringAfter("=")) ?: 86400
+                arg == "--expires" || arg == "-e" ->
+                    if (i + 1 < args.size) expiresIn = InputValidator.parseDuration(args[++i]) ?: 86400
+                arg.startsWith("--limit=") || arg.startsWith("-l=") ->
+                    maxDownloads = InputValidator.parseDownloadLimit(arg.substringAfter("="))
+                arg == "--limit" || arg == "-l" ->
+                    if (i + 1 < args.size) maxDownloads = InputValidator.parseDownloadLimit(args[++i])
+                arg.startsWith("--password=") || arg.startsWith("-p=") ->
+                    password = arg.substringAfter("=").ifBlank { null }
+                arg == "--password" || arg == "-p" ->
+                    if (i + 1 < args.size) password = args[++i].ifBlank { null }
+            }
+            i++
+        }
+        val hasExplicitFlags = args.isNotEmpty()
+
         audience.sendMessage(Component.text("Creating quick share...").color(NamedTextColor.YELLOW))
 
         plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
@@ -107,8 +142,14 @@ class QuickShareSubcommand(private val plugin: SchematioConnector) : Subcommand 
                 val requestBody = JsonObject().apply {
                     addProperty("schematic_data", base64Data)
                     addProperty("format", "schem")
-                    addProperty("expires_in", 86400) // 24 hours default
+                    addProperty("expires_in", expiresIn)
                     addProperty("player_uuid", player.uniqueId.toString())
+                    if (maxDownloads != null) {
+                        addProperty("max_downloads", maxDownloads)
+                    }
+                    if (!password.isNullOrBlank()) {
+                        addProperty("password", password)
+                    }
                 }
 
                 val (statusCode, responseBody) = runBlocking {
@@ -118,13 +159,21 @@ class QuickShareSubcommand(private val plugin: SchematioConnector) : Subcommand 
                 plugin.server.scheduler.runTask(plugin, Runnable {
                     handleShareResponse(player, statusCode, responseBody)
 
-                    // Suggest dialog mode if available
-                    if (player.hasPermission(UIModeResolver.PERMISSION_DIALOG)) {
-                        audience.sendMessage(
-                            Component.text("Tip: Use ").color(NamedTextColor.DARK_GRAY)
-                                .append(Component.text("--dialog").color(NamedTextColor.AQUA))
-                                .append(Component.text(" for more options (expiration, password)").color(NamedTextColor.DARK_GRAY))
-                        )
+                    // Suggest options if using defaults
+                    if (!hasExplicitFlags) {
+                        if (player.hasPermission(UIModeResolver.PERMISSION_DIALOG)) {
+                            audience.sendMessage(
+                                Component.text("Tip: Use ").color(NamedTextColor.DARK_GRAY)
+                                    .append(Component.text("-d").color(NamedTextColor.AQUA))
+                                    .append(Component.text(" for dialog, or flags: ").color(NamedTextColor.DARK_GRAY))
+                                    .append(Component.text("-e <duration> -l <limit> -p <password>").color(NamedTextColor.AQUA))
+                            )
+                        } else {
+                            audience.sendMessage(
+                                Component.text("Tip: Use flags: ").color(NamedTextColor.DARK_GRAY)
+                                    .append(Component.text("-e <duration> -l <limit> -p <password>").color(NamedTextColor.AQUA))
+                            )
+                        }
                     }
                 })
             } catch (e: Exception) {
@@ -178,7 +227,7 @@ class QuickShareSubcommand(private val plugin: SchematioConnector) : Subcommand 
 
         // Download limit dropdown
         val limitOptions = listOf(
-            SingleOptionDialogInput.OptionEntry.create("unlimited", Component.text("Unlimited"), true),
+            SingleOptionDialogInput.OptionEntry.create("0", Component.text("Unlimited"), true),
             SingleOptionDialogInput.OptionEntry.create("1", Component.text("1 download"), false),
             SingleOptionDialogInput.OptionEntry.create("10", Component.text("10 downloads"), false)
         )
@@ -200,13 +249,10 @@ class QuickShareSubcommand(private val plugin: SchematioConnector) : Subcommand 
         // Action buttons
         val actionButtons = mutableListOf<ActionButton>()
 
-        // For quickshare, we need to create the share immediately since we have the bytes in memory
-        // The dialog will just use the default settings for now since we can't pass bytes through commands
-        // Create button - just run the chat mode command which creates with defaults
         actionButtons.add(
-            ActionButton.builder(Component.text("Create Share (24h)").color(NamedTextColor.GREEN).decorate(TextDecoration.BOLD))
+            ActionButton.builder(Component.text("Create Share").color(NamedTextColor.GREEN).decorate(TextDecoration.BOLD))
                 .width(200)
-                .action(DialogAction.staticAction(ClickEvent.runCommand("/schematio quickshare --chat")))
+                .action(DialogAction.commandTemplate("/schematio quickshare --expires=\$(expiration) --limit=\$(limit) --password=\$(password) --chat"))
                 .build()
         )
 
@@ -295,10 +341,42 @@ class QuickShareSubcommand(private val plugin: SchematioConnector) : Subcommand 
         }
     }
 
+    private fun showUsage(player: Player) {
+        val audience = player.audience()
+        audience.sendMessage(Component.text("Quick Share Usage:").color(NamedTextColor.GOLD))
+        audience.sendMessage(Component.text("  /schematio quickshare [options]").color(NamedTextColor.YELLOW))
+        audience.sendMessage(Component.text("Options:").color(NamedTextColor.GOLD))
+        audience.sendMessage(Component.text("  -e, --expires <duration>  ").color(NamedTextColor.AQUA)
+            .append(Component.text("Expiration (1h, 24h, 7d, 1w) [default: 24h]").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("  -l, --limit <count>       ").color(NamedTextColor.AQUA)
+            .append(Component.text("Download limit (0=unlimited) [default: 0]").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("  -p, --password <pass>     ").color(NamedTextColor.AQUA)
+            .append(Component.text("Password protect the share").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("  -c, --chat                ").color(NamedTextColor.AQUA)
+            .append(Component.text("Force chat mode (default)").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("  -d, --dialog              ").color(NamedTextColor.AQUA)
+            .append(Component.text("Use dialog UI instead of flags").color(NamedTextColor.GRAY)))
+        audience.sendMessage(Component.text("Examples:").color(NamedTextColor.GOLD))
+        audience.sendMessage(Component.text("  /schematio quickshare -e 7d -l 10").color(NamedTextColor.GRAY))
+        audience.sendMessage(Component.text("  /schematio quickshare -e 1h -p secret").color(NamedTextColor.GRAY))
+    }
+
     override fun tabComplete(player: Player, args: Array<out String>): List<String> {
         if (args.isEmpty()) return emptyList()
 
         val partial = args.last().lowercase()
-        return listOf("--chat", "--dialog").filter { it.startsWith(partial, ignoreCase = true) }
+
+        // Suggest values for flags that take a parameter
+        if (args.size >= 2) {
+            val prevArg = args[args.size - 2].lowercase()
+            if (prevArg == "-e" || prevArg == "--expires") {
+                return listOf("1h", "24h", "7d", "1w").filter { it.startsWith(partial, ignoreCase = true) }
+            }
+            if (prevArg == "-l" || prevArg == "--limit") {
+                return listOf("0", "1", "10").filter { it.startsWith(partial, ignoreCase = true) }
+            }
+        }
+
+        return listOf("-e", "-l", "-p", "-d", "-c", "--help").filter { it.startsWith(partial, ignoreCase = true) }
     }
 }

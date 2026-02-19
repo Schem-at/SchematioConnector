@@ -322,6 +322,40 @@ object InputValidator {
      * @param sizeBytes The file size in bytes
      * @return Valid with the size, or Invalid if too large
      */
+    /**
+     * Parse a human-friendly duration string into seconds.
+     *
+     * Supports:
+     * - Raw seconds: "3600", "86400"
+     * - Suffixed format: "30m" (minutes), "1h" / "24h" (hours), "2d" / "7d" (days), "1w" (weeks)
+     *
+     * @param input The duration string
+     * @return Duration in seconds, or null if the format is invalid
+     */
+    fun parseDuration(input: String): Int? {
+        input.toIntOrNull()?.let { return it }
+        val match = Regex("^(\\d+)([mhdw])$", RegexOption.IGNORE_CASE).find(input) ?: return null
+        val amount = match.groupValues[1].toIntOrNull() ?: return null
+        return when (match.groupValues[2].lowercase()) {
+            "m" -> amount * 60
+            "h" -> amount * 3600
+            "d" -> amount * 86400
+            "w" -> amount * 604800
+            else -> null
+        }
+    }
+
+    /**
+     * Parse a download limit string.
+     *
+     * @param input The limit string ("0", "unlimited", or a positive integer)
+     * @return The limit count, or null for unlimited
+     */
+    fun parseDownloadLimit(input: String): Int? {
+        if (input.equals("unlimited", ignoreCase = true) || input == "0") return null
+        return input.toIntOrNull()?.takeIf { it > 0 }
+    }
+
     fun validateSchematicSize(sizeBytes: Int): ValidationResult<Int> {
         if (sizeBytes <= 0) {
             return ValidationResult.Invalid("Schematic is empty")

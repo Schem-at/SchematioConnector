@@ -67,8 +67,8 @@ class UIModeResolver(private val plugin: SchematioConnector) {
 
         for (arg in args) {
             when (arg.lowercase()) {
-                FLAG_CHAT -> flagMode = UIMode.CHAT
-                FLAG_DIALOG -> flagMode = UIMode.DIALOG
+                FLAG_CHAT, "-c" -> flagMode = UIMode.CHAT
+                FLAG_DIALOG, "-d" -> flagMode = UIMode.DIALOG
                 else -> remainingArgs.add(arg)
             }
         }

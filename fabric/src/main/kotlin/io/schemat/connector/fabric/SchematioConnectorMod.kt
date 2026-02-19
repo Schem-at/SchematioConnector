@@ -196,6 +196,9 @@ class SchematioConnectorMod : ModInitializer {
 
         ServerLifecycleEvents.SERVER_STOPPED.register {
             httpUtil?.close()
+            if (::platformAdapter.isInitialized) {
+                platformAdapter.shutdown()
+            }
             this.server = null
         }
     }

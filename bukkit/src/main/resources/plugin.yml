@@ -8,7 +8,7 @@ commands:
     schematio:
         description: Interface with schemat.io
         usage: /schematio <subcommand>
-        aliases: [schem, sch]
+        aliases: [schem, sch, sio]
 permissions:
     # Base permission (required to use any command)
     schematio.use:

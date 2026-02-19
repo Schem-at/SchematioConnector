@@ -2,6 +2,7 @@ package io.schemat.connector.core.cache
 
 import com.google.gson.JsonObject
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * In-memory cache for schematic listings and API responses.
@@ -65,9 +66,9 @@ class SchematicCache(
     // Cache for individual schematic details (keyed by schematic ID)
     private val detailsCache = ConcurrentHashMap<String, CacheEntry<JsonObject>>()
 
-    // Statistics
-    private var hits = 0L
-    private var misses = 0L
+    // Statistics (thread-safe)
+    private val hits = AtomicLong(0L)
+    private val misses = AtomicLong(0L)
 
     /**
      * Cached listing result containing schematics and pagination metadata.
@@ -89,13 +90,13 @@ class SchematicCache(
     fun getListings(queryKey: String): CachedListingResult? {
         val entry = listingsCache[queryKey]
         return if (entry != null && !entry.isExpired(ttlMs)) {
-            hits++
+            hits.incrementAndGet()
             entry.data
         } else {
             if (entry != null) {
                 listingsCache.remove(queryKey)
             }
-            misses++
+            misses.incrementAndGet()
             null
         }
     }
@@ -136,13 +137,13 @@ class SchematicCache(
     fun getDetails(schematicId: String): JsonObject? {
         val entry = detailsCache[schematicId]
         return if (entry != null && !entry.isExpired(ttlMs)) {
-            hits++
+            hits.incrementAndGet()
             entry.data
         } else {
             if (entry != null) {
                 detailsCache.remove(schematicId)
             }
-            misses++
+            misses.incrementAndGet()
             null
         }
     }
@@ -199,8 +200,8 @@ class SchematicCache(
     fun clear() {
         listingsCache.clear()
         detailsCache.clear()
-        hits = 0
-        misses = 0
+        hits.set(0)
+        misses.set(0)
     }
 
     /**
@@ -223,14 +224,16 @@ class SchematicCache(
      * Get cache statistics.
      */
     fun getStats(): Map<String, Any> {
-        val totalRequests = hits + misses
-        val hitRate = if (totalRequests > 0) (hits.toDouble() / totalRequests * 100) else 0.0
+        val h = hits.get()
+        val m = misses.get()
+        val totalRequests = h + m
+        val hitRate = if (totalRequests > 0) (h.toDouble() / totalRequests * 100) else 0.0
 
         return mapOf(
             "listingsCached" to listingsCache.size,
             "detailsCached" to detailsCache.size,
-            "hits" to hits,
-            "misses" to misses,
+            "hits" to h,
+            "misses" to m,
             "hitRate" to "%.1f%%".format(hitRate),
             "ttlSeconds" to (ttlMs / 1000)
         )

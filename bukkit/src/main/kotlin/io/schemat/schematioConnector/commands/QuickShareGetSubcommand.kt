@@ -279,11 +279,16 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
             return
         }
 
+        val httpUtil = plugin.httpUtil
+        if (httpUtil == null) {
+            audience.sendMessage(Component.text("Not connected to API. Set token first.").color(NamedTextColor.RED))
+            return
+        }
+
         audience.sendMessage(Component.text("Downloading quick share...").color(NamedTextColor.YELLOW))
 
         plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
             try {
-                val httpUtil = plugin.httpUtil!!
 
                 val requestBody = JsonObject().apply {
                     addProperty("player_uuid", player.uniqueId.toString())

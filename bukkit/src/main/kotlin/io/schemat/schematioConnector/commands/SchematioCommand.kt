@@ -86,6 +86,7 @@ class SchematioCommand(
         // Dynamically generate help message from available commands
         // Hide deprecated commands from help
         subcommands.values
+            .distinctBy { it.name }
             .filter { it.name !in DEPRECATED_COMMANDS }
             .filter { player.hasPermission(it.permission) }
             .sortedBy { it.name }
@@ -94,6 +95,7 @@ class SchematioCommand(
                     .append(Component.text(" - ${subcommand.description}", NamedTextColor.GRAY))
                 audience.sendMessage(helpLine)
             }
+        audience.sendMessage(Component.text("Use /schematio <command> --help for details").color(NamedTextColor.DARK_GRAY))
     }
 }
 

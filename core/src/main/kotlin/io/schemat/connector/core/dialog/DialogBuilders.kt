@@ -46,9 +46,9 @@ object DialogBuilders {
         ),
         buttons = listOf(
             DialogButtonDef(
-                label = DialogText("Create Share (24h)", color = MessageColor.GREEN, bold = true),
+                label = DialogText("Create Share", color = MessageColor.GREEN, bold = true),
                 width = 200,
-                action = DialogButtonAction.StaticAction(ClickAction.RunCommand("/schematio quickshare --chat"))
+                action = DialogButtonAction.CommandTemplate("/schematio quickshare --expires={expiration} --limit={limit} --password={password} --chat")
             ),
             DialogButtonDef(
                 label = DialogText("Cancel", color = MessageColor.RED),
@@ -85,7 +85,7 @@ object DialogBuilders {
             DialogButtonDef(
                 label = DialogText("Download", color = MessageColor.GREEN, bold = true),
                 width = 150,
-                action = DialogButtonAction.CommandTemplate("/schematio quickshareget {code} {password} --dialog")
+                action = DialogButtonAction.CommandTemplate("/schematio download {code} {password} --dialog")
             ),
             DialogButtonDef(
                 label = DialogText("Cancel", color = MessageColor.RED),
@@ -113,7 +113,7 @@ object DialogBuilders {
             DialogButtonDef(
                 label = DialogText("Download", color = MessageColor.GREEN, bold = true),
                 width = 150,
-                action = DialogButtonAction.CommandTemplate("/schematio quickshareget $accessCode {password} --dialog")
+                action = DialogButtonAction.CommandTemplate("/schematio download $accessCode {password} --dialog")
             ),
             DialogButtonDef(
                 label = DialogText("Cancel", color = MessageColor.RED),
@@ -200,22 +200,29 @@ object DialogBuilders {
         title = DialogText("Download Schematic", color = MessageColor.GOLD, bold = true),
         externalTitle = "Download Schematic",
         body = listOf(
-            DialogText("Enter the schematic ID or URL to download", color = MessageColor.GRAY)
+            DialogText("Enter a schematic ID, quick share code, or URL", color = MessageColor.GRAY)
         ),
         inputs = listOf(
             DialogInputDef.Text(
-                id = "schematic_id",
-                label = DialogText("Schematic ID or URL"),
+                id = "id",
+                label = DialogText("Schematic ID, Code, or URL"),
                 width = 300,
                 initial = "",
-                maxLength = 100
+                maxLength = 200
+            ),
+            DialogInputDef.Text(
+                id = "password",
+                label = DialogText("Password (if required)"),
+                width = 200,
+                initial = "",
+                maxLength = 50
             )
         ),
         buttons = listOf(
             DialogButtonDef(
                 label = DialogText("Download", color = MessageColor.GREEN, bold = true),
                 width = 150,
-                action = DialogButtonAction.CommandTemplate("/schematio download {schematic_id} --dialog")
+                action = DialogButtonAction.CommandTemplate("/schematio download {id} {password} --dialog")
             ),
             DialogButtonDef(
                 label = DialogText("Cancel", color = MessageColor.RED),

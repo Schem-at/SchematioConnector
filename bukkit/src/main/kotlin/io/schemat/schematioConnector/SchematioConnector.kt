@@ -19,8 +19,10 @@ import io.schemat.schematioConnector.utils.UIModeResolver
 import io.schemat.schematioConnector.utils.UserPreferences
 import kotlinx.coroutines.runBlocking
 import org.bukkit.plugin.java.JavaPlugin
+import org.bukkit.event.EventPriority
 import org.bukkit.event.Listener
 import org.bukkit.event.EventHandler
+import org.bukkit.event.player.PlayerCommandPreprocessEvent
 import org.bukkit.event.player.PlayerJoinEvent
 import org.bukkit.event.player.PlayerQuitEvent
 
@@ -370,9 +372,10 @@ class SchematioConnector : JavaPlugin(), Listener {
         initializeRateLimiter()
 
         // Test API connection asynchronously to avoid blocking startup
+        val http = httpUtil!!  // safe: just assigned on line above
         server.scheduler.runTaskAsynchronously(this, Runnable {
             offlineMode.recordAttempt()
-            val connected = runBlocking { httpUtil!!.checkConnection() }
+            val connected = runBlocking { http.checkConnection() }
 
             server.scheduler.runTask(this, Runnable {
                 isApiConnected = connected
@@ -397,6 +400,27 @@ class SchematioConnector : JavaPlugin(), Listener {
         return true
     }
 
+    /**
+     * Intercept sensitive commands to prevent tokens and passwords from being
+     * logged to the server console by Bukkit's command logger.
+     * We cancel the event, then dispatch the command directly.
+     */
+    @EventHandler(priority = EventPriority.LOWEST)
+    fun onCommandPreprocess(event: PlayerCommandPreprocessEvent) {
+        val msg = event.message.removePrefix("/")
+        val lower = msg.lowercase()
+
+        // Match /schematio settoken ... or /schem settoken ... or /sch settoken ...
+        val isSensitive = listOf("schematio", "schem", "sch", "sio").any { alias ->
+            lower.startsWith("$alias settoken ") || lower.startsWith("$alias setpassword ")
+        }
+
+        if (isSensitive) {
+            event.isCancelled = true
+            server.dispatchCommand(event.player, msg)
+        }
+    }
+
     @EventHandler
     fun onPlayerJoin(event: PlayerJoinEvent) {
         // Only run if ProtocolLib handler is available
@@ -417,11 +441,21 @@ class SchematioConnector : JavaPlugin(), Listener {
     
     @EventHandler
     fun onPlayerQuit(event: PlayerQuitEvent) {
-        // Clean up any floating UIs for this player
-        FloatingUI.closeForPlayer(event.player)
-        mapEngineHandler?.closePreview(event.player)
-        // Clean up rate limiter data for this player
-        rateLimiter.removePlayer(event.player.uniqueId)
+        try {
+            FloatingUI.closeForPlayer(event.player)
+        } catch (e: Exception) {
+            logger.warning("Error closing FloatingUI for ${event.player.name}: ${e.message}")
+        }
+        try {
+            mapEngineHandler?.closePreview(event.player)
+        } catch (e: Exception) {
+            logger.warning("Error closing preview for ${event.player.name}: ${e.message}")
+        }
+        try {
+            rateLimiter.removePlayer(event.player.uniqueId)
+        } catch (e: Exception) {
+            logger.warning("Error cleaning up rate limiter for ${event.player.name}: ${e.message}")
+        }
     }
 
     private fun setupCommands() {
@@ -456,7 +490,6 @@ class SchematioConnector : JavaPlugin(), Listener {
                 ListSubcommand(this),
                 SearchSubcommand(this),
                 QuickShareSubcommand(this),
-                QuickShareGetSubcommand(this),
             )
 
             for (cmd in optionalCommands) {
@@ -477,7 +510,10 @@ class SchematioConnector : JavaPlugin(), Listener {
             }
         }
 
-        val schematioCommand = SchematioCommand(this, subcommands.associateBy { it.name })
+        val subcommandMap = subcommands.associateBy { it.name }.toMutableMap()
+        // Add "get" as alias for "download"
+        subcommandMap["download"]?.let { subcommandMap["get"] = it }
+        val schematioCommand = SchematioCommand(this, subcommandMap)
         getCommand("schematio")?.let {
             it.setExecutor(schematioCommand)
             it.tabCompleter = schematioCommand
