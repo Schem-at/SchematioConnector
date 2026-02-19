@@ -44,6 +44,7 @@ dependencies {
         exclude(group = "com.google.guava")
         exclude(group = "com.google.code.gson")
         exclude(group = "org.apache.logging.log4j")
+        exclude(group = "it.unimi.dsi") // Avoid strict version conflict with MC's bundled FastUtil
     }
 
     // HTTP dependencies (needed at compile time and runtime)
