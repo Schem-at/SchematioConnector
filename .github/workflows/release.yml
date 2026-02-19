@@ -34,6 +34,16 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Extract tag annotation
+        id: tag_body
+        run: |
+          TAG_BODY=$(git tag -l --format='%(contents:body)' "v${{ steps.version.outputs.VERSION }}")
+          {
+            echo "BODY<<EOFTAGBODY"
+            echo "$TAG_BODY"
+            echo "EOFTAGBODY"
+          } >> $GITHUB_OUTPUT
+
       - name: Rename artifacts for release
         run: |
           cp bukkit/build/libs/*-all.jar "SchematioConnector-Paper-${{ steps.version.outputs.VERSION }}.jar"
@@ -43,9 +53,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: SchematioConnector v${{ steps.version.outputs.VERSION }}
-          generate_release_notes: true
           body: |
-            ## SchematioConnector v${{ steps.version.outputs.VERSION }}
+            ${{ steps.tag_body.outputs.BODY }}
+
+            ---
 
             ### Installation
 
