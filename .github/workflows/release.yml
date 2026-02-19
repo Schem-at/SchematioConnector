@@ -109,7 +109,9 @@ jobs:
       - name: Extract tag annotation
         id: tag_body
         run: |
-          TAG_BODY=$(git tag -l --format='%(contents:body)' "v${{ steps.version.outputs.VERSION }}")
+          # Use git cat-file to reliably extract the annotated tag message body
+          # (skips the header lines up to the first blank line)
+          TAG_BODY=$(git cat-file -p "v${{ steps.version.outputs.VERSION }}" | sed '1,/^$/d')
           {
             echo "BODY<<EOFTAGBODY"
             echo "$TAG_BODY"
