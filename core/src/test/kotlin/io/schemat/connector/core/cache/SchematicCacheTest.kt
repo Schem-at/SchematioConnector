@@ -1,4 +1,4 @@
-package io.schemat.schematioConnector.utils
+package io.schemat.connector.core.cache
 
 import com.google.gson.JsonObject
 import org.junit.jupiter.api.Assertions.*
@@ -7,9 +7,6 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
-/**
- * Tests for SchematicCache caching utilities.
- */
 @DisplayName("SchematicCache")
 class SchematicCacheTest {
 
@@ -17,7 +14,6 @@ class SchematicCacheTest {
 
     @BeforeEach
     fun setup() {
-        // Create cache with short TTL for testing
         cache = SchematicCache(ttlMs = 100)
     }
 
@@ -50,7 +46,6 @@ class SchematicCacheTest {
 
             cache.putListings("test-key", schematics, meta)
 
-            // Wait for TTL to expire
             Thread.sleep(150)
 
             assertNull(cache.getListings("test-key"))
@@ -84,17 +79,13 @@ class SchematicCacheTest {
         fun `returns data with age for expired entries`() {
             cache.putListings("test-key", listOf(createSchematic("1", "Castle")), createMeta(1, 1, 1))
 
-            // Wait for TTL to expire
             Thread.sleep(150)
 
-            // Stale get should return data even after TTL expired
-            // (Note: don't call getListings first as it removes expired entries)
             val staleResult = cache.getListingsStale("test-key")
             assertNotNull(staleResult)
 
             val (data, ageMs) = staleResult!!
             assertEquals("Castle", data.schematics[0].get("name").asString)
-            // Age should be positive (allowing some timing variance)
             assertTrue(ageMs > 0, "Age should be positive but was $ageMs")
         }
 
@@ -102,13 +93,9 @@ class SchematicCacheTest {
         fun `getListings removes expired entries`() {
             cache.putListings("test-key", listOf(createSchematic("1", "Castle")), createMeta(1, 1, 1))
 
-            // Wait for TTL to expire
             Thread.sleep(150)
 
-            // Normal get should return null and remove the entry
             assertNull(cache.getListings("test-key"))
-
-            // Now stale get should also return null (entry was removed)
             assertNull(cache.getListingsStale("test-key"))
         }
     }
@@ -159,7 +146,6 @@ class SchematicCacheTest {
 
         @Test
         fun `preserves non-expired entries`() {
-            // Use longer TTL cache
             val longCache = SchematicCache(ttlMs = 10000)
             longCache.putListings("key1", listOf(createSchematic("1", "Test")), createMeta(1, 1, 1))
 
@@ -222,9 +208,7 @@ class SchematicCacheTest {
         fun `tracks hits and misses`() {
             cache.putListings("key1", listOf(createSchematic("1", "Test")), createMeta(1, 1, 1))
 
-            // One hit
             cache.getListings("key1")
-            // Two misses
             cache.getListings("nonexistent1")
             cache.getListings("nonexistent2")
 
@@ -267,7 +251,6 @@ class SchematicCacheTest {
         }
     }
 
-    // Helper methods
     private fun createSchematic(id: String, name: String): JsonObject {
         return JsonObject().apply {
             addProperty("short_id", id)

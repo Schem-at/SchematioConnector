@@ -1,4 +1,4 @@
-package io.schemat.schematioConnector.utils
+package io.schemat.connector.core.offline
 
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
@@ -6,9 +6,6 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
-/**
- * Tests for OfflineMode connectivity management.
- */
 @DisplayName("OfflineMode")
 class OfflineModeTest {
 
@@ -47,19 +44,16 @@ class OfflineModeTest {
 
         @Test
         fun `resets failure counter`() {
-            // Record some failures
             offlineMode.recordFailure()
             offlineMode.recordFailure()
 
             offlineMode.recordSuccess()
 
-            // Should be back to online state
             assertEquals(OfflineMode.State.ONLINE, offlineMode.getState())
         }
 
         @Test
         fun `exits offline mode`() {
-            // Force into offline mode
             repeat(OfflineMode.FAILURE_THRESHOLD) {
                 offlineMode.recordFailure()
             }
@@ -91,7 +85,6 @@ class OfflineModeTest {
                 assertFalse(enteredOffline, "Should not enter offline before threshold")
             }
 
-            // This should trigger offline mode
             val enteredOffline = offlineMode.recordFailure()
             assertTrue(enteredOffline)
             assertTrue(offlineMode.isOffline())
@@ -100,12 +93,10 @@ class OfflineModeTest {
 
         @Test
         fun `returns false after already in offline mode`() {
-            // Enter offline mode
             repeat(OfflineMode.FAILURE_THRESHOLD) {
                 offlineMode.recordFailure()
             }
 
-            // Additional failures should return false
             val result = offlineMode.recordFailure()
             assertFalse(result, "Should return false when already offline")
         }
@@ -122,26 +113,12 @@ class OfflineModeTest {
 
         @Test
         fun `returns true when offline and within backoff period`() {
-            // Enter offline mode
             repeat(OfflineMode.FAILURE_THRESHOLD) {
                 offlineMode.recordFailure()
             }
             offlineMode.recordAttempt()
 
-            // Should skip immediately after attempt
             assertTrue(offlineMode.shouldSkipApiCall())
-        }
-
-        @Test
-        fun `returns false after backoff period expires`() {
-            // Enter offline mode
-            repeat(OfflineMode.FAILURE_THRESHOLD) {
-                offlineMode.recordFailure()
-            }
-            offlineMode.recordAttempt()
-
-            // Wait for minimum backoff (5 seconds is too long for unit test, so we skip this)
-            // In real tests, we'd mock the time or use a shorter backoff
         }
     }
 
@@ -168,14 +145,12 @@ class OfflineModeTest {
 
         @Test
         fun `forceOnline resets retry delay`() {
-            // Enter offline and increase backoff
             repeat(OfflineMode.FAILURE_THRESHOLD + 5) {
                 offlineMode.recordFailure()
             }
 
             offlineMode.forceOnline()
 
-            // After forcing online, wait time should be 0
             assertEquals(0, offlineMode.getTimeUntilRetryMs())
         }
     }
@@ -218,7 +193,6 @@ class OfflineModeTest {
 
         @Test
         fun `returns to initial state`() {
-            // Put into offline mode with failures
             repeat(OfflineMode.FAILURE_THRESHOLD + 3) {
                 offlineMode.recordFailure()
             }
@@ -237,7 +211,6 @@ class OfflineModeTest {
 
         @Test
         fun `initial retry delay is minimum`() {
-            // Enter offline mode
             repeat(OfflineMode.FAILURE_THRESHOLD) {
                 offlineMode.recordFailure()
             }
@@ -248,12 +221,10 @@ class OfflineModeTest {
 
         @Test
         fun `retry delay increases with failures`() {
-            // Enter offline mode
             repeat(OfflineMode.FAILURE_THRESHOLD) {
                 offlineMode.recordFailure()
             }
 
-            // Additional failures while offline should increase backoff
             offlineMode.recordFailure()
             val stats1 = offlineMode.getStats()
             val delay1 = stats1["currentRetryDelaySeconds"] as Long
@@ -267,12 +238,10 @@ class OfflineModeTest {
 
         @Test
         fun `retry delay is capped at maximum`() {
-            // Enter offline mode
             repeat(OfflineMode.FAILURE_THRESHOLD) {
                 offlineMode.recordFailure()
             }
 
-            // Many additional failures
             repeat(20) {
                 offlineMode.recordFailure()
             }

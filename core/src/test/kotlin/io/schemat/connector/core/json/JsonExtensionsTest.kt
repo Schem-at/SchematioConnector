@@ -1,4 +1,4 @@
-package io.schemat.schematioConnector.utils
+package io.schemat.connector.core.json
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonNull
@@ -9,9 +9,6 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
-/**
- * Tests for JsonExtensions safe JSON parsing utilities.
- */
 @DisplayName("JsonExtensions")
 class JsonExtensionsTest {
 
@@ -245,15 +242,6 @@ class JsonExtensionsTest {
         @Test
         fun `returns null for invalid JSON`() {
             assertNull(parseJsonSafe("not json"))
-        }
-
-        @Test
-        fun `returns null for JSON array at root`() {
-            // parseJsonSafe expects an object, not array
-            val result = parseJsonSafe("""[1, 2, 3]""")
-            // This will throw or return null depending on Gson behavior
-            // Gson actually parses this as JsonArray, which causes ClassCastException
-            // Our function should catch this and return null
         }
     }
 

@@ -1,4 +1,4 @@
-package io.schemat.schematioConnector.utils
+package io.schemat.connector.core.http
 
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
@@ -8,18 +8,9 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import java.util.Date
 
-/**
- * Tests for JWT token parsing and permission checking.
- *
- * These tests verify the logic used in HttpUtil for checking
- * token permissions without requiring network calls.
- */
+@DisplayName("JWT Parsing and Permission Checking")
 class JwtParsingTest {
 
-    /**
-     * Check if a JWT token has a specific permission claim.
-     * Mirrors the logic in HttpUtil.hasPermission()
-     */
     private fun hasPermission(token: String, permission: String): Boolean {
         return try {
             val decodedJWT = JWT.decode(token)
@@ -30,16 +21,31 @@ class JwtParsingTest {
         }
     }
 
-    /**
-     * Create a test JWT token with given permissions.
-     * Note: In production, tokens are signed by the server.
-     * For testing, we create unsigned tokens (JWT.decode works on unsigned tokens).
-     */
+    private fun canManagePasswords(token: String): Boolean {
+        return hasPermission(token, "canManagePasswords")
+    }
+
     private fun createTestToken(permissions: List<String>): String {
         return JWT.create()
             .withClaim("permissions", permissions)
-            .withExpiresAt(Date(System.currentTimeMillis() + 3600000)) // 1 hour
-            .sign(Algorithm.none()) // Unsigned for testing
+            .withExpiresAt(Date(System.currentTimeMillis() + 3600000))
+            .sign(Algorithm.none())
+    }
+
+    private fun createTokenWithClaims(claims: Map<String, Any>): String {
+        val builder = JWT.create()
+        for ((key, value) in claims) {
+            when (value) {
+                is String -> builder.withClaim(key, value)
+                is Int -> builder.withClaim(key, value)
+                is Boolean -> builder.withClaim(key, value)
+                is List<*> -> {
+                    @Suppress("UNCHECKED_CAST")
+                    builder.withClaim(key, value as List<String>)
+                }
+            }
+        }
+        return builder.sign(Algorithm.none())
     }
 
     @Nested
@@ -92,6 +98,40 @@ class JwtParsingTest {
     }
 
     @Nested
+    @DisplayName("canManagePasswords")
+    inner class CanManagePasswordsTests {
+
+        @Test
+        fun `returns true when permission is present`() {
+            val token = createTestToken(listOf("canManagePasswords"))
+            assertTrue(canManagePasswords(token))
+        }
+
+        @Test
+        fun `returns true when permission is among others`() {
+            val token = createTestToken(listOf("canUpload", "canManagePasswords", "canDownload"))
+            assertTrue(canManagePasswords(token))
+        }
+
+        @Test
+        fun `returns false when permission is missing`() {
+            val token = createTestToken(listOf("canUpload", "canDownload"))
+            assertFalse(canManagePasswords(token))
+        }
+
+        @Test
+        fun `returns false for empty permissions`() {
+            val token = createTestToken(emptyList())
+            assertFalse(canManagePasswords(token))
+        }
+
+        @Test
+        fun `returns false for invalid token`() {
+            assertFalse(canManagePasswords("not.a.valid.token"))
+        }
+    }
+
+    @Nested
     @DisplayName("Token Structure")
     inner class TokenStructureTests {
 
@@ -111,12 +151,44 @@ class JwtParsingTest {
 
         @Test
         fun `token without permissions claim returns false for any permission`() {
-            // Create token without permissions claim
             val token = JWT.create()
                 .withClaim("user_id", "12345")
                 .sign(Algorithm.none())
 
             assertFalse(hasPermission(token, "canManagePasswords"))
+        }
+
+        @Test
+        fun `token with no claims is valid but has no permissions`() {
+            val token = JWT.create().sign(Algorithm.none())
+            assertFalse(canManagePasswords(token))
+        }
+
+        @Test
+        fun `token with other claims but no permissions`() {
+            val token = createTokenWithClaims(mapOf(
+                "user_id" to "12345",
+                "community_id" to "abc"
+            ))
+            assertFalse(hasPermission(token, "anyPermission"))
+        }
+
+        @Test
+        fun `token with boolean permissions claim returns false`() {
+            val token = createTokenWithClaims(mapOf(
+                "permissions" to true
+            ))
+            assertFalse(hasPermission(token, "anything"))
+        }
+
+        @Test
+        fun `expired token still readable for permissions`() {
+            val token = JWT.create()
+                .withClaim("permissions", listOf("canManagePasswords"))
+                .withExpiresAt(Date(System.currentTimeMillis() - 3600000))
+                .sign(Algorithm.none())
+
+            assertTrue(canManagePasswords(token))
         }
     }
 

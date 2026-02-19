@@ -1,6 +1,7 @@
 package io.schemat.schematioConnector.commands
 
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import io.papermc.paper.dialog.Dialog
 import io.papermc.paper.registry.data.dialog.ActionButton
 import io.papermc.paper.registry.data.dialog.DialogBase
@@ -8,12 +9,9 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction
 import io.papermc.paper.registry.data.dialog.body.DialogBody
 import io.papermc.paper.registry.data.dialog.input.DialogInput
 import io.papermc.paper.registry.data.dialog.type.DialogType
-import io.schemat.connector.core.json.parseJsonSafe
-import io.schemat.connector.core.json.safeGetString
 import io.schemat.connector.core.validation.InputValidator
 import io.schemat.connector.core.validation.ValidationResult
 import io.schemat.schematioConnector.SchematioConnector
-import io.schemat.schematioConnector.utils.ProgressBarUtil
 import io.schemat.schematioConnector.utils.UIMode
 import io.schemat.schematioConnector.utils.WorldEditUtil
 import kotlinx.coroutines.runBlocking
@@ -21,7 +19,6 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
-import org.apache.http.util.EntityUtils
 import org.bukkit.entity.Player
 import java.io.EOFException
 
@@ -40,8 +37,7 @@ import java.io.EOFException
  */
 class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
-    private val SCHEMAT_DOWNLOAD_URL_ENDPOINT = "/schematics/"
-    private val QUICKSHARE_ENDPOINT = "/plugin/quick-shares"
+    private val DOWNLOAD_ENDPOINT = "/schematics"
 
     override val name = "download"
     override val permission = "schematio.download"
@@ -104,7 +100,6 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
         val input = args[0]
 
-        // Route based on input type
         if (isQuickShareInput(input)) {
             val codeValidation = InputValidator.validateQuickShareCode(input)
             if (codeValidation is ValidationResult.Invalid) {
@@ -113,7 +108,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
             }
             val accessCode = codeValidation.getOrNull()!!
             val password = args.getOrNull(1)?.takeIf { it.isNotBlank() }
-            downloadQuickShare(player, accessCode, password)
+            executeDownload(player, accessCode, "schem", password, UIMode.CHAT)
             return true
         }
 
@@ -133,7 +128,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         }
         val downloadFormat = (formatResult as ValidationResult.Valid).value
 
-        downloadSchematic(player, schematicId, downloadFormat, UIMode.CHAT)
+        executeDownload(player, schematicId, downloadFormat, null, UIMode.CHAT)
         return true
     }
 
@@ -149,7 +144,6 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
         val input = args[0]
 
-        // Route based on input type
         if (isQuickShareInput(input)) {
             val codeValidation = InputValidator.validateQuickShareCode(input)
             if (codeValidation is ValidationResult.Invalid) {
@@ -158,7 +152,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
             }
             val accessCode = codeValidation.getOrNull()!!
             val password = args.getOrNull(1)?.takeIf { it.isNotBlank() }
-            downloadQuickShare(player, accessCode, password, showPasswordDialogOn401 = true)
+            executeDownload(player, accessCode, "schem", password, UIMode.DIALOG)
             return true
         }
 
@@ -178,8 +172,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         }
         val downloadFormat = (formatResult as ValidationResult.Valid).value
 
-        // Use CHAT mode for result display - dialogs are only for input, not confirmation
-        downloadSchematic(player, schematicId, downloadFormat, UIMode.CHAT)
+        executeDownload(player, schematicId, downloadFormat, null, UIMode.DIALOG)
         return true
     }
 
@@ -246,11 +239,18 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
     }
 
     // ===========================================
-    // SCHEMATIC DOWNLOAD (by ID)
+    // UNIFIED DOWNLOAD (schematic ID or quick share code)
     // ===========================================
 
-    private fun downloadSchematic(player: Player, schematicId: String, format: String, uiMode: UIMode) {
+    private fun executeDownload(
+        player: Player,
+        id: String,
+        format: String,
+        password: String?,
+        uiMode: UIMode
+    ) {
         val audience = player.audience()
+        val isQuickShare = isQuickShareInput(id)
 
         // Check rate limit
         val rateLimitResult = plugin.rateLimiter.tryAcquire(player.uniqueId)
@@ -260,123 +260,19 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
             return
         }
 
-        val downloadUrl = "$SCHEMAT_DOWNLOAD_URL_ENDPOINT$schematicId/download"
-        val requestBody = """{"format":"$format"}"""
-
-        audience.sendMessage(Component.text("Downloading schematic in $format format...").color(NamedTextColor.YELLOW))
-        val progressBar = ProgressBarUtil.createProgressBar(player, "Downloading Schematic")
-
         val httpUtil = plugin.httpUtil
         if (httpUtil == null) {
-            ProgressBarUtil.removeProgressBar(player, progressBar)
             audience.sendMessage(Component.text("API not connected. Run /schematio reload after configuring token.").color(NamedTextColor.RED))
             return
         }
 
-        plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
-            try {
-                val response = runBlocking {
-                    httpUtil.sendGetRequestWithBodyFullResponse(downloadUrl, requestBody) { progress ->
-                        ProgressBarUtil.updateProgressBar(progressBar, progress)
-                    }
-                }
-
-                plugin.server.scheduler.runTask(plugin, Runnable {
-                    ProgressBarUtil.removeProgressBar(player, progressBar)
-
-                    if (response == null) {
-                        audience.sendMessage(Component.text("Could not connect to schemat.io API").color(NamedTextColor.RED))
-                        audience.sendMessage(Component.text("The service may be temporarily unavailable").color(NamedTextColor.GRAY))
-                        return@Runnable
-                    }
-
-                    val statusCode = response.statusLine.statusCode
-                    if (statusCode != 200) {
-                        audience.sendMessage(Component.text("Error downloading schematic. Status code: $statusCode").color(NamedTextColor.RED))
-                        return@Runnable
-                    }
-
-                    val entity = response.entity
-                    if (entity == null) {
-                        audience.sendMessage(Component.text("Received empty response from server.").color(NamedTextColor.RED))
-                        return@Runnable
-                    }
-
-                    try {
-                        val schematicData = EntityUtils.toByteArray(entity)
-                        plugin.logger.info("Downloaded schematic data size: ${schematicData.size} bytes")
-
-                        val clipboard = WorldEditUtil.byteArrayToClipboard(schematicData)
-                        if (clipboard == null) {
-                            audience.sendMessage(Component.text("Error parsing schematic data").color(NamedTextColor.RED))
-                            return@Runnable
-                        }
-
-                        WorldEditUtil.setClipboard(player, clipboard)
-
-                        // Show result based on UI mode
-                        when (uiMode) {
-                            UIMode.CHAT -> showChatSuccess(player, schematicId, format)
-                            UIMode.DIALOG -> showDialogSuccess(player, schematicId, format)
-                        }
-                    } catch (e: EOFException) {
-                        plugin.logger.warning("EOFException occurred while parsing schematic data: ${e.message}")
-                        audience.sendMessage(Component.text("Error: The downloaded schematic data appears to be incomplete or corrupted.").color(NamedTextColor.RED))
-                    } catch (e: Exception) {
-                        plugin.logger.warning("Error processing schematic: ${e.message}")
-                        audience.sendMessage(Component.text("Error processing schematic data.").color(NamedTextColor.RED))
-                    }
-                })
-            } catch (e: Exception) {
-                plugin.server.scheduler.runTask(plugin, Runnable {
-                    ProgressBarUtil.removeProgressBar(player, progressBar)
-                    val msg = e.message ?: "Unknown error"
-                    when {
-                        msg.contains("Connection refused") || msg.contains("timed out") -> {
-                            audience.sendMessage(Component.text("schemat.io API is currently unavailable").color(NamedTextColor.RED))
-                            audience.sendMessage(Component.text("Please try again later").color(NamedTextColor.GRAY))
-                        }
-                        else -> {
-                            plugin.logger.warning("Download error: $msg")
-                            audience.sendMessage(Component.text("Error downloading schematic. Please try again.").color(NamedTextColor.RED))
-                        }
-                    }
-                })
-            }
-        })
-    }
-
-    // ===========================================
-    // QUICK SHARE DOWNLOAD (by code/URL)
-    // ===========================================
-
-    private fun downloadQuickShare(
-        player: Player,
-        accessCode: String,
-        password: String?,
-        showPasswordDialogOn401: Boolean = false
-    ) {
-        val audience = player.audience()
-
-        // Check rate limit
-        val remaining = plugin.rateLimiter.tryAcquire(player.uniqueId)
-        if (remaining == null) {
-            val waitTime = plugin.rateLimiter.getWaitTimeSeconds(player.uniqueId)
-            audience.sendMessage(Component.text("Rate limited. Please wait ${waitTime}s before making another request.").color(NamedTextColor.RED))
-            return
-        }
-
-        val httpUtil = plugin.httpUtil
-        if (httpUtil == null) {
-            audience.sendMessage(Component.text("Not connected to API. Set token first.").color(NamedTextColor.RED))
-            return
-        }
-
-        audience.sendMessage(Component.text("Downloading quick share...").color(NamedTextColor.YELLOW))
+        val label = if (isQuickShare) "quick share" else "schematic"
+        audience.sendMessage(Component.text("Downloading $label...").color(NamedTextColor.YELLOW))
 
         plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
             try {
                 val requestBody = JsonObject().apply {
+                    addProperty("format", format)
                     addProperty("player_uuid", player.uniqueId.toString())
                     if (!password.isNullOrBlank()) {
                         addProperty("password", password)
@@ -385,7 +281,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
                 val (statusCode, bytes, errorBody) = runBlocking {
                     httpUtil.sendPostRequestForBinary(
-                        "$QUICKSHARE_ENDPOINT/$accessCode/download",
+                        "$DOWNLOAD_ENDPOINT/$id/download",
                         requestBody.toString()
                     )
                 }
@@ -394,52 +290,77 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                     when (statusCode) {
                         200 -> {
                             if (bytes != null) {
-                                val clipboard = WorldEditUtil.byteArrayToClipboard(bytes)
-                                if (clipboard != null) {
-                                    WorldEditUtil.setClipboard(player, clipboard)
-                                    audience.sendMessage(Component.text("Quick share downloaded to clipboard!").color(NamedTextColor.GREEN))
-                                    audience.sendMessage(Component.text("Use //paste to place it.").color(NamedTextColor.GRAY))
-                                } else {
-                                    audience.sendMessage(Component.text("Failed to parse schematic data.").color(NamedTextColor.RED))
+                                try {
+                                    val clipboard = WorldEditUtil.byteArrayToClipboard(bytes)
+                                    if (clipboard != null) {
+                                        WorldEditUtil.setClipboard(player, clipboard)
+                                        when (uiMode) {
+                                            UIMode.CHAT -> showChatSuccess(player, id, format)
+                                            UIMode.DIALOG -> showDialogSuccess(player, id, format)
+                                        }
+                                    } else {
+                                        audience.sendMessage(Component.text("Error parsing schematic data.").color(NamedTextColor.RED))
+                                    }
+                                } catch (e: EOFException) {
+                                    plugin.logger.warning("EOFException while parsing schematic data: ${e.message}")
+                                    audience.sendMessage(Component.text("Error: Downloaded data appears incomplete or corrupted.").color(NamedTextColor.RED))
+                                } catch (e: Exception) {
+                                    plugin.logger.warning("Error processing schematic: ${e.message}")
+                                    audience.sendMessage(Component.text("Error processing schematic data.").color(NamedTextColor.RED))
                                 }
                             } else {
                                 audience.sendMessage(Component.text("No data received.").color(NamedTextColor.RED))
                             }
                         }
                         401 -> {
-                            if (showPasswordDialogOn401) {
-                                showPasswordDialog(player, accessCode)
+                            if (uiMode == UIMode.DIALOG) {
+                                showPasswordDialog(player, id)
                             } else {
-                                audience.sendMessage(Component.text("This share requires a password.").color(NamedTextColor.RED))
-                                audience.sendMessage(Component.text("Usage: /schematio download $accessCode <password>").color(NamedTextColor.GRAY))
+                                audience.sendMessage(Component.text("This download requires a password.").color(NamedTextColor.RED))
+                                audience.sendMessage(Component.text("Usage: /schematio download $id <password>").color(NamedTextColor.GRAY))
                             }
                         }
                         403 -> {
-                            val msg = parseQuickShareError(errorBody) ?: "Access denied"
+                            val msg = parseErrorMessage(errorBody) ?: "Access denied"
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         404 -> {
-                            audience.sendMessage(Component.text("Quick share not found.").color(NamedTextColor.RED))
+                            audience.sendMessage(Component.text("Not found. Check the ID or code and try again.").color(NamedTextColor.RED))
                         }
                         410 -> {
-                            val msg = parseQuickShareError(errorBody) ?: "This share has expired or been revoked"
+                            val msg = parseErrorMessage(errorBody) ?: "This download has expired or been revoked"
+                            audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
+                        }
+                        422 -> {
+                            val msg = parseErrorMessage(errorBody) ?: "Invalid request"
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         429 -> {
-                            val msg = parseQuickShareError(errorBody) ?: "Download limit reached or rate limited"
+                            val msg = parseErrorMessage(errorBody) ?: "Rate limited. Please try again later."
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         -1 -> {
-                            audience.sendMessage(Component.text("Connection failed.").color(NamedTextColor.RED))
+                            audience.sendMessage(Component.text("Could not connect to schemat.io API").color(NamedTextColor.RED))
+                            audience.sendMessage(Component.text("The service may be temporarily unavailable").color(NamedTextColor.GRAY))
                         }
                         else -> {
-                            audience.sendMessage(Component.text("Error downloading share (code: $statusCode)").color(NamedTextColor.RED))
+                            audience.sendMessage(Component.text("Error downloading (code: $statusCode)").color(NamedTextColor.RED))
                         }
                     }
                 })
             } catch (e: Exception) {
                 plugin.server.scheduler.runTask(plugin, Runnable {
-                    audience.sendMessage(Component.text("Error: ${e.message}").color(NamedTextColor.RED))
+                    val msg = e.message ?: "Unknown error"
+                    when {
+                        msg.contains("Connection refused") || msg.contains("timed out") -> {
+                            audience.sendMessage(Component.text("schemat.io API is currently unavailable").color(NamedTextColor.RED))
+                            audience.sendMessage(Component.text("Please try again later").color(NamedTextColor.GRAY))
+                        }
+                        else -> {
+                            plugin.logger.warning("Download error: $msg")
+                            audience.sendMessage(Component.text("Error downloading. Please try again.").color(NamedTextColor.RED))
+                        }
+                    }
                 })
             }
         })
@@ -498,9 +419,14 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         }
     }
 
-    private fun parseQuickShareError(errorBody: String?): String? {
-        val json = parseJsonSafe(errorBody) ?: return null
-        return json.safeGetString("message") ?: json.safeGetString("error")
+    private fun parseErrorMessage(errorBody: String?): String? {
+        if (errorBody.isNullOrBlank()) return null
+        return try {
+            val json = JsonParser.parseString(errorBody).asJsonObject
+            json.get("message")?.asString ?: json.get("error")?.asString
+        } catch (_: Exception) {
+            null
+        }
     }
 
     // ===========================================
@@ -513,7 +439,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         audience.sendMessage(Component.text("Use //paste to place it.").color(NamedTextColor.GRAY))
     }
 
-    private fun showDialogSuccess(player: Player, schematicId: String, format: String) {
+    private fun showDialogSuccess(player: Player, id: String, format: String) {
         val title = Component.text("Download Complete!")
             .color(NamedTextColor.GREEN)
             .decorate(TextDecoration.BOLD)
@@ -528,13 +454,16 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
         val actionButtons = mutableListOf<ActionButton>()
 
-        val schematicUrl = "${plugin.baseUrl}/schematics/$schematicId"
-        actionButtons.add(
-            ActionButton.builder(Component.text("View on Web").color(NamedTextColor.AQUA))
-                .width(120)
-                .action(DialogAction.staticAction(ClickEvent.openUrl(schematicUrl)))
-                .build()
-        )
+        // Only show "View on Web" for regular schematics, not quick shares
+        if (!isQuickShareInput(id)) {
+            val schematicUrl = "${plugin.baseUrl}/schematics/$id"
+            actionButtons.add(
+                ActionButton.builder(Component.text("View on Web").color(NamedTextColor.AQUA))
+                    .width(120)
+                    .action(DialogAction.staticAction(ClickEvent.openUrl(schematicUrl)))
+                    .build()
+            )
+        }
 
         actionButtons.add(
             ActionButton.builder(Component.text("Close").color(NamedTextColor.GRAY))
@@ -556,7 +485,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
             }
             player.showDialog(dialog)
         } catch (e: Exception) {
-            showChatSuccess(player, schematicId, format)
+            showChatSuccess(player, id, format)
         }
     }
 

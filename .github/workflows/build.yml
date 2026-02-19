@@ -2,33 +2,13 @@ name: Build
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [master, main]
   pull_request:
-    branches: [ master, main ]
+    branches: [master, main]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        minecraft_version:
-          - "1.21.8"
-          - "1.21.11"
-        include:
-          # 1.21.8 configuration
-          - minecraft_version: "1.21.8"
-            paper_api: "1.21.8-R0.1-SNAPSHOT"
-            fabric_api: "0.136.0+1.21.8"
-            fabric_loader: "0.16.14"
-            yarn_mappings: "1.21.8+build.1"
-
-          # 1.21.11 configuration
-          - minecraft_version: "1.21.11"
-            paper_api: "1.21.11-R0.1-SNAPSHOT"
-            fabric_api: "0.138.0+1.21.11"
-            fabric_loader: "0.16.14"
-            yarn_mappings: "1.21.11+build.1"
 
     steps:
       - name: Checkout
@@ -43,43 +23,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Build
+        run: ./gradlew build
 
-      - name: Build with Gradle
-        run: |
-          ./gradlew build \
-            -Pfabric_minecraft_version=${{ matrix.minecraft_version }} \
-            -Pfabric_api_version=${{ matrix.fabric_api }} \
-            -Pfabric_loader_version=${{ matrix.fabric_loader }} \
-            -Pfabric_yarn_mappings=${{ matrix.yarn_mappings }} \
-            -Pbukkit_target_version=${{ matrix.minecraft_version }}
+      - name: Run tests
+        run: ./gradlew :core:test
 
-      - name: Upload Bukkit artifact
+      - name: Upload Paper artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SchematioConnector-Bukkit-${{ matrix.minecraft_version }}
-          path: bukkit/build/libs/*.jar
+          name: SchematioConnector-Paper
+          path: bukkit/build/libs/*-all.jar
 
       - name: Upload Fabric artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SchematioConnector-Fabric-${{ matrix.minecraft_version }}
-          path: fabric/build/libs/SchematioConnector-Fabric-*.jar
+          name: SchematioConnector-Fabric
+          path: fabric/build/libs/SchematioConnector-*.jar
           if-no-files-found: warn
-
-  # Aggregate all artifacts into a single release-ready bundle
-  package:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Upload combined artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: SchematioConnector-All
-          path: artifacts/**/*.jar

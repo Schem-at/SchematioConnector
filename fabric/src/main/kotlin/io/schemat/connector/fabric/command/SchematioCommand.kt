@@ -19,10 +19,9 @@ import net.minecraft.server.command.CommandManager.argument
 import net.minecraft.server.command.CommandManager.literal
 import net.minecraft.server.command.ServerCommandSource
 import net.minecraft.text.Text
-import org.apache.http.HttpResponse
 import org.apache.http.entity.ContentType
-import org.apache.http.entity.mime.MultipartEntityBuilder
 import org.apache.http.util.EntityUtils
+import org.apache.http.entity.mime.MultipartEntityBuilder
 import java.util.Base64
 
 /**
@@ -387,70 +386,84 @@ object SchematioCommand {
         val nonFlagParts = parts.filter { !it.startsWith("--") }
         val id = nonFlagParts.firstOrNull() ?: ""
 
-        // Detect quickshare input (URLs, qs_ prefix)
-        if (id.startsWith("http://") || id.startsWith("https://") || id.startsWith("qs_")) {
+        val isQuickShare = id.startsWith("http://") || id.startsWith("https://") || id.startsWith("qs_")
+        var password: String? = null
+        val downloadId: String
+
+        if (isQuickShare) {
             val codeValidation = InputValidator.validateQuickShareCode(id)
             if (codeValidation is ValidationResult.Invalid) {
                 source.sendMessage(Text.literal("\u00a7c${codeValidation.message}"))
                 return 0
             }
-            val accessCode = (codeValidation as ValidationResult.Valid).value
-            val password = nonFlagParts.getOrNull(1)?.takeIf { it.isNotBlank() }
-            return executeQuickShareGet(ctx, mod, accessCode, password, isDialog)
+            downloadId = (codeValidation as ValidationResult.Valid).value
+            password = nonFlagParts.getOrNull(1)?.takeIf { it.isNotBlank() }
+        } else {
+            downloadId = id
         }
 
-        source.sendMessage(Text.literal("\u00a77Downloading schematic \u00a7f$id\u00a77..."))
+        val label = if (isQuickShare) "quick share" else "schematic"
+        source.sendMessage(Text.literal("\u00a77Downloading $label \u00a7f$downloadId\u00a77..."))
 
         mod.platformAdapter.runAsync {
             try {
-                val requestBody = """{"format":"schem"}"""
-                val response: HttpResponse? = kotlinx.coroutines.runBlocking {
-                    http.sendGetRequestWithBodyFullResponse(
-                        "/schematics/$id/download", requestBody
-                    ) { _ -> }
+                val requestBody = JsonObject().apply {
+                    addProperty("format", "schem")
+                    addProperty("player_uuid", player.uuidAsString)
+                    if (!password.isNullOrBlank()) {
+                        addProperty("password", password)
+                    }
                 }
 
-                if (response == null) {
+                val (statusCode, bytes, errorBody) = kotlinx.coroutines.runBlocking {
+                    http.sendPostRequestForBinary(
+                        "/schematics/$downloadId/download",
+                        requestBody.toString()
+                    )
+                }
+
+                if (statusCode == 200 && bytes != null) {
+                    val clipboard = FabricWorldEditUtil.byteArrayToClipboard(bytes)
+
                     mod.platformAdapter.runOnMainThread {
-                        source.sendMessage(Text.literal("\u00a7cFailed to download schematic."))
-                    }
-                    return@runAsync
-                }
+                        if (clipboard != null) {
+                            FabricWorldEditUtil.setClipboard(player, clipboard)
 
-                val statusCode = response.statusLine.statusCode
-                if (statusCode != 200) {
+                            if (isDialog && !isQuickShare) {
+                                val dialogDef = DialogBuilders.downloadSuccessDialog(downloadId, "schem", mod.baseUrl)
+                                FabricDialogRenderer.showDialog(player, dialogDef)
+                            } else {
+                                source.sendMessage(Text.literal("\u00a7a${label.replaceFirstChar { it.uppercase() }} downloaded to clipboard!"))
+                                source.sendMessage(Text.literal("\u00a77Use \u00a7e//paste\u00a77 to place it."))
+                            }
+                        } else {
+                            source.sendMessage(Text.literal("\u00a7cFailed to parse schematic data."))
+                        }
+                    }
+                } else {
                     mod.platformAdapter.runOnMainThread {
-                        source.sendMessage(Text.literal("\u00a7cDownload failed (status $statusCode)."))
-                    }
-                    return@runAsync
-                }
-
-                val bytes = EntityUtils.toByteArray(response.entity)
-                if (bytes == null || bytes.isEmpty()) {
-                    mod.platformAdapter.runOnMainThread {
-                        source.sendMessage(Text.literal("\u00a7cFailed to read schematic data."))
-                    }
-                    return@runAsync
-                }
-
-                // Parse schematic on async thread
-                val clipboard = FabricWorldEditUtil.byteArrayToClipboard(bytes)
-
-                mod.platformAdapter.runOnMainThread {
-                    if (clipboard == null) {
-                        source.sendMessage(Text.literal("\u00a7cFailed to parse schematic data."))
-                        return@runOnMainThread
-                    }
-
-                    FabricWorldEditUtil.setClipboard(player, clipboard)
-
-                    if (isDialog) {
-                        // Show success dialog
-                        val dialogDef = DialogBuilders.downloadSuccessDialog(id, "schem", mod.baseUrl)
-                        FabricDialogRenderer.showDialog(player, dialogDef)
-                    } else {
-                        source.sendMessage(Text.literal("\u00a7aSchematic loaded into clipboard! (${bytes.size} bytes)"))
-                        source.sendMessage(Text.literal("\u00a77Use \u00a7e//paste\u00a77 to place it."))
+                        val errorMsg = when (statusCode) {
+                            401 -> {
+                                if (password.isNullOrBlank() && isDialog) {
+                                    val dialogDef = DialogBuilders.quickShareGetPasswordDialog(downloadId)
+                                    FabricDialogRenderer.showDialog(player, dialogDef)
+                                    return@runOnMainThread
+                                }
+                                if (password.isNullOrBlank()) {
+                                    "This download requires a password. Use: /schematio download $downloadId <password>"
+                                } else {
+                                    "Incorrect password."
+                                }
+                            }
+                            403 -> parseErrorMessage(errorBody) ?: "Access denied"
+                            404 -> "Not found. Check the ID or code and try again."
+                            410 -> parseErrorMessage(errorBody) ?: "This download has expired or been revoked."
+                            422 -> parseErrorMessage(errorBody) ?: "Invalid request."
+                            429 -> parseErrorMessage(errorBody) ?: "Rate limited. Please try again later."
+                            -1 -> "Connection failed."
+                            else -> "Error (code: $statusCode)"
+                        }
+                        source.sendMessage(Text.literal("\u00a7c$errorMsg"))
                     }
                 }
             } catch (e: Exception) {
@@ -682,123 +695,6 @@ object SchematioCommand {
                             403 -> "Permission denied"
                             413 -> "Schematic too large (max 10MB)"
                             -1 -> "Connection failed"
-                            else -> "Error (code: $statusCode)"
-                        }
-                        source.sendMessage(Text.literal("\u00a7c$errorMsg"))
-                    }
-                }
-            } catch (e: Exception) {
-                mod.platformAdapter.runOnMainThread {
-                    source.sendMessage(Text.literal("\u00a7cError: ${e.message}"))
-                }
-            }
-        }
-
-        return 1
-    }
-
-    // ===== Quick Share Get =====
-
-    private fun showQuickShareGetInputDialog(ctx: CommandContext<ServerCommandSource>, mod: SchematioConnectorMod): Int {
-        val source = ctx.source
-        val player = source.player
-
-        if (player == null) {
-            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
-            return 0
-        }
-
-        val dialogDef = DialogBuilders.quickShareGetInputDialog()
-        FabricDialogRenderer.showDialog(player, dialogDef)
-        return 1
-    }
-
-    private fun executeQuickShareGet(
-        ctx: CommandContext<ServerCommandSource>,
-        mod: SchematioConnectorMod,
-        rawCode: String,
-        password: String?,
-        isDialog: Boolean
-    ): Int {
-        val source = ctx.source
-        val player = source.player
-
-        if (player == null) {
-            source.sendMessage(Text.literal("\u00a7cThis command must be run by a player."))
-            return 0
-        }
-
-        val http = mod.httpUtil
-        if (http == null) {
-            source.sendMessage(Text.literal("\u00a7cNot connected to API. Set token first."))
-            return 0
-        }
-
-        if (!FabricWorldEditUtil.isAvailable()) {
-            source.sendMessage(Text.literal("\u00a7cWorldEdit is not installed. Install WorldEdit to use quickshareget."))
-            return 0
-        }
-
-        // Validate and extract access code (handles URLs too)
-        val codeValidation = InputValidator.validateQuickShareCode(rawCode)
-        if (codeValidation is ValidationResult.Invalid) {
-            source.sendMessage(Text.literal("\u00a7c${codeValidation.message}"))
-            return 0
-        }
-        val accessCode = (codeValidation as ValidationResult.Valid).value
-
-        source.sendMessage(Text.literal("\u00a77Downloading quick share..."))
-
-        mod.platformAdapter.runAsync {
-            try {
-                val requestBody = JsonObject().apply {
-                    addProperty("player_uuid", player.uuidAsString)
-                    if (!password.isNullOrBlank()) {
-                        addProperty("password", password)
-                    }
-                }
-
-                val (statusCode, bytes, errorBody) = kotlinx.coroutines.runBlocking {
-                    http.sendPostRequestForBinary(
-                        "/plugin/quick-shares/$accessCode/download",
-                        requestBody.toString()
-                    )
-                }
-
-                if (statusCode == 200 && bytes != null) {
-                    // Parse schematic on async thread
-                    val clipboard = FabricWorldEditUtil.byteArrayToClipboard(bytes)
-
-                    mod.platformAdapter.runOnMainThread {
-                        if (clipboard != null) {
-                            FabricWorldEditUtil.setClipboard(player, clipboard)
-                            source.sendMessage(Text.literal("\u00a7aQuick share downloaded to clipboard!"))
-                            source.sendMessage(Text.literal("\u00a77Use \u00a7e//paste\u00a77 to place it."))
-                        } else {
-                            source.sendMessage(Text.literal("\u00a7cFailed to parse schematic data."))
-                        }
-                    }
-                } else {
-                    mod.platformAdapter.runOnMainThread {
-                        val errorMsg = when (statusCode) {
-                            401 -> {
-                                if (password.isNullOrBlank()) {
-                                    // Show password dialog if from dialog mode
-                                    if (isDialog) {
-                                        val dialogDef = DialogBuilders.quickShareGetPasswordDialog(accessCode)
-                                        FabricDialogRenderer.showDialog(player, dialogDef)
-                                        return@runOnMainThread
-                                    }
-                                    "This share requires a password. Use: /schematio download $accessCode <password>"
-                                } else {
-                                    "Incorrect password."
-                                }
-                            }
-                            403 -> parseErrorMessage(errorBody) ?: "Access denied"
-                            404 -> "Quick share not found."
-                            410 -> parseErrorMessage(errorBody) ?: "This share has expired or been revoked."
-                            429 -> parseErrorMessage(errorBody) ?: "Download limit reached."
-                            -1 -> "Connection failed."
                             else -> "Error (code: $statusCode)"
                         }
                         source.sendMessage(Text.literal("\u00a7c$errorMsg"))

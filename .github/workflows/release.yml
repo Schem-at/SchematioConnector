@@ -28,29 +28,44 @@ jobs:
         run: ./gradlew build
 
       - name: Run tests
-        run: ./gradlew test
+        run: ./gradlew :core:test
 
       - name: Get version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Rename artifacts for release
+        run: |
+          cp bukkit/build/libs/*-all.jar "SchematioConnector-Paper-${{ steps.version.outputs.VERSION }}.jar"
+          cp fabric/build/libs/SchematioConnector-Fabric-*.jar "SchematioConnector-Fabric-${{ steps.version.outputs.VERSION }}.jar" 2>/dev/null || true
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: SchematioConnector v${{ steps.version.outputs.VERSION }}
+          generate_release_notes: true
           body: |
             ## SchematioConnector v${{ steps.version.outputs.VERSION }}
 
             ### Installation
-            1. Download `SchematioConnector-${{ steps.version.outputs.VERSION }}.jar`
+
+            **Paper / Spigot / Forks:**
+            1. Download `SchematioConnector-Paper-${{ steps.version.outputs.VERSION }}.jar`
             2. Place in your server's `plugins/` folder
-            3. Restart server or use PlugMan to load
+            3. Restart the server
+
+            **Fabric:**
+            1. Download `SchematioConnector-Fabric-${{ steps.version.outputs.VERSION }}.jar`
+            2. Place in your server's `mods/` folder (requires Fabric API + Fabric Language Kotlin)
+            3. Restart the server
 
             ### Requirements
-            - Paper 1.21.4+ (or compatible fork)
-            - WorldEdit or FastAsyncWorldEdit
+            - Minecraft 1.21.8+
             - Java 21+
+            - WorldEdit (optional but required for clipboard operations)
           files: |
-            build/libs/SchematioConnector-${{ steps.version.outputs.VERSION }}.jar
+            SchematioConnector-Paper-${{ steps.version.outputs.VERSION }}.jar
+            SchematioConnector-Fabric-${{ steps.version.outputs.VERSION }}.jar
+          fail_on_unmatched_files: false
           draft: false
           prerelease: false

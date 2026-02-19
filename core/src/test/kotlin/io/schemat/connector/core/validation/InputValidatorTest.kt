@@ -1,13 +1,10 @@
-package io.schemat.schematioConnector.utils
+package io.schemat.connector.core.validation
 
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
-/**
- * Tests for InputValidator validation utilities.
- */
 @DisplayName("InputValidator")
 class InputValidatorTest {
 
@@ -382,6 +379,82 @@ class InputValidatorTest {
         fun `accepts size at max`() {
             val result = InputValidator.validateSchematicSize(ValidationConstants.MAX_SCHEMATIC_SIZE_BYTES)
             assertTrue(result.isValid)
+        }
+    }
+
+    @Nested
+    @DisplayName("parseDuration")
+    inner class ParseDurationTests {
+
+        @Test
+        fun `parses raw seconds`() {
+            assertEquals(3600, InputValidator.parseDuration("3600"))
+        }
+
+        @Test
+        fun `parses minutes`() {
+            assertEquals(1800, InputValidator.parseDuration("30m"))
+        }
+
+        @Test
+        fun `parses hours`() {
+            assertEquals(3600, InputValidator.parseDuration("1h"))
+            assertEquals(86400, InputValidator.parseDuration("24h"))
+        }
+
+        @Test
+        fun `parses days`() {
+            assertEquals(604800, InputValidator.parseDuration("7d"))
+        }
+
+        @Test
+        fun `parses weeks`() {
+            assertEquals(604800, InputValidator.parseDuration("1w"))
+        }
+
+        @Test
+        fun `case insensitive`() {
+            assertEquals(3600, InputValidator.parseDuration("1H"))
+            assertEquals(86400, InputValidator.parseDuration("1D"))
+        }
+
+        @Test
+        fun `returns null for invalid input`() {
+            assertNull(InputValidator.parseDuration("abc"))
+            assertNull(InputValidator.parseDuration(""))
+            assertNull(InputValidator.parseDuration("1x"))
+        }
+    }
+
+    @Nested
+    @DisplayName("parseDownloadLimit")
+    inner class ParseDownloadLimitTests {
+
+        @Test
+        fun `returns null for zero`() {
+            assertNull(InputValidator.parseDownloadLimit("0"))
+        }
+
+        @Test
+        fun `returns null for unlimited`() {
+            assertNull(InputValidator.parseDownloadLimit("unlimited"))
+            assertNull(InputValidator.parseDownloadLimit("UNLIMITED"))
+        }
+
+        @Test
+        fun `returns positive integer`() {
+            assertEquals(10, InputValidator.parseDownloadLimit("10"))
+            assertEquals(1, InputValidator.parseDownloadLimit("1"))
+        }
+
+        @Test
+        fun `returns null for negative`() {
+            assertNull(InputValidator.parseDownloadLimit("-1"))
+        }
+
+        @Test
+        fun `returns null for non-numeric`() {
+            assertNull(InputValidator.parseDownloadLimit("abc"))
         }
     }
 
