@@ -46,8 +46,9 @@ jobs:
 
       - name: Rename artifacts for release
         run: |
-          cp bukkit/build/libs/*-all.jar "SchematioConnector-Paper-${{ steps.version.outputs.VERSION }}.jar"
-          cp fabric/build/libs/SchematioConnector-Fabric-*.jar "SchematioConnector-Fabric-${{ steps.version.outputs.VERSION }}.jar" 2>/dev/null || true
+          # Shadow JAR has no classifier (archiveClassifier = ""), exclude -sources.jar
+          cp bukkit/build/libs/bukkit-*.jar "SchematioConnector-Paper-${{ steps.version.outputs.VERSION }}.jar"
+          find fabric/build/libs -name 'SchematioConnector-Fabric-*.jar' ! -name '*-sources.jar' -exec cp {} "SchematioConnector-Fabric-${{ steps.version.outputs.VERSION }}.jar" \; 2>/dev/null || true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
