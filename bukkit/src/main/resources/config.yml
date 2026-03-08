@@ -14,6 +14,12 @@ community-token: ""
 # Legacy API key (deprecated - use community-token instead)
 # api-key: ""
 
+# Development Settings
+# ====================
+# Trust all SSL certificates (for local development with self-signed certs).
+# WARNING: Never enable this in production!
+trust-all-certificates: false
+
 # Rate Limiting
 # =============
 # Limits the number of API requests a player can make within a time window.

@@ -61,6 +61,7 @@ class SchematioConnectorMod : ModInitializer {
     val baseUrl: String
         get() = apiEndpoint.replace(Regex("/api/v\\d+$"), "")
     private var apiToken: String? = null
+    private var trustAllCertificates: Boolean = false
 
     // Commands disabled via config
     var disabledCommands: Set<String> = emptySet()
@@ -128,6 +129,7 @@ class SchematioConnectorMod : ModInitializer {
                 }
             apiEndpoint = configuredEndpoint ?: "https://schemat.io/api/v1"
             apiToken = props.getProperty("api_token")
+            trustAllCertificates = props.getProperty("trust_all_certificates")?.toBoolean() ?: false
 
             // Load disabled commands
             disabledCommands = props.getProperty("disabled_commands")
@@ -147,7 +149,7 @@ class SchematioConnectorMod : ModInitializer {
 
         // Create HTTP util if we have a token
         if (!apiToken.isNullOrBlank()) {
-            httpUtil = HttpUtil(apiToken!!, apiEndpoint, logger)
+            httpUtil = HttpUtil(apiToken!!, apiEndpoint, logger, trustAllCertificates)
             LOGGER.info("API connection configured for: $apiEndpoint")
         } else {
             LOGGER.warn("No API token configured. Run /schematio settoken <token> to set one.")
@@ -169,6 +171,10 @@ class SchematioConnectorMod : ModInitializer {
             # Available: upload, download, list, search, quickshare, quickshareget, settings
             # Admin commands (reload, settoken, setpassword, info) cannot be disabled.
             disabled_commands=list,search
+
+            # Trust all SSL certificates (for local dev with self-signed certs)
+            # WARNING: Never enable this in production!
+            trust_all_certificates=false
         """.trimIndent())
     }
 
@@ -239,7 +245,7 @@ class SchematioConnectorMod : ModInitializer {
 
         // Reconnect with new token
         httpUtil?.close()
-        httpUtil = HttpUtil(token, apiEndpoint, logger)
+        httpUtil = HttpUtil(token, apiEndpoint, logger, trustAllCertificates)
 
         // Reinitialize API service
         schematicsApiService = SchematicsApiService(

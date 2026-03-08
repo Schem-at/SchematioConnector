@@ -366,7 +366,8 @@ class SchematioConnector : JavaPlugin(), Listener {
 
         // Close old client if reloading
         httpUtil?.close()
-        httpUtil = HttpUtil(communityToken, apiEndpoint, logger)
+        val trustAllCerts = config.getBoolean("trust-all-certificates", false)
+        httpUtil = HttpUtil(communityToken, apiEndpoint, logger, trustAllCerts)
 
         // Re-initialize rate limiter with any updated config values
         initializeRateLimiter()

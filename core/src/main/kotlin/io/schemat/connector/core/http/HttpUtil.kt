@@ -21,7 +21,10 @@ import java.io.Closeable
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.util.logging.Logger
+import javax.net.ssl.*
 
 /**
  * HTTP client utility for communicating with the schemat.io API.
@@ -50,7 +53,12 @@ import java.util.logging.Logger
  * @property apiEndpoint The base URL of the schemat.io API (e.g., "https://schemat.io/api/v1")
  * @property logger Logger for debug and error messages
  */
-class HttpUtil(private val apiKey: String, private val apiEndpoint: String, private val logger: Logger) : Closeable {
+class HttpUtil(
+    private val apiKey: String,
+    private val apiEndpoint: String,
+    private val logger: Logger,
+    private val trustAllCertificates: Boolean = false
+) : Closeable {
 
     companion object {
         private const val CONNECT_TIMEOUT_MS = 10_000
@@ -61,6 +69,17 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
 
     private val gson = Gson()
 
+    private val trustAllSslContext: SSLContext? = if (trustAllCertificates) {
+        val trustManager = object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        }
+        SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf<TrustManager>(trustManager), SecureRandom())
+        }
+    } else null
+
     private val requestConfig: RequestConfig = RequestConfig.custom()
         .setConnectTimeout(CONNECT_TIMEOUT_MS)
         .setSocketTimeout(SOCKET_TIMEOUT_MS)
@@ -69,6 +88,13 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
 
     private val httpClient: CloseableHttpClient = HttpClients.custom()
         .setDefaultRequestConfig(requestConfig)
+        .apply {
+            if (trustAllCertificates && trustAllSslContext != null) {
+                setSSLContext(trustAllSslContext)
+                setSSLHostnameVerifier { _, _ -> true }
+                logger.warning("SSL certificate verification is DISABLED - do not use in production!")
+            }
+        }
         .build()
 
     override fun close() {
@@ -109,6 +135,10 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
                 val url = URI("$apiEndpoint/check").toURL()
                 logger.info("Checking connection to $apiEndpoint")
                 connection = url.openConnection() as HttpURLConnection
+                if (trustAllCertificates && trustAllSslContext != null && connection is HttpsURLConnection) {
+                    (connection as HttpsURLConnection).sslSocketFactory = trustAllSslContext.socketFactory
+                    (connection as HttpsURLConnection).hostnameVerifier = HostnameVerifier { _, _ -> true }
+                }
                 connection.requestMethod = "POST"
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.setRequestProperty("Authorization", "Bearer $apiKey")
@@ -568,6 +598,10 @@ class HttpUtil(private val apiKey: String, private val apiEndpoint: String, priv
             try {
                 val url = URI(imageUrl).toURL()
                 val connection = url.openConnection() as HttpURLConnection
+                if (trustAllCertificates && trustAllSslContext != null && connection is HttpsURLConnection) {
+                    (connection as HttpsURLConnection).sslSocketFactory = trustAllSslContext.socketFactory
+                    (connection as HttpsURLConnection).hostnameVerifier = HostnameVerifier { _, _ -> true }
+                }
                 connection.requestMethod = "GET"
                 connection.connectTimeout = CONNECT_TIMEOUT_MS
                 connection.readTimeout = SOCKET_TIMEOUT_MS
