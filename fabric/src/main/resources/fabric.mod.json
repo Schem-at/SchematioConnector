@@ -19,6 +19,12 @@
         "adapter": "kotlin",
         "value": "io.schemat.connector.fabric.SchematioConnectorMod"
       }
+    ],
+    "client": [
+      {
+        "adapter": "kotlin",
+        "value": "io.schemat.connector.fabric.client.SchematioClientMod"
+      }
     ]
   },
   "mixins": [],

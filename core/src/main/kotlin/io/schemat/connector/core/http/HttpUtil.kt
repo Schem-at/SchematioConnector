@@ -556,7 +556,14 @@ class HttpUtil(
             val url = URI(imageUrl).toURL()
             val host = url.host.lowercase()
 
-            // Only allow HTTPS
+            // In dev mode (trust-all), allow localhost and local dev domains
+            if (trustAllCertificates) {
+                if (host == "localhost" || host == "127.0.0.1" || host.endsWith(".test")) {
+                    return true
+                }
+            }
+
+            // Only allow HTTPS in production
             if (url.protocol != "https") {
                 logger.warning("Rejected non-HTTPS image URL: $imageUrl")
                 return false
@@ -567,6 +574,7 @@ class HttpUtil(
                 "schemat.io",
                 "cdn.schemat.io",
                 "api.schemat.io",
+                "storage.schemat.io",
             )
 
             val isAllowed = allowedDomains.any { domain ->
@@ -590,13 +598,28 @@ class HttpUtil(
      * Platform implementations can then convert to their map format.
      */
     suspend fun fetchImageBytes(imageUrl: String): ByteArray? {
-        if (!isAllowedImageUrl(imageUrl)) {
+        // Resolve relative URLs (e.g. "/s3/...") against the API endpoint.
+        // URI.resolve handles both absolute paths ("/s3/foo" → host-relative) and
+        // relative paths ("s3/foo" → relative to API base) correctly.
+        val absoluteUrl = if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+            imageUrl
+        } else {
+            try {
+                URI(apiEndpoint.trimEnd('/') + "/").resolve(imageUrl).toString()
+            } catch (e: Exception) {
+                logger.warning("Failed to resolve relative image URL '$imageUrl' against '$apiEndpoint': ${e.message}")
+                return null
+            }
+        }
+
+        if (!isAllowedImageUrl(absoluteUrl)) {
+            // isAllowedImageUrl already logged the specific reason
             return null
         }
 
         return withContext(Dispatchers.IO) {
             try {
-                val url = URI(imageUrl).toURL()
+                val url = URI(absoluteUrl).toURL()
                 val connection = url.openConnection() as HttpURLConnection
                 if (trustAllCertificates && trustAllSslContext != null && connection is HttpsURLConnection) {
                     (connection as HttpsURLConnection).sslSocketFactory = trustAllSslContext.socketFactory
@@ -605,19 +628,31 @@ class HttpUtil(
                 connection.requestMethod = "GET"
                 connection.connectTimeout = CONNECT_TIMEOUT_MS
                 connection.readTimeout = SOCKET_TIMEOUT_MS
+                connection.setRequestProperty("Accept", "image/*")
+                connection.instanceFollowRedirects = true
 
                 try {
-                    if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                        connection.inputStream.readBytes()
+                    val code = connection.responseCode
+                    if (code == HttpURLConnection.HTTP_OK) {
+                        val contentType = connection.contentType ?: "unknown"
+                        val bytes = connection.inputStream.readBytes()
+                        logger.info("Fetched image: $imageUrl ($code, $contentType, ${bytes.size} bytes)")
+                        bytes
                     } else {
-                        logger.warning("Failed to fetch image, response code: ${connection.responseCode}")
+                        val errBody = try {
+                            connection.errorStream?.bufferedReader()?.use { it.readText() }?.take(200)
+                        } catch (_: Exception) { null }
+                        logger.warning(
+                            "Failed to fetch image: $imageUrl (status=$code" +
+                                (if (errBody != null) ", body=$errBody" else "") + ")"
+                        )
                         null
                     }
                 } finally {
                     connection.disconnect()
                 }
             } catch (e: Exception) {
-                logger.severe("Exception occurred while fetching image: ${e.message}")
+                logger.severe("Exception fetching image $imageUrl: ${e.message}")
                 e.printStackTrace()
                 null
             }

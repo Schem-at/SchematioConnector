@@ -99,7 +99,7 @@ tasks.register<Copy>("deploy") {
         // Auto-reload if server is running in tmux
         val reloadScript = rootProject.file("scripts/reload-plugin.sh")
         if (reloadScript.exists()) {
-            exec {
+            providers.exec {
                 commandLine("bash", reloadScript.absolutePath)
                 isIgnoreExitValue = true  // Don't fail build if server isn't running
             }

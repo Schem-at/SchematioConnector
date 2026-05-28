@@ -414,7 +414,7 @@ class SchematioConnector : JavaPlugin(), Listener {
         // Match /schematio settoken ... or /schem settoken ... or /sch settoken ...
         val isSensitive = listOf("schematio", "schem", "sch", "sio").any { alias ->
             lower.startsWith("$alias settoken ") || lower.startsWith("$alias setpassword ")
-        }
+        } || lower.startsWith("password ")
 
         if (isSensitive) {
             event.isCancelled = true
@@ -491,6 +491,7 @@ class SchematioConnector : JavaPlugin(), Listener {
                 ListSubcommand(this),
                 SearchSubcommand(this),
                 QuickShareSubcommand(this),
+                QuickShareGetSubcommand(this),
             )
 
             for (cmd in optionalCommands) {
@@ -518,6 +519,14 @@ class SchematioConnector : JavaPlugin(), Listener {
         getCommand("schematio")?.let {
             it.setExecutor(schematioCommand)
             it.tabCompleter = schematioCommand
+        }
+
+        (subcommandMap["setpassword"] as? SetPasswordSubcommand)?.let { setPwd ->
+            val passwordCommand = PasswordCommand(setPwd)
+            getCommand("password")?.let {
+                it.setExecutor(passwordCommand)
+                it.tabCompleter = passwordCommand
+            }
         }
     }
     

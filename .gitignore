@@ -62,3 +62,14 @@ kotlin-ide/
 .teamcity/
 .claude/
 .history
+
+# Local Claude project guidance (personal)
+CLAUDE.md
+
+# Fabric Loom dev-server runtime & local libs
+fabric/run/
+fabric/libs/
+
+# Personal IDE run configs (Fabric Client/Server)
+.idea/runConfigurations/Fabric_Client___fabric__fabric.xml
+.idea/runConfigurations/Fabric_Server___fabric__fabric.xml

@@ -21,6 +21,20 @@ repositories {
     maven("https://maven.enginehub.org/repo/") {
         name = "EngineHub"
     }
+    exclusiveContent {
+        forRepository {
+            maven("https://api.modrinth.com/maven") {
+                name = "Modrinth"
+            }
+        }
+        filter { includeGroup("maven.modrinth") }
+    }
+    maven("https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1") {
+        name = "DevAuth"
+    }
+    maven("https://maven.fallenbreath.me/releases") {
+        name = "FallenBreath"
+    }
 }
 
 dependencies {
@@ -52,6 +66,16 @@ dependencies {
     implementation("org.apache.httpcomponents:httpcore:4.4.16")
     implementation("org.apache.httpcomponents:httpmime:4.5.14")
 
+    // Client-only: Litematica and MaLiLib (compile + dev runtime, not bundled)
+    modImplementation("maven.modrinth:litematica:7LGBHMu9") // 0.26.0 for 1.21.11
+    modImplementation("maven.modrinth:malilib:4KeJMj6s")    // 0.27.6 for 1.21.11
+
+    // conditional-mixin (required by Litematica and MaLiLib)
+    modImplementation("me.fallenbreath:conditional-mixin-fabric:0.6.4")
+
+    // DevAuth for authenticated dev sessions (runtime only, not bundled)
+    modRuntimeOnly("me.djtheredstoner:DevAuth-fabric:1.2.2")
+
     // Include core module and its dependencies in the JAR
     include(project(":core"))
 
@@ -66,6 +90,15 @@ dependencies {
 }
 
 loom {
+    splitEnvironmentSourceSets()
+
+    mods {
+        register("schematioconnector") {
+            sourceSet(sourceSets["main"])
+            sourceSet(sourceSets["client"])
+        }
+    }
+
     // Disable Javadoc generation from mod dependencies to avoid namespace issues with newer Fabric API
     // This fixes the "Javadoc provided by mod must have an intermediary source namespace" error in 1.21.11+
     @Suppress("UnstableApiUsage")
@@ -77,6 +110,7 @@ loom {
             configName = "Fabric Client"
             ideConfigGenerated(true)
             runDir("run")
+            vmArg("-Ddevauth.enabled=true")
         }
         named("server") {
             server()

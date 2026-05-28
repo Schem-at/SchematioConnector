@@ -1,9 +1,9 @@
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.0.21" apply false
     id("org.jetbrains.kotlin.kapt") version "2.0.21" apply false
-    id("com.gradleup.shadow") version "8.3.5" apply false
+    id("com.gradleup.shadow") version "8.3.8" apply false
     id("org.jetbrains.dokka") version "1.9.20" apply false
-    id("fabric-loom") version "1.13-SNAPSHOT" apply false
+    id("fabric-loom") version "1.15-SNAPSHOT" apply false
 }
 
 // Version from gradle.properties (semantic versioning)
@@ -56,6 +56,7 @@ allprojects {
         }
         maven("https://jitpack.io") {
             name = "jitpack"
+            content { includeGroupByRegex("com\\.github\\..*") }
         }
         maven("https://repo.codemc.io/repository/maven-public/") {
             name = "codemc"

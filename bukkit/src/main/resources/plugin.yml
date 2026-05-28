@@ -9,6 +9,9 @@ commands:
         description: Interface with schemat.io
         usage: /schematio <subcommand>
         aliases: [schem, sch, sio]
+    password:
+        description: Set your schemat.io API password
+        usage: /password [new_password]
 permissions:
     # Base permission (required to use any command)
     schematio.use:
@@ -28,8 +31,11 @@ permissions:
     schematio.quickshare:
         description: Create and retrieve quick share links
         default: true
+    schematio.password:
+        description: Set your own schemat.io API password
+        default: true
     schematio.admin:
-        description: Admin commands (reload, settoken, setpassword)
+        description: Admin commands (reload, settoken)
         default: op
 
     # UI tier permissions (how you can do it)
