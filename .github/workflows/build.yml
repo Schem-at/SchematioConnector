@@ -1,0 +1,75 @@
+# CI build: proves every push/PR compiles the full artifact set.
+#
+# Artifacts produced (inspection only - releasing happens in release.yml):
+#   - Paper plugin: bukkit/build/libs/SchematioConnector-Paper-<version>.jar
+#   - Fabric mod:   build/libs/<version>/SchematioConnector-Fabric-mc<mc>-<version>.jar
+#     (one jar per Minecraft version - currently 1.21.8, 1.21.9, 1.21.10,
+#     1.21.11 and 26.1; the version list lives in
+#     fabric/stonecutter.gradle.kts `buildableVersions`)
+#
+# Adding a new MC version: add it to `buildableVersions` in
+# fabric/stonecutter.gradle.kts - no workflow change needed here (the upload
+# glob picks up the extra jar automatically).
+#
+# JDK note: gradle/gradle-daemon-jvm.properties pins the Gradle daemon to
+# Java 25 (Loom requires the Gradle JVM to be >= the newest MC target,
+# 26.1 -> Java 25), while the 1.21.x compile toolchains use Java 21. Both JDKs
+# are provisioned below; 25 is listed last so JAVA_HOME satisfies the daemon
+# pin, and GRADLE_TOOLCHAIN_ARGS makes both visible to toolchain detection.
+
+name: Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # Expose both setup-java JDKs to Gradle's toolchain auto-detection.
+      GRADLE_TOOLCHAIN_ARGS: -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 + 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          # 25 last => JAVA_HOME points at 25 (the Gradle daemon JVM pin).
+          java-version: |
+            21
+            25
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          validate-wrappers: true
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Run core tests
+        run: ./gradlew :core:test $GRADLE_TOOLCHAIN_ARGS
+
+      - name: Build Paper plugin
+        run: ./gradlew :bukkit:build $GRADLE_TOOLCHAIN_ARGS
+
+      - name: Build Fabric mod (all supported Minecraft versions)
+        # Builds one jar per version in `buildableVersions`
+        # (currently 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1).
+        run: ./gradlew :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
+
+      - name: Upload Paper plugin jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchematioConnector-Paper
+          path: bukkit/build/libs/SchematioConnector-Paper-*.jar
+          if-no-files-found: error
+
+      - name: Upload Fabric mod jars
+        uses: actions/upload-artifact@v4
+        with:
+          name: SchematioConnector-Fabric
+          path: build/libs/*/SchematioConnector-Fabric-mc*.jar
+          if-no-files-found: error

@@ -1,0 +1,12 @@
+{
+  "key.schematioconnector.browser": "Open Schematio Browser",
+  "category.schematioconnector": "Schematio Connector",
+  "schematioconnector.gui.button.open_browser": "Schemat.io",
+  "schematioconnector.gui.button.open_browser.hover": "Browse and download schematics from schemat.io",
+  "schematioconnector.gui.button.upload_placement": "Upload to schemat.io",
+  "schematioconnector.gui.button.upload_placement.hover": "Upload the selected placement to schemat.io",
+  "schematioconnector.gui.button.upload_file": "Upload to schemat.io",
+  "schematioconnector.gui.button.upload_file.hover": "Upload the selected schematic file to schemat.io",
+  "schematioconnector.message.error.no_file_selected": "Select a schematic file to upload first",
+  "schematioconnector.message.error.unsupported_format": "Cannot upload %s: only .litematic, .schem and .schematic files are supported"
+}

@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "io.schemat.connector.fabric.client.mixin",
+  "compatibilityLevel": "${mixin_java}",
+  "plugin": "io.schemat.connector.fabric.client.mixin.SchematioMixinConfigPlugin",
+  "client": [
+    "EditBoxWidgetAccessor",
+    "GuiSchematicLoadMixin",
+    "GuiSchematicPlacementsListMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
