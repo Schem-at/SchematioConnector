@@ -177,6 +177,32 @@ cd SchematioConnector
 ./gradlew :fabric:build
 ```
 
+### Running a dev client
+
+The Fabric module is multi-version (one `:fabric:<version>` subproject each), so an
+unqualified `runClient` would match the task in EVERY version and try to launch all
+of them at once (they then collide on the shared run dir, the same port, and DevAuth
+login). To run exactly one:
+
+- **IntelliJ:** pick a `Client <version>` run config (tracked in `.run/`, e.g.
+  `Client 1.21.11`). Each one runs only `:fabric:<version>:runClient`.
+- **Command line, a specific version:**
+
+  ```bash
+  export JAVA_HOME=/path/to/jdk-21   # JDK 25 for the 26.1 client
+  ./gradlew :fabric:1.21.8:runClient
+  ```
+
+- **Command line, the active version:** the `:fabric:runClient` / `:fabric:runServer`
+  tasks delegate to ONLY the currently active version (set in
+  `fabric/stonecutter.gradle.kts`), so this launches a single client:
+
+  ```bash
+  ./gradlew :fabric:runClient
+  ```
+
+Switch the active dev version with `./gradlew "Set active project to <version>"`.
+
 ### Module layout
 
 ```

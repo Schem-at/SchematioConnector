@@ -1,10 +1,22 @@
 # Fabric Client UI - Manual Testing Checklist
 
-Run the dev client against the **local schemati backend**:
+Run the dev client against the **local schemati backend**.
+
+The Fabric module is multi-version (a `:fabric:<version>` subproject per MC version),
+so launch ONE version, not all of them:
+
+- **IntelliJ:** run a `Client <version>` config from `.run/` (e.g. `Client 1.21.11`).
+- **A specific version on the CLI:** `./gradlew :fabric:1.21.8:runClient`.
+- **The active version on the CLI:** `./gradlew :fabric:runClient` delegates to ONLY
+  the currently active version (set in `fabric/stonecutter.gradle.kts`), so it starts a
+  single client. (Switch the active version with `./gradlew "Set active project to <version>"`.)
 
 ```bash
 export JAVA_HOME=/Users/harrison/Library/Java/JavaVirtualMachines/ms-21.0.7/Contents/Home
+# active version (currently 1.21.11):
 ./gradlew :fabric:runClient
+# ...or a specific version:
+./gradlew :fabric:1.21.11:runClient
 ```
 
 **Config:** the dev client reads `fabric/run/config/schematioconnector/config.properties`
