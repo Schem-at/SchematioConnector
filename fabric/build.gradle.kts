@@ -16,6 +16,10 @@ val mcVersion: String = stonecutter.current.version
 val loaderVersion: String = property("deps.fabric_loader") as String
 val fabricApiVersion: String = property("deps.fabric_api") as String
 val flkVersion: String = property("deps.flk") as String
+// fabric.mod.json `depends` floors — decoupled from the build versions above so
+// the shipped mod installs on older loader/FLK than we compile against.
+val loaderMin: String = property("deps.fabric_loader_min") as String
+val flkMin: String = property("deps.flk_min") as String
 val conditionalMixinVersion: String = property("deps.conditional_mixin") as String
 val litematicaVersion: String = property("deps.litematica") as String
 val malilibVersion: String = property("deps.malilib") as String
@@ -167,16 +171,16 @@ loom {
 tasks.withType<ProcessResources>().configureEach {
     inputs.property("version", project.version)
     inputs.property("minecraft_compat", mcCompat)
-    inputs.property("loader_version", loaderVersion)
-    inputs.property("flk_version", flkVersion)
+    inputs.property("loader_min", loaderMin)
+    inputs.property("flk_min", flkMin)
     inputs.property("java_version", javaVer)
 
     filesMatching("fabric.mod.json") {
         expand(
             "version" to project.version,
             "minecraft_compat" to mcCompat,
-            "loader_version" to loaderVersion,
-            "flk_version" to flkVersion,
+            "loader_min" to loaderMin,
+            "flk_min" to flkMin,
             "java_version" to javaVer.toString()
         )
     }
