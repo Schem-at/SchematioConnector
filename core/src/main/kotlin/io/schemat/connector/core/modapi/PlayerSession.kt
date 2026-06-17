@@ -43,7 +43,11 @@ class PlayerSession private constructor(
         fun fromToken(token: String): PlayerSession? = try {
             val decoded = JWT.decode(token)
             PlayerSession(token, normalizeUuid(decoded.subject), decoded.expiresAtAsInstant)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Throwable, not Exception: JWT.decode() can raise linkage Errors
+            // (e.g. NoClassDefFoundError when a transitive dep like Jackson is
+            // missing from the shipped jar). Those must degrade to a failed
+            // decode here, not escape and kill the auth coroutine.
             null
         }
     }

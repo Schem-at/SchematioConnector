@@ -117,6 +117,13 @@ dependencies {
     include("org.apache.httpcomponents:httpcore:4.4.16")
     include("org.apache.httpcomponents:httpmime:4.5.14")
     include("com.auth0:java-jwt:4.4.0")
+    // java-jwt's JWTDecoder needs Jackson at runtime. Loom's `include` is
+    // jar-in-jar and NON-transitive, so each Jackson artifact must be listed
+    // explicitly or the shipped mod hits NoClassDefFoundError on JWT.decode()
+    // (java-jwt 4.4.0 -> jackson-databind 2.14.2 -> jackson-core/-annotations).
+    include("com.fasterxml.jackson.core:jackson-databind:2.14.2")
+    include("com.fasterxml.jackson.core:jackson-core:2.14.2")
+    include("com.fasterxml.jackson.core:jackson-annotations:2.14.2")
     include("commons-logging:commons-logging:1.2")
     include("commons-codec:commons-codec:1.15")
 }

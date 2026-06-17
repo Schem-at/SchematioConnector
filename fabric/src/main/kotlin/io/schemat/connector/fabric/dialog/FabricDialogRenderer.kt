@@ -8,6 +8,11 @@ import net.minecraft.ChatFormatting
 import net.minecraft.core.Holder
 import net.minecraft.network.chat.Component
 import net.minecraft.network.chat.Style
+// The server-driven dialog API (net.minecraft.server.dialog.*) was introduced
+// in MC 1.21.6. On older targets (1.21.4) it does not exist, so the whole
+// native render path is Stonecutter-guarded out and showDialog() falls back to
+// a chat pointer toward the in-game menu (the real UX on every version).
+//? if >=1.21.6 {
 import net.minecraft.server.dialog.ActionButton
 import net.minecraft.server.dialog.CommonButtonData
 import net.minecraft.server.dialog.CommonDialogData
@@ -24,6 +29,7 @@ import net.minecraft.server.dialog.body.PlainMessage
 import net.minecraft.server.dialog.input.InputControl
 import net.minecraft.server.dialog.input.SingleOptionInput
 import net.minecraft.server.dialog.input.TextInput
+//?}
 import net.minecraft.server.level.ServerPlayer
 import java.net.URI
 import java.util.Optional
@@ -31,11 +37,18 @@ import java.util.Optional
 object FabricDialogRenderer {
 
     fun showDialog(player: ServerPlayer, definition: DialogDefinition) {
+        //? if >=1.21.6 {
         val dialog = buildDialog(definition)
         val entry = Holder.direct(dialog)
         player.openDialog(entry)
+        //?} else {
+        /*player.sendSystemMessage(
+            Component.literal("§eServer dialogs require Minecraft 1.21.6+ — use the SchematioConnector menu instead.")
+        )
+        *///?}
     }
 
+    //? if >=1.21.6 {
     private fun buildDialog(def: DialogDefinition): Dialog {
         val title = toText(def.title)
         val externalTitleText = def.externalTitle
@@ -184,4 +197,5 @@ object FabricDialogRenderer {
         }
         return StaticAction(event)
     }
+    //?}
 }
