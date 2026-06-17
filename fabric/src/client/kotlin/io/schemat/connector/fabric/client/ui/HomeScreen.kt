@@ -21,7 +21,13 @@ import net.minecraft.network.chat.Component
  * BROWSE / MINE / COMMUNITIES / SHARES are placeholders until Tasks 3-5 land;
  * SETTINGS is functional.
  */
-class HomeScreen : Screen(Component.literal("Schemat.io")) {
+class HomeScreen(initialTab: Tab? = null) : Screen(Component.literal("Schemat.io")) {
+
+    init {
+        // A keybinding can request a specific landing tab; otherwise the screen
+        // reopens to whichever tab was last viewed this session.
+        if (initialTab != null) lastTab = initialTab
+    }
 
     enum class Tab(val label: String) {
         BROWSE("Browse"),

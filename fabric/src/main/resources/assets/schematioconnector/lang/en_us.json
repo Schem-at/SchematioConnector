@@ -1,6 +1,10 @@
 {
   "key.schematioconnector.browser": "Open Schematio Browser",
+  "key.schematioconnector.upload": "Open Upload Wizard",
+  "key.schematioconnector.quickshare": "Open Quick Share",
+  "key.schematioconnector.settings": "Open Settings",
   "category.schematioconnector": "Schematio Connector",
+  "key.category.schematioconnector.main": "Schematio Connector",
   "schematioconnector.gui.button.open_browser": "Schemat.io",
   "schematioconnector.gui.button.open_browser.hover": "Browse and download schematics from schemat.io",
   "schematioconnector.gui.button.upload_placement": "Upload to schemat.io",
