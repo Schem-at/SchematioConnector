@@ -93,6 +93,9 @@ class RichTextEditor(
     /** Selection anchor (the non-moving end); -1 = no anchor. Selection = anchor..cursor. */
     private var selAnchor = -1
 
+    /** Where the mouse was pressed, so a *drag* selects from the click point. */
+    private var pressPos = 0
+
     /** Toolbar-toggled style for the next typed char; cleared when the caret moves. */
     private var pendingOverride: TypingStyle? = null
 
@@ -249,6 +252,13 @@ class RichTextEditor(
     // ---- editing primitives ----
 
     private fun edited() {
+        // A mutation can shrink the document past a stale caret/anchor (e.g. the
+        // anchor a click left at the old document end). Re-clamp both and drop a
+        // collapsed selection so the bounds can never overrun `chars` on the next
+        // render — isStyleActive/toggleStyle/render all index chars[selMin until selMax].
+        cursor = cursor.coerceIn(0, chars.size)
+        if (selAnchor > chars.size) selAnchor = chars.size
+        if (selAnchor == cursor) selAnchor = -1
         layoutDirty = true
         resetBlink()
         ensureCaretVisible()
@@ -328,6 +338,7 @@ class RichTextEditor(
             selAnchor = -1
         }
         cursor = target.coerceIn(0, chars.size)
+        if (selAnchor == cursor) selAnchor = -1 // a collapsed selection is no selection
         pendingOverride = null
         resetBlink()
         ensureCaretVisible()
@@ -537,9 +548,15 @@ class RichTextEditor(
         if (click.hasShiftDown()) {
             if (selAnchor < 0) selAnchor = cursor
         } else {
-            selAnchor = pos
+            // A plain click places the caret with NO selection. Leaving a stale
+            // anchor here (== cursor) is invisible until the next edit moves the
+            // caret off it, resurrecting a phantom selection whose bound can then
+            // overrun `chars` (end-of-text backspace → render crash). A drag
+            // re-establishes the anchor from pressPos.
+            selAnchor = -1
         }
         cursor = pos
+        pressPos = pos
         pendingOverride = null
         resetBlink()
     }
@@ -555,6 +572,9 @@ class RichTextEditor(
     override
     fun onDrag(click: MouseButtonEvent, deltaX: Double, deltaY: Double) {
         ensureLayout()
+        // First drag movement after a plain click opens a selection from the
+        // press point (the click cleared selAnchor).
+        if (selAnchor < 0) selAnchor = pressPos
         cursor = hitTest(click.x(), click.y())
         resetBlink()
         ensureCaretVisible()
