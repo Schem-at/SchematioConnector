@@ -15,15 +15,14 @@ import io.schemat.connector.core.vcs.DiffSession
 import io.schemat.connector.core.vcs.SessionMode
 import io.schemat.schematioConnector.SchematioConnector
 import io.schemat.schematioConnector.utils.UIMode
+import io.schemat.schematioConnector.vcs.DiffControls
 import io.schemat.schematioConnector.vcs.DiffEngine
-import io.schemat.schematioConnector.vcs.DiffSessionManager
 import io.schemat.schematioConnector.vcs.NucleationRuntime
 import io.schemat.schematioConnector.vcs.ResolveHandler
 import io.schemat.schematioConnector.vcs.render.VanillaDisplayRenderer
 import kotlinx.coroutines.runBlocking
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
-import net.kyori.adventure.text.event.HoverEvent
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.entity.Player
@@ -315,60 +314,18 @@ class DiffSubcommand(private val plugin: SchematioConnector) : Subcommand {
     // INFO + CONTROL SURFACES (chat / dialog)
     // ===========================================
 
-    private fun totalsLabel(session: DiffSession): String {
-        val added = session.regions.sumOf { it.addedCount }
-        val removed = session.regions.sumOf { it.removedCount }
-        val changed = session.regions.sumOf { it.changedCount }
-        return "+$added −$removed ~$changed"
-    }
+    private fun totalsLabel(session: DiffSession): String = DiffControls.totalsLabel(session)
 
-    private fun sendFocusInfo(player: Player, session: DiffSession) {
-        val region = session.focusedRegion ?: return
-        val choice = session.choices[region.id]?.let { " · ${it.name}" } ?: ""
-        player.audience().sendMessage(
-            Component.text("Region ${region.id + 1}/${session.regions.size} · ${region.countLabel()}$choice").color(NamedTextColor.AQUA),
-        )
-    }
+    private fun sendFocusInfo(player: Player, session: DiffSession) = DiffControls.sendFocusInfo(player, session)
 
     private fun clickable(label: String, command: String, color: NamedTextColor, hover: String): Component =
-        Component.text(label)
-            .color(color)
-            .decorate(TextDecoration.BOLD)
-            .clickEvent(ClickEvent.runCommand(command))
-            .hoverEvent(HoverEvent.showText(Component.text(hover)))
+        DiffControls.clickable(label, command, color, hover)
 
     private fun showControls(player: Player, session: DiffSession, uiMode: UIMode) {
         when (uiMode) {
-            UIMode.CHAT -> showChatControls(player, session)
+            UIMode.CHAT -> DiffControls.sendChatControls(player, session)
             UIMode.DIALOG -> showControlsDialog(player, session)
         }
-    }
-
-    private fun showChatControls(player: Player, session: DiffSession) {
-        val audience = player.audience()
-        var line = Component.text("")
-            .append(clickable("[◀ Prev]", "/schematio diff prev", NamedTextColor.AQUA, "Focus previous region"))
-            .append(Component.text(" "))
-            .append(clickable("[Next ▶]", "/schematio diff next", NamedTextColor.AQUA, "Focus next region"))
-        line = if (session.mode == SessionMode.RESOLVE) {
-            line
-                .append(Component.text(" "))
-                .append(clickable("[Mine]", "/schematio diff mine", NamedTextColor.GREEN, "Keep your edit for this region"))
-                .append(Component.text(" "))
-                .append(clickable("[Theirs]", "/schematio diff theirs", NamedTextColor.AQUA, "Keep the new head for this region"))
-                .append(Component.text(" "))
-                .append(clickable("[Done]", "/schematio diff done", NamedTextColor.GOLD, "Compose and commit"))
-                .append(Component.text(" "))
-                .append(clickable("[Abort]", "/schematio diff abort", NamedTextColor.RED, "Abandon the resolution"))
-        } else {
-            line
-                .append(Component.text(" "))
-                .append(clickable("[Close]", "/schematio diff close", NamedTextColor.RED, "Close the diff viewer"))
-        }
-        audience.sendMessage(line)
-        audience.sendMessage(
-            Component.text("Also: /schematio diff goto <n> · layers <kind> <on|off>").color(NamedTextColor.DARK_GRAY),
-        )
     }
 
     private fun showControlsDialog(player: Player, session: DiffSession) {
@@ -417,7 +374,7 @@ class DiffSubcommand(private val plugin: SchematioConnector) : Subcommand {
             player.showDialog(dialog)
         } catch (e: Exception) {
             plugin.logger.warning("Failed to show diff controls dialog: ${e.message}")
-            showChatControls(player, session)
+            DiffControls.sendChatControls(player, session)
         }
     }
 

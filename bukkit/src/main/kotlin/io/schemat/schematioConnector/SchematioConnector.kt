@@ -526,6 +526,7 @@ class SchematioConnector : JavaPlugin(), Listener {
                 QuickShareSubcommand(this),
                 QuickShareGetSubcommand(this),
                 DiffSubcommand(this),
+                CommitSubcommand(this),
             )
 
             for (cmd in optionalCommands) {
