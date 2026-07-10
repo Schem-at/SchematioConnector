@@ -120,6 +120,10 @@ class SchematioConnector : JavaPlugin(), Listener {
     lateinit var uiModeResolver: UIModeResolver
         private set
 
+    // In-game diff viewer sessions (one per player; lifecycle per spec §3)
+    lateinit var diffSessions: io.schemat.schematioConnector.vcs.DiffSessionManager
+        private set
+
     // Track plugin state
     var hasProtocolLib = false
         private set
@@ -191,6 +195,10 @@ class SchematioConnector : JavaPlugin(), Listener {
         
         // Nucleation (bundled JNI schematic library) - powers in-game diff; optional per platform
         io.schemat.schematioConnector.vcs.NucleationRuntime.logStatus(logger)
+
+        // Diff viewer session lifecycle (quit/world-change cleanup + idle disposal)
+        diffSessions = io.schemat.schematioConnector.vcs.DiffSessionManager(this)
+        diffSessions.start()
 
         // Register event listeners (for cleanup on player quit, etc.)
         server.pluginManager.registerEvents(this, this)
@@ -563,6 +571,11 @@ class SchematioConnector : JavaPlugin(), Listener {
     }
 
     override fun onDisable() {
+        // Close diff sessions (destroys per-player display entities, cancels idle sweep)
+        if (::diffSessions.isInitialized) {
+            diffSessions.shutdown()
+        }
+
         // Clean up ProtocolLib handler
         if (protocolLibHandler != null) {
             try {
@@ -605,7 +618,8 @@ class SchematioConnector : JavaPlugin(), Listener {
         // Shutdown map cache executor
         MapImageCache.shutdown()
 
-        // Close HTTP client
+        // Close HTTP clients
         httpUtil?.close()
+        versionTransport?.close()
     }
 }
