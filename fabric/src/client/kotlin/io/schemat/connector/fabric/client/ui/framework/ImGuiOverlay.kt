@@ -71,7 +71,12 @@ object ImGuiOverlay {
         val mc = Minecraft.getInstance()
         // While a vanilla Screen is open, MC owns the cursor — don't fight it.
         // Mark our state stale so we re-release for the overlay once the screen closes.
+        // 26.2 moved screen management from Minecraft onto Gui.
+        //? if >=26.2 {
+        /*if (mc.gui.screen() != null) {
+        *///?} else {
         if (mc.screen != null) {
+        //?}
             cursorReleased = false
             return
         }
@@ -97,7 +102,11 @@ object ImGuiOverlay {
      */
     @JvmStatic
     fun isFocused(): Boolean =
+        //? if >=26.2 {
+        /*Minecraft.getInstance().gui.screen() == null && overlayActive()
+        *///?} else {
         Minecraft.getInstance().screen == null && overlayActive()
+        //?}
 
     @JvmStatic
     fun render() {

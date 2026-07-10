@@ -153,7 +153,11 @@ object PreviewComposerPanel : Panel {
             handleViewportInput(w, h, hovered, active)
         } else {
             ImGui.dummy(w, h)
+            //? if >=26.2 {
+            /*ImGui.text("Schematic preview is not yet supported on Minecraft 26.2")
+            *///?} else {
             ImGui.text("Preview unavailable (no GL texture)")
+            //?}
         }
 
         ImGui.spacing()

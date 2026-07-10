@@ -55,10 +55,16 @@ object ChatNotice {
 
         val client = Minecraft.getInstance()
         // 26.x made ChatComponent.addMessage private; client-originated notices
-        // go through the public addClientSystemMessage instead.
-        //? if >=26.1 {
+        // go through the public addClientSystemMessage instead. 26.2 moved the
+        // chat HUD off Gui: it now lives on Gui.hud (Hud.getChat(), per
+        // ChatListener bytecode in 26.2).
+        //? if >=26.2 {
+        /*client.execute { client.gui.hud.chat.addClientSystemMessage(text) }
+        *///?}
+        //? if >=26.1 && <26.2 {
         /*client.execute { client.gui.chat.addClientSystemMessage(text) }
-        *///?} else {
+        *///?}
+        //? if <26.1 {
         client.execute { client.gui.chat.addMessage(text) }
         //?}
     }
@@ -74,9 +80,13 @@ object ChatNotice {
             .append(Component.literal("[Schemat.io] ").withStyle(ChatFormatting.GRAY))
             .append(Component.literal(message).withStyle(color))
         val client = Minecraft.getInstance()
-        //? if >=26.1 {
+        //? if >=26.2 {
+        /*client.execute { client.gui.hud.chat.addClientSystemMessage(text) }
+        *///?}
+        //? if >=26.1 && <26.2 {
         /*client.execute { client.gui.chat.addClientSystemMessage(text) }
-        *///?} else {
+        *///?}
+        //? if <26.1 {
         client.execute { client.gui.chat.addMessage(text) }
         //?}
     }

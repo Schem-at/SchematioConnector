@@ -1,6 +1,6 @@
 package io.schemat.connector.fabric.client.mixin;
 
-//? if >=26.1 {
+//? if >=26.1 && <26.2 {
 /*import com.mojang.blaze3d.TracyFrameCapture;
 import io.schemat.connector.fabric.client.ui.framework.ImGuiOverlay;
 import net.minecraft.client.Minecraft;
@@ -39,11 +39,15 @@ import org.spongepowered.asm.mixin.Mixin;
  * On <26.1: this class has NO injectors. RenderSystem is a real class present on all
  *   versions, so @Mixin(RenderSystem.class) is always a valid (safe) inert target.
  *   HudRenderCallback handles rendering on those versions (registered in SchematioClientMod).
+ *
+ * On >=26.2: also NO injectors here - 26.2 removed RenderSystem.flipFrame with the
+ *   GpuSurface present rework; the equivalent hook lives in {@link GlSurfaceMixin}
+ *   (HEAD of GlSurface.present, after the frame blit, before the buffer swap).
  */
 @Mixin(RenderSystem.class)
 public class RenderSystemMixin {
 
-    //? if >=26.1 {
+    //? if >=26.1 && <26.2 {
     /*@Inject(
         method = "flipFrame",
         at = @At("HEAD"),

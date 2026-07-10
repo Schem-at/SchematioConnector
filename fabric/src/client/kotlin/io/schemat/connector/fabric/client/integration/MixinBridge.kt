@@ -23,7 +23,12 @@ object MixinBridge {
     fun openBrowser() {
         val client = Minecraft.getInstance()
         // Close the current MC screen first: the ImGui overlay fires only when no Screen is open.
+        // 26.2 moved screen management from Minecraft onto Gui.
+        //? if >=26.2 {
+        /*client.execute { client.gui.setScreen(null); ImGuiOverlay.ensureOpen(); PanelManager.open(BrowsePanel) }
+        *///?} else {
         client.execute { client.setScreen(null); ImGuiOverlay.ensureOpen(); PanelManager.open(BrowsePanel) }
+        //?}
     }
 
     /**
@@ -43,7 +48,11 @@ object MixinBridge {
                 null
             }
             // Close the current MC screen first: the ImGui overlay fires only when no Screen is open.
+            //? if >=26.2 {
+            /*client.gui.setScreen(null)
+            *///?} else {
             client.setScreen(null)
+            //?}
             ImGuiOverlay.ensureOpen()
             UploadWizardPanel.open(preselect)
         }
@@ -65,7 +74,11 @@ object MixinBridge {
                 kind = SourceKind.LOCAL_FILE,
             )
             // Close the current MC screen first: the ImGui overlay fires only when no Screen is open.
+            //? if >=26.2 {
+            /*client.gui.setScreen(null)
+            *///?} else {
             client.setScreen(null)
+            //?}
             ImGuiOverlay.ensureOpen()
             UploadWizardPanel.open(preselect)
         }

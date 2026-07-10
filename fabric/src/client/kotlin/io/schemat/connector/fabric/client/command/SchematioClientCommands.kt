@@ -144,7 +144,12 @@ object SchematioClientCommands {
     private fun openPanel(ctx: CommandContext<FabricClientCommandSource>, open: () -> Unit): Int {
         val client = ctx.source.client
         client.schedule {
+            // 26.2 moved screen management from Minecraft onto Gui.
+            //? if >=26.2 {
+            /*client.gui.setScreen(null)
+            *///?} else {
             client.setScreen(null)
+            //?}
             ImGuiOverlay.ensureOpen() // commands open into the dockable workspace too
             open()
         }

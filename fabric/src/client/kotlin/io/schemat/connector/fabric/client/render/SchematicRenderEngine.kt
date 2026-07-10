@@ -72,6 +72,12 @@ object SchematicRenderEngine {
         pose: CameraPose,
         background: BackgroundMode,
     ): Int {
+        //? if >=26.2 {
+        /*// MC 26.2 removed the immediate-mode draw path the offscreen renderer is
+        // built on; the live preview is disabled until that pipeline is ported.
+        // 0 is the documented "no texture" value - callers show a placeholder.
+        return 0
+        *///?}
         val t = target ?: OffscreenTarget(LIVE_WIDTH, LIVE_HEIGHT).also { target = it }
 
         val dirty = source !== lastSource || pose != lastPose || background != lastBackground
@@ -117,7 +123,16 @@ object SchematicRenderEngine {
         pose: CameraPose,
         background: BackgroundMode,
         onResult: (CaptureResult) -> Unit,
-    ) = ThumbnailCapture.capture(source, pose, background, onResult)
+    ) {
+        //? if >=26.2 {
+        /*// MC 26.2: the offscreen renderer would produce a backdrop-only image
+        // (see OffscreenSchematicRenderer.render); fail loudly instead of
+        // silently uploading a blank thumbnail.
+        onResult(CaptureResult.Failure("Schematic preview capture is not supported on Minecraft 26.2 yet"))
+        return
+        *///?}
+        ThumbnailCapture.capture(source, pose, background, onResult)
+    }
 
     /**
      * Release the owned live-preview target and reset the cache. Call when the composer
