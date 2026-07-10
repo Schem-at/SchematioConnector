@@ -940,3 +940,68 @@ The bare `/schematio` command now carries a Brigadier subcommand tree
 102. `/schematio help` - prints the command list to chat.
 103. Tab-completion suggests the literals (open/browse/upload/download/
      quickshareget/quickshare/help) after `/schematio `.
+
+## 19. In-game diff viewer + conflict resolution (Paper plugin, run-paper)
+
+Server-side feature (bukkit plugin, no client mod needed). Start the
+integration server with WorldEdit + the plugin:
+`JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew :bukkit:runServer`
+— then ALSO install ProtocolLib into `bukkit/run/plugins/` (the diff
+viewer requires it; without it the commands degrade gracefully, see
+110). Needs a schemati instance with the plugin version endpoints
+(`/plugin/schematics/...`) and a versioned schematic; connect two
+accounts for the visibility check.
+
+104. Startup log - "Nucleation <version> loaded - in-game schematic
+     diff enabled" (on a platform without a bundled native the warning
+     variant appears and 105+ must answer with "Schematic diff is not
+     available on this server platform").
+105. `/schematio diff <id> <verA> <verB>` - "Computing diff …" then a
+     summary line ("N region(s), +a −r ~c"), the overlay spawns at your
+     feet: focused region shows per-block ghosts (ADDED teal glow /
+     REMOVED red glow / CHANGED orange glow, slightly shrunken blocks),
+     other regions show gray bounding boxes with floating
+     "Region k/n · +a −r ~c" labels.
+106. **Second player sees nothing** - have the second account stand at
+     the same spot: no display entities, no labels, before/during/after
+     the session. Also `/kill @e` from the console must not report the
+     overlay entities (they are packet-only, never in the world).
+107. `next` / `prev` / `goto <n>` (typed or via the clickable chat
+     buttons) - focus moves (per-block detail follows, previous focus
+     collapses to a box), chat prints "Region k/n · counts". `goto 999`
+     → usage error.
+108. `layers removed off` hides only red ghosts in the focused region;
+     `layers removed on` restores them.
+109. A huge focused region (edit >2000 blocks between versions) shows a
+     partial overlay plus the "⚠ region too large - showing densest
+     slice" label line.
+110. Degraded modes - stop ProtocolLib (or run on a platform without a
+     Nucleation native): `/schematio diff …` answers with the
+     ProtocolLib/"not available on this server platform" message and no
+     session opens; `/schematio download` + `/schematio upload` still work.
+111. `close` (or the [Close] button) destroys every overlay entity.
+     Quitting, switching worlds, or idling 10 minutes does the same
+     (relog / `/execute in <dim> run tp` / wait - each time the overlay
+     is gone and a gray notice appears where applicable).
+112. Commit happy path - `//copy` an edit of the checked-out schematic,
+     `/schematio commit <id> my message` → green "Committed \"my
+     message\" as version …" (requires `schematio.version.commit`).
+113. 409 conflict loop - player B commits first, then player A
+     `/schematio commit <id> …` → red "Your commit conflicts with newer
+     change(s) by <author> …", a RESOLVE overlay opens (same rendering
+     as 105) with [Mine] [Theirs] [Done] [Abort] chat buttons.
+114. Resolve BOTH ways - walk regions with next/prev, pick `mine` for
+     one region and `theirs` for another; `done` before all regions are
+     decided lists the undecided region numbers; after deciding all,
+     `done` → "Composing …" then the commit succeeds and the website
+     shows HEAD = A's version with B's kept regions intact (theirs) and
+     A's chosen regions applied (mine).
+115. Double 409 - while A is resolving, B commits again; A's `done` →
+     the flow restarts against the newer head (new conflict message +
+     fresh RESOLVE session), no crash, no stale overlay left behind.
+116. `abort` - closes the overlay, yellow "aborted" notice, nothing was
+     committed (website HEAD unchanged).
+117. Dialog mode - `/schematio diff <id> <a> <b> --dialog` (client
+     1.21.7+): a native dialog shows the summary and Prev/Next/Close
+     (plus Mine/Theirs/Done/Abort when resolving) buttons; each button
+     runs the same subcommands.
