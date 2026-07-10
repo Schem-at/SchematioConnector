@@ -11,7 +11,10 @@ import io.papermc.paper.registry.data.dialog.input.DialogInput
 import io.papermc.paper.registry.data.dialog.type.DialogType
 import io.schemat.connector.core.validation.InputValidator
 import io.schemat.connector.core.validation.ValidationResult
+import io.schemat.connector.bukkit.adapter.BukkitPlayerStorage
 import io.schemat.schematioConnector.SchematioConnector
+import io.schemat.schematioConnector.vcs.Checkout
+import io.schemat.schematioConnector.vcs.CheckoutStore
 import io.schemat.schematioConnector.utils.UIMode
 import io.schemat.schematioConnector.utils.WorldEditUtil
 import kotlinx.coroutines.runBlocking
@@ -294,6 +297,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                                     val clipboard = WorldEditUtil.byteArrayToClipboard(bytes)
                                     if (clipboard != null) {
                                         WorldEditUtil.setClipboard(player, clipboard)
+                                        if (!isQuickShare) recordCheckout(player, id)
                                         when (uiMode) {
                                             UIMode.CHAT -> showChatSuccess(player, id, format)
                                             UIMode.DIALOG -> showDialogSuccess(player, id, format)
@@ -364,6 +368,21 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                 })
             }
         })
+    }
+
+    /**
+     * Records the fetched schematic as the player's checkout (the future commit-time
+     * expected-head / 3-way base). Version/branch ids are resolved later by the commit
+     * flow via VersionApi - at download time only the schematic id is known, because
+     * the download endpoint serves bytes without version metadata.
+     */
+    private fun recordCheckout(player: Player, schematicId: String) {
+        try {
+            CheckoutStore(BukkitPlayerStorage(player, plugin))
+                .set(Checkout(schematicId = schematicId, versionId = null, branchId = null))
+        } catch (e: Exception) {
+            plugin.logger.warning("Failed to record checkout for ${player.name}: ${e.message}")
+        }
     }
 
     private fun showPasswordDialog(player: Player, accessCode: String) {
