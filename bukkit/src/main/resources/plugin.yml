@@ -37,6 +37,12 @@ permissions:
     schematio.admin:
         description: Admin commands (reload, settoken)
         default: op
+    schematio.diff:
+        description: View schematic version diffs in-world
+        default: true
+    schematio.version.commit:
+        description: Commit new versions and resolve commit conflicts
+        default: op
 
     # UI tier permissions (how you can do it)
     schematio.tier.chat:
