@@ -11,6 +11,7 @@ import io.schemat.connector.core.offline.OfflineMode
 import io.schemat.connector.core.service.SchematicsApiService
 import io.schemat.connector.core.validation.ValidationConstants
 import io.schemat.schematioConnector.commands.*
+import io.schemat.schematioConnector.ipc.PluginIpcService
 import io.schemat.schematioConnector.ui.FloatingUI
 import io.schemat.schematioConnector.utils.MapEngineHandler
 import io.schemat.schematioConnector.utils.MapImageCache
@@ -183,7 +184,10 @@ class SchematioConnector : JavaPlugin(), Listener {
         
         // Register event listeners (for cleanup on player quit, etc.)
         server.pluginManager.registerEvents(this, this)
-        
+
+        // Client↔mod interop (plugin-messaging handshake + capability advertisement)
+        PluginIpcService(this).register()
+
         // Check for ProtocolLib (optional) - load handler dynamically
         hasProtocolLib = server.pluginManager.isPluginEnabled("ProtocolLib")
         if (hasProtocolLib) {

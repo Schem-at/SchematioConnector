@@ -1,0 +1,15 @@
+// GOOD: uses ImGuiColors constants — no inline literals
+package io.schemat.connector.fabric.client.ui.imgui.panels
+
+object GoodPanel {
+    // All colors come from the central theme
+    val background = ImGuiColors.BACKGROUND
+    val accent = ImGuiColors.ACCENT
+    val textPrimary = ImGuiColors.TEXT_PRIMARY
+    val border = ImGuiColors.BORDER_SUBTLE
+
+    fun render() {
+        val highlight = ImGuiColors.HIGHLIGHT
+        val warning = ImGuiColors.WARNING
+    }
+}

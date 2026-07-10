@@ -7,18 +7,22 @@ import io.schemat.connector.core.modapi.SchematioApi
 import io.schemat.connector.core.modapi.dto.MeSnapshot
 import io.schemat.connector.core.modapi.transport.HttpTransport
 import io.schemat.connector.fabric.client.auth.ClientAuthManager
-import io.schemat.connector.fabric.client.ui.PreviewImageManager
+import io.schemat.connector.fabric.client.services.PreviewImageManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
+import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.Minecraft
 import org.slf4j.LoggerFactory
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.nio.file.Path
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.time.Duration
@@ -40,6 +44,9 @@ class ClientServices(val authManager: ClientAuthManager) {
 
         /** Size cap for preview image downloads. */
         private const val MAX_IMAGE_BYTES = 5 * 1024 * 1024
+
+        /** Max persisted preview files on disk before oldest are pruned. */
+        private const val MAX_DISK_PREVIEWS = 1000
 
         /** Trusted preview-image hosts (plus subdomains). */
         private val ALLOWED_IMAGE_DOMAINS = listOf(
@@ -145,6 +152,11 @@ class ClientServices(val authManager: ClientAuthManager) {
         }
         if (!isAllowedImageUrl(absoluteUrl)) return null
 
+        // Disk cache: persists downloaded preview bytes across restarts (the
+        // PreviewImageManager LRU is in-memory only). A hit skips the network entirely.
+        val cacheFile = previewCacheFileFor(absoluteUrl)
+        readDiskCache(cacheFile)?.let { return it }
+
         return try {
             val request = HttpRequest.newBuilder(URI(absoluteUrl))
                 .timeout(Duration.ofSeconds(15))
@@ -163,11 +175,45 @@ class ClientServices(val authManager: ClientAuthManager) {
                     LOGGER.warn("Image too large ({} bytes): {}", response.body().size, absoluteUrl)
                     null
                 }
-                else -> response.body()
+                else -> response.body().also { writeDiskCache(cacheFile, it) }
             }
         } catch (e: Exception) {
             LOGGER.warn("Exception fetching image {}: {}", absoluteUrl, e.message)
             null
+        }
+    }
+
+    /** On-disk preview cache directory under the game dir; created on first use. */
+    private val previewCacheDir: Path by lazy {
+        FabricLoader.getInstance().gameDir.resolve("schematioconnector").resolve("preview-cache")
+            .also { runCatching { Files.createDirectories(it) } }
+    }
+
+    /** Cache file for [url], keyed by its SHA-256 (stable across restarts). */
+    private fun previewCacheFileFor(url: String): Path {
+        val key = MessageDigest.getInstance("SHA-256").digest(url.toByteArray())
+            .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        return previewCacheDir.resolve("$key.img")
+    }
+
+    private fun readDiskCache(file: Path): ByteArray? =
+        runCatching { if (Files.isReadable(file)) Files.readAllBytes(file) else null }.getOrNull()
+
+    private fun writeDiskCache(file: Path, bytes: ByteArray) {
+        runCatching {
+            Files.write(file, bytes)
+            pruneDiskCache()
+        }.onFailure { LOGGER.debug("preview disk-cache write failed: {}", it.message) }
+    }
+
+    /** Best-effort LRU-by-mtime prune when the cache exceeds [MAX_DISK_PREVIEWS] files. */
+    private fun pruneDiskCache() {
+        runCatching {
+            val files = Files.list(previewCacheDir).use { stream -> stream.toList() }
+            if (files.size <= MAX_DISK_PREVIEWS) return
+            files.sortedBy { runCatching { Files.getLastModifiedTime(it).toMillis() }.getOrDefault(0L) }
+                .take(files.size - MAX_DISK_PREVIEWS)
+                .forEach { runCatching { Files.deleteIfExists(it) } }
         }
     }
 

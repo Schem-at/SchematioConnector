@@ -1,6 +1,6 @@
 package io.schemat.connector.fabric.client.ui.theme
 
-import io.schemat.connector.fabric.client.ui.compat.*
+import io.schemat.connector.fabric.client.ui.widgets.*
 import net.minecraft.client.gui.Font
 import net.minecraft.network.chat.Component
 

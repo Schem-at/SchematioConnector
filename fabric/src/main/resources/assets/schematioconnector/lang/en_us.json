@@ -1,4 +1,5 @@
 {
+  "key.schematioconnector.overlay": "Toggle Schematio Workspace",
   "key.schematioconnector.browser": "Open Schematio Browser",
   "key.schematioconnector.upload": "Open Upload Wizard",
   "key.schematioconnector.quickshare": "Open Quick Share",

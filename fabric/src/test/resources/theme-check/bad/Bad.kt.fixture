@@ -1,0 +1,17 @@
+// BAD: contains inline color literals that violate theme discipline
+package io.schemat.connector.fabric.client.ui.imgui.panels
+
+import imgui.ImVec4
+
+object BadPanel {
+    // Violation 1: inline 8-digit hex color literal
+    val background = 0xFFDB45F0.toInt()
+
+    // Violation 2: numeric ImVec4 constructor
+    val textColor = ImVec4(0.1f, 0.2f, 0.3f, 1.0f)
+
+    fun render() {
+        // more violations for good measure
+        val border = 0xFF445566.toInt()
+    }
+}

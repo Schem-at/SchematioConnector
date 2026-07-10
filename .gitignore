@@ -68,10 +68,19 @@ CLAUDE.md
 
 # Fabric Loom dev-server runtime & local libs
 fabric/run/
-fabric/libs/
+# run-paper integration test server (Paper 26.1 + WorldEdit)
+bukkit/run/
+# Ignore libs/ contents (note: glob the contents, not the dir, so the negation
+# below can re-include — git can't re-include under an excluded directory)
+fabric/libs/*
+# ...but vendored Nucleation JNI fat-jars ARE tracked (the build bundles them)
+!fabric/libs/nucleation-*.jar
 
 # Personal IDE run configs (Fabric Client/Server)
 .idea/runConfigurations/Fabric_Client___fabric__fabric.xml
 .idea/runConfigurations/Fabric_Server___fabric__fabric.xml
 # IDE
 .idea/
+
+# Stonecutter per-version run logs
+fabric/versions/*/logs/

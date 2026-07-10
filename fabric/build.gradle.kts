@@ -57,6 +57,15 @@ repositories {
     maven("https://maven.fallenbreath.me/releases") {
         name = "FallenBreath"
     }
+    // Local Nucleation JNI fat-jar — resolved as a group:name:version coordinate via
+    // flatDir so Loom `include` sees a module component with capabilities (a raw
+    // files() dependency cannot be nested as a jar-in-jar). See libs/nucleation-*.jar.
+    flatDir {
+        name = "LocalLibs"
+        // build.gradle.kts is shared across Stonecutter version subprojects, so
+        // projectDir points at fabric/versions/<v>; the jar lives in fabric/libs.
+        dirs("${rootDir}/fabric/libs")
+    }
 }
 
 dependencies {
@@ -112,6 +121,11 @@ dependencies {
     // DevAuth for authenticated dev sessions (runtime only, not bundled)
     add(modRuntime, "me.djtheredstoner:DevAuth-fabric:1.2.2")
 
+    // Test dependencies — JUnit 5 + kotlin-test, matching the project convention.
+    // imgui-java-binding is already on `implementation` so ImVec4 is on the test classpath.
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:2.4.0")
+
     // Include core module and its dependencies in the JAR
     include(project(":core"))
 
@@ -130,6 +144,38 @@ dependencies {
     include("com.fasterxml.jackson.core:jackson-annotations:2.14.2")
     include("commons-logging:commons-logging:1.2")
     include("commons-codec:commons-codec:1.15")
+
+    // Nucleation — Rust schematic library (JNI). Parses/iterates schematic bytes
+    // (the future VCS diff engine). The local fat JAR embeds the macOS-arm64
+    // native as a resource (native/macos-arm64/libnucleation_jvm.dylib) loaded by
+    // Nucleation's own NativeLoader. Loom `include` is jar-in-jar so the native
+    // resource ships in the mod. Linux/Windows natives + CI fat-JAR are a follow-up
+    // (build via nucleation-jvm `./gradlew crossJar`; see docs/nucleation-build.md).
+    val nucleationVersion: String = property("nucleation_version") as String
+    include(implementation(":nucleation:$nucleationVersion")!!)
+
+    // Dear ImGui — client overlay UI. Loom `include` is NON-TRANSITIVE: binding, backend,
+    // and EVERY native classifier must be listed explicitly or the built jar crashes at runtime.
+    val imguiVersion: String = property("imgui_version") as String
+    include(implementation("io.github.spair:imgui-java-binding:$imguiVersion")!!)
+    include(implementation("io.github.spair:imgui-java-lwjgl3:$imguiVersion") {
+        // Exclude the entire org.lwjgl group (incl. the lwjgl-bom platform) from
+        // imgui-java-lwjgl3's transitive deps. MC ships its own LWJGL suite at
+        // runtime (3.3.3 on 1.21.x, 3.4.1 on 26.1) and those versions must win.
+        // The previous narrow exclude of only lwjgl-freetype was insufficient:
+        // imgui's BOM (lwjgl-bom:3.3.4) was force-upgrading the whole LWJGL suite
+        // (lwjgl-core, lwjgl-stb, lwjgl-glfw, lwjgl-opengl, lwjgl-openal,
+        // lwjgl-jemalloc, lwjgl-tinyfd) from MC's 3.3.3 → 3.3.4, causing
+        // NoSuchMethodError on STBImageResize.nstbir_resize_uint8 (API changed in
+        // 3.3.4). MC provides all LWJGL modules at runtime via Loom, so excluding
+        // the transitive group here is safe — imgui-java-lwjgl3 compiles and runs
+        // against MC's copy. imgui's OWN natives (imgui-java-natives-*) are NOT
+        // org.lwjgl and remain bundled.
+        exclude(group = "org.lwjgl")
+    }!!)
+    include(implementation("io.github.spair:imgui-java-natives-windows:$imguiVersion")!!)
+    include(implementation("io.github.spair:imgui-java-natives-linux:$imguiVersion")!!)
+    include(implementation("io.github.spair:imgui-java-natives-macos:$imguiVersion")!!)
 }
 
 loom {
@@ -218,4 +264,86 @@ tasks.register<Copy>("buildAndCollect") {
     from(tasks.named(if ("remapJar" in tasks.names) "remapJar" else "jar"))
     into(rootProject.layout.buildDirectory.dir("libs/${project.version}"))
     dependsOn("build")
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+// ============================================================================
+// Theme-discipline check: panel source must not contain inline color literals.
+// Panels must use ImGuiColors.* constants — never raw hex or numeric ImVec4().
+//
+// Scan root is configurable via -PthemeCheckDir=<path> for fixture testing.
+// When that property is absent, defaults to the real panels directory.
+// File glob matches *.kt and *.kt.fixture (supports fixture verification).
+// ============================================================================
+tasks.register("checkThemeDiscipline") {
+    group = "verification"
+    description = "Fails the build if ImGui panel source uses inline color literals instead of ImGuiColors.*"
+
+    doLast {
+        // buildFile is fabric/build.gradle.kts; its parent is the shared fabric/ module dir
+        // (not the Stonecutter versioned subproject dir at fabric/versions/<ver>/).
+        val fabricModuleDir = buildFile.parentFile
+
+        val scanDir: File = if (project.hasProperty("themeCheckDir")) {
+            val customPath = project.property("themeCheckDir") as String
+            val rawFile = File(customPath)
+            // If absolute, use directly. Otherwise resolve relative to repo root.
+            if (rawFile.isAbsolute) rawFile else File(rootProject.projectDir, customPath)
+        } else {
+            // Default: real panels dir, relative to fabric module dir.
+            File(fabricModuleDir, "src/client/kotlin/io/schemat/connector/fabric/client/ui/imgui/panels")
+        }
+
+        if (!scanDir.exists()) {
+            logger.lifecycle("checkThemeDiscipline: panels dir not found (${scanDir.path}) — skipping (no-op)")
+            return@doLast
+        }
+
+        val hexColorRegex = Regex("""0x[0-9A-Fa-f]{8}""")
+        val imVec4Regex = Regex("""ImVec4\s*\(""")
+
+        val violations = mutableListOf<String>()
+
+        scanDir.walk()
+            .filter { it.isFile && (it.name.endsWith(".kt") || it.name.endsWith(".kt.fixture")) }
+            .sorted()
+            .forEach { file ->
+                file.readLines().forEachIndexed { idx, line ->
+                    val lineNo = idx + 1
+                    if (hexColorRegex.containsMatchIn(line)) {
+                        violations += "${file.path}:$lineNo  inline hex color literal in panel; use ImGuiColors"
+                    }
+                    if (imVec4Regex.containsMatchIn(line)) {
+                        violations += "${file.path}:$lineNo  numeric ImVec4 constructor in panel; use ImGuiColors"
+                    }
+                }
+            }
+
+        if (violations.isEmpty()) {
+            logger.lifecycle("checkThemeDiscipline: OK — no inline color literals found in ${scanDir.path}")
+        } else {
+            throw GradleException(
+                "Theme-discipline violations (use ImGuiColors.* instead of inline literals):\n" +
+                    violations.joinToString("\n")
+            )
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn("checkThemeDiscipline")
+}
+
+// imgui-java-lwjgl3 (and its transitive LWJGL native JARs) are not needed for
+// unit tests and several native classifiers don't exist in Maven Central.
+// Exclude them from the test runtime so resolution doesn't fail.
+configurations.named("testRuntimeClasspath") {
+    exclude(group = "io.github.spair", module = "imgui-java-lwjgl3")
+    exclude(group = "io.github.spair", module = "imgui-java-natives-windows")
+    exclude(group = "io.github.spair", module = "imgui-java-natives-linux")
+    exclude(group = "io.github.spair", module = "imgui-java-natives-macos")
+    exclude(group = "org.lwjgl")
 }

@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Downloads Minecraft head avatars and registers them as GPU textures, keyed by
- * player uuid. Mirrors [io.schemat.connector.fabric.client.ui.PreviewImageManager]'s
+ * player uuid. Mirrors [io.schemat.connector.fabric.client.services.PreviewImageManager]'s
  * registration/threading: decode + register on the render thread, access-ordered LRU
  * cap with evicted textures destroyed on the render thread.
  *

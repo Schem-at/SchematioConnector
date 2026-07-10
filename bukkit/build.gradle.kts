@@ -1,6 +1,8 @@
 plugins {
     id("org.jetbrains.kotlin.jvm")
     id("com.gradleup.shadow")
+    // Spins up a real Paper server for integration testing (./gradlew :bukkit:runServer).
+    id("xyz.jpenilla.run-paper") version "3.0.2"
 }
 
 base {
@@ -73,6 +75,46 @@ tasks.processResources {
     filteringCharset = "UTF-8"
     filesMatching("plugin.yml") {
         expand(props)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Integration test server: Paper 26.1 + WorldEdit, with this plugin injected.
+// Run with:  JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew :bukkit:runServer
+// The shadowJar is added automatically by run-paper. Stop with Ctrl-C / `stop`.
+// Run dir: bukkit/run (gitignored).
+// ---------------------------------------------------------------------------
+tasks.runServer {
+    minecraftVersion("26.1.2")
+    runDirectory.set(layout.projectDirectory.dir("run"))
+
+    // Paper 26.1+ requires Java 25 to RUN, even though this project builds on Java 21.
+    // Use a Java 25 toolchain just for the server JVM (Gradle auto-detects the local JDK).
+    javaLauncher.set(
+        javaToolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(25))
+        }
+    )
+
+    downloadPlugins {
+        // WorldEdit 7.4.3 (Bukkit; supports MC 1.21.10–26.1.2). Modrinth version id.
+        modrinth("worldedit", "yDUBafTJ")
+    }
+
+    doFirst {
+        val runDir = layout.projectDirectory.dir("run").asFile
+        runDir.mkdirs()
+        // Accept the Mojang EULA for this LOCAL test server only (https://aka.ms/MinecraftEULA).
+        // Delete bukkit/run/eula.txt if you do not agree.
+        runDir.resolve("eula.txt").takeUnless { it.exists() }?.writeText("eula=true\n")
+        // Offline mode so the Fabric Loom dev client (runClient) can connect without a paid session.
+        runDir.resolve("server.properties").takeUnless { it.exists() }?.writeText(
+            buildString {
+                appendLine("online-mode=false")
+                appendLine("motd=Schematio IPC test server (26.1)")
+                appendLine("max-players=5")
+            }
+        )
     }
 }
 

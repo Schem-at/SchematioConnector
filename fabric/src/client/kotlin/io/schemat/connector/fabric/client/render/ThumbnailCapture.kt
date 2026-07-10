@@ -8,7 +8,7 @@ import net.minecraft.client.renderer.RenderPipelines
 // 1.21.x and to net.minecraft.client.gui.GuiGraphicsExtractor on 26.x (which
 // kept the identical 12-arg blit(RenderPipeline, Identifier, x, y, u, v, w, h,
 // regionW, regionH, texW, texH) used by drawTargetInto - javap-confirmed).
-import io.schemat.connector.fabric.client.ui.compat.GuiGraphics
+import io.schemat.connector.fabric.client.ui.widgets.GuiGraphics
 import net.minecraft.client.renderer.texture.AbstractTexture
 import com.mojang.blaze3d.platform.NativeImage
 import net.minecraft.client.Screenshot

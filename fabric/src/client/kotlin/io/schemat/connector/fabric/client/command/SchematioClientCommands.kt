@@ -3,15 +3,21 @@ package io.schemat.connector.fabric.client.command
 import com.mojang.brigadier.CommandDispatcher
 import com.mojang.brigadier.arguments.StringArgumentType
 import com.mojang.brigadier.context.CommandContext
+import io.schemat.connector.core.ipc.ClientAction
+import io.schemat.connector.core.ipc.DispatchMode
+import io.schemat.connector.core.ipc.DispatchTable
 import io.schemat.connector.core.modapi.ApiError
 import io.schemat.connector.core.modapi.ApiResult
 import io.schemat.connector.fabric.client.SchematioClientMod
+import io.schemat.connector.fabric.client.ipc.ServerSession
+import io.schemat.connector.fabric.client.ui.framework.ImGuiOverlay
+import io.schemat.connector.fabric.client.ui.framework.PanelManager
 import io.schemat.connector.fabric.client.integration.Bridges
-import io.schemat.connector.fabric.client.ui.ChatNotice
-import io.schemat.connector.fabric.client.ui.HomeScreen
-import io.schemat.connector.fabric.client.ui.QuickShareCreateScreen
-import io.schemat.connector.fabric.client.ui.UploadWizardScreen
+import io.schemat.connector.fabric.client.services.ChatNotice
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
+import io.schemat.connector.fabric.client.ui.panels.BrowsePanel
+import io.schemat.connector.fabric.client.ui.panels.QuickShareCreatePanel
+import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel
 import kotlinx.coroutines.launch
 // Fabric API for 26.x (command-api-v2 3.x) renamed ClientCommandManager to
 // ClientCommands (same statics); the alias keeps call sites identical.
@@ -22,7 +28,6 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
 //?}
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
 import net.fabricmc.loader.api.FabricLoader
-import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import net.minecraft.ChatFormatting
 import java.nio.file.Files
@@ -55,36 +60,50 @@ object SchematioClientCommands {
 
     private val services get() = SchematioClientMod.instance.services
 
+    /** True when the connected server's plugin should own this action (forward instead of handling locally). */
+    private fun forwards(action: ClientAction): Boolean =
+        DispatchTable.resolve(action, ServerSession.pluginPresent) == DispatchMode.SERVER_COMMAND
+
+    /** Sends a `/`-less command line to the server as a vanilla command packet. */
+    private fun forwardToServer(command: String): Int {
+        net.minecraft.client.Minecraft.getInstance().player?.connection?.sendCommand(command)
+        return 1
+    }
+
     fun register(dispatcher: CommandDispatcher<FabricClientCommandSource>) {
         dispatcher.register(
             ClientCommandManager.literal("schematio")
-                .executes { ctx -> openScreen(ctx) { HomeScreen() } }
+                .executes { ctx -> openPanel(ctx) { PanelManager.open(BrowsePanel) } }
                 .then(
                     ClientCommandManager.literal("open")
-                        .executes { ctx -> openScreen(ctx) { HomeScreen() } }
+                        .executes { ctx -> openPanel(ctx) { PanelManager.open(BrowsePanel) } }
                 )
                 .then(
                     ClientCommandManager.literal("browse")
-                        .executes { ctx -> openScreen(ctx) { HomeScreen() } }
+                        .executes { ctx -> openPanel(ctx) { PanelManager.open(BrowsePanel) } }
                 )
                 .then(
                     ClientCommandManager.literal("upload")
-                        .executes { ctx -> openScreen(ctx) { UploadWizardScreen(HomeScreen()) } }
+                        .executes { ctx ->
+                            if (forwards(ClientAction.UPLOAD)) forwardToServer("schematio upload")
+                            else openPanel(ctx) { UploadWizardPanel.open() }
+                        }
                 )
                 .then(
                     ClientCommandManager.literal("quickshare")
-                        .executes { ctx -> openScreen(ctx) { QuickShareCreateScreen(HomeScreen()) } }
+                        .executes { ctx ->
+                            if (forwards(ClientAction.QUICKSHARE)) forwardToServer("schematio quickshare")
+                            else openPanel(ctx) { QuickShareCreatePanel.show(null) }
+                        }
                 )
                 .then(
                     ClientCommandManager.literal("download")
                         .then(
                             ClientCommandManager.argument("id", StringArgumentType.word())
                                 .executes { ctx ->
-                                    downloadAndLoad(
-                                        StringArgumentType.getString(ctx, "id"),
-                                        password = null,
-                                        label = "schematic",
-                                    )
+                                    val id = StringArgumentType.getString(ctx, "id")
+                                    if (forwards(ClientAction.DOWNLOAD)) forwardToServer("schematio download $id")
+                                    else downloadAndLoad(id, password = null, label = "schematic")
                                 }
                         )
                 )
@@ -93,20 +112,17 @@ object SchematioClientCommands {
                         .then(
                             ClientCommandManager.argument("accessCode", StringArgumentType.word())
                                 .executes { ctx ->
-                                    downloadAndLoad(
-                                        StringArgumentType.getString(ctx, "accessCode"),
-                                        password = null,
-                                        label = "quick share",
-                                    )
+                                    val code = StringArgumentType.getString(ctx, "accessCode")
+                                    if (forwards(ClientAction.QUICKSHARE_GET)) forwardToServer("schematio quickshareget $code")
+                                    else downloadAndLoad(code, password = null, label = "quick share")
                                 }
                                 .then(
                                     ClientCommandManager.argument("password", StringArgumentType.greedyString())
                                         .executes { ctx ->
-                                            downloadAndLoad(
-                                                StringArgumentType.getString(ctx, "accessCode"),
-                                                password = StringArgumentType.getString(ctx, "password"),
-                                                label = "quick share",
-                                            )
+                                            val code = StringArgumentType.getString(ctx, "accessCode")
+                                            val password = StringArgumentType.getString(ctx, "password")
+                                            if (forwards(ClientAction.QUICKSHARE_GET)) forwardToServer("schematio quickshareget $code $password")
+                                            else downloadAndLoad(code, password = password, label = "quick share")
                                         }
                                 )
                         )
@@ -118,15 +134,20 @@ object SchematioClientCommands {
         )
     }
 
-    // ------------------------------------------------------------------ screens
+    // ------------------------------------------------------------------ panels
 
     /**
      * Defer opening to the next client-loop iteration: the chat screen is still
-     * closing while the command executes and would otherwise replace [build]'s screen.
+     * closing while the command executes, so we must wait before the panel is visible
+     * (the HUD event fires only when no Screen is open).
      */
-    private fun openScreen(ctx: CommandContext<FabricClientCommandSource>, build: () -> Screen): Int {
+    private fun openPanel(ctx: CommandContext<FabricClientCommandSource>, open: () -> Unit): Int {
         val client = ctx.source.client
-        client.schedule { client.setScreen(build()) }
+        client.schedule {
+            client.setScreen(null)
+            ImGuiOverlay.ensureOpen() // commands open into the dockable workspace too
+            open()
+        }
         return 1
     }
 

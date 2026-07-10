@@ -1,7 +1,9 @@
 package io.schemat.connector.fabric.client.integration
 
-import io.schemat.connector.fabric.client.ui.HomeScreen
-import io.schemat.connector.fabric.client.ui.UploadWizardScreen
+import io.schemat.connector.fabric.client.ui.framework.ImGuiOverlay
+import io.schemat.connector.fabric.client.ui.framework.PanelManager
+import io.schemat.connector.fabric.client.ui.panels.BrowsePanel
+import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel
 import net.minecraft.client.Minecraft
 import java.nio.file.Path
 
@@ -16,11 +18,12 @@ import java.nio.file.Path
  */
 object MixinBridge {
 
-    /** Opens the Schemat.io home screen (used by the button injected into Litematica's load GUI). */
+    /** Opens the Schemat.io browser panel (used by the button injected into Litematica's load GUI). */
     @JvmStatic
     fun openBrowser() {
         val client = Minecraft.getInstance()
-        client.execute { client.setScreen(HomeScreen()) }
+        // Close the current MC screen first: the ImGui overlay fires only when no Screen is open.
+        client.execute { client.setScreen(null); ImGuiOverlay.ensureOpen(); PanelManager.open(BrowsePanel) }
     }
 
     /**
@@ -39,7 +42,10 @@ object MixinBridge {
             } else {
                 null
             }
-            client.setScreen(UploadWizardScreen(HomeScreen(), preselect))
+            // Close the current MC screen first: the ImGui overlay fires only when no Screen is open.
+            client.setScreen(null)
+            ImGuiOverlay.ensureOpen()
+            UploadWizardPanel.open(preselect)
         }
     }
 
@@ -58,7 +64,10 @@ object MixinBridge {
                 label = file.fileName.toString(),
                 kind = SourceKind.LOCAL_FILE,
             )
-            client.setScreen(UploadWizardScreen(HomeScreen(), preselect))
+            // Close the current MC screen first: the ImGui overlay fires only when no Screen is open.
+            client.setScreen(null)
+            ImGuiOverlay.ensureOpen()
+            UploadWizardPanel.open(preselect)
         }
     }
 }

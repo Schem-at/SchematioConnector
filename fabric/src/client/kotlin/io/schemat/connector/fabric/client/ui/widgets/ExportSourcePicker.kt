@@ -7,7 +7,7 @@ import io.schemat.connector.fabric.client.ui.theme.Theme
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.Minecraft
 import net.minecraft.client.input.MouseButtonEvent
-import io.schemat.connector.fabric.client.ui.compat.*
+import io.schemat.connector.fabric.client.ui.widgets.*
 import net.minecraft.client.gui.narration.NarrationElementOutput
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.network.chat.Component

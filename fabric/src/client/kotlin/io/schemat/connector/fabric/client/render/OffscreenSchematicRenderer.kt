@@ -160,6 +160,17 @@ object OffscreenSchematicRenderer {
     //?}
 
     /**
+     * GPU-geometry cache for the static snapshot (see [CachedSchematicMesh]).
+     * Blocks + fluids are tessellated ONCE per source and redrawn every frame
+     * with just the camera matrix, exactly like vanilla's chunk renderer - this
+     * is what makes the live preview smooth during an orbit instead of
+     * re-tessellating the whole build every frame. Lazily created, reused across
+     * frames and sources (it re-tessellates internally only when the source
+     * identity changes), and freed by [releaseCache].
+     */
+    private var meshCache: CachedSchematicMesh? = null
+
+    /**
      * Render the schematic into [target]. Render thread only.
      *
      * [background] selects the backdrop: STUDIO keeps the original behavior
@@ -177,6 +188,12 @@ object OffscreenSchematicRenderer {
         val center = source.center()
         val radius = maxOf(source.radius(), 0.5f)
         val camDist = maxOf(pose.distance * radius, 0.5f)
+
+        // Tessellate the (static) snapshot into the GPU-geometry cache once per
+        // source; an orbit/zoom/pan only changes the camera, never the geometry,
+        // so this no-ops on every frame after the first for a given source.
+        val cache = meshCache ?: CachedSchematicMesh().also { meshCache = it }
+        cache.buildFrom(source)
 
         when (background) {
             BackgroundMode.STUDIO -> target.clear(BACKDROP_R, BACKDROP_G, BACKDROP_B, 1f)
@@ -215,8 +232,15 @@ object OffscreenSchematicRenderer {
                 // the backdrop entirely (alpha-0 clear above).
                 renderHdriBackground(pose, immediate, radius, camDist)
             }
-            renderBlocks(source, matrices, immediate, center)
-            renderFluids(source, matrices, immediate, center)
+            // Blocks + fluids come from the GPU-geometry cache: tessellated once,
+            // redrawn each frame with only the camera matrix as the model-view.
+            // The cached vertices already bake the static (pos - center) offset,
+            // so the camera matrix is exactly the PoseStack camera transform
+            // (pan/push-back/pitch/yaw) with no per-block translate.
+            cache.drawAll(Matrix4f(matrices.last().pose()))
+            // Block entities can't be cached cheaply; render them per frame as
+            // before (the PoseStack still carries the same camera transform, and
+            // each BE adds its own (pos - center) translate inside the pass).
             renderBlockEntities(source, pose, matrices, immediate, center, camDist)
             immediate.endBatch()
         } finally {
@@ -324,188 +348,16 @@ object OffscreenSchematicRenderer {
         }
     }
 
-    //? if >=26.1 {
-    /*/**
-     * 26.x block tessellator, created lazily on first use (needs BlockColors
-     * from the client). ctor args are (ambientOcclusion, cull, blockColors) -
-     * field names javap-confirmed. Stateful scratch buffers inside → render
-     * thread only, exactly like the rest of this object.
-     */
-    private var blockTessellator: ModelBlockRenderer? = null
-
     /**
-     * 26.x: ChunkSectionLayer (now only SOLID/CUTOUT/TRANSLUCENT - TRIPWIRE and
-     * CUTOUT_MIPPED were dropped) → immediate-mode moving-block RenderType.
-     * Used for both block quads (per-quad layer via BakedQuad.materialInfo())
-     * and fluid quads (layer handed to FluidRenderer.Output.getBuilder).
+     * Release the GPU-geometry cache (frees the off-heap vertex buffers + scratch
+     * builders). Call when the composer closes so nothing is held across
+     * sessions. Render thread only. Safe to call repeatedly.
      */
-    private fun movingBlockLayer(layer: ChunkSectionLayer): RenderType = when (layer) {
-        ChunkSectionLayer.TRANSLUCENT -> RenderTypes.translucentMovingBlock()
-        ChunkSectionLayer.CUTOUT -> RenderTypes.cutoutMovingBlock()
-        ChunkSectionLayer.SOLID -> RenderTypes.solidMovingBlock()
+    fun releaseCache() {
+        runCatching { meshCache?.close() }
+            .onFailure { LOGGER.debug("Error closing mesh cache: {}", it.message) }
+        meshCache = null
     }
-    *///?}
-
-    /** Pass 1: blocks. Tint/AO/light resolve from source.view. */
-    private fun renderBlocks(
-        source: SchematicRenderSource,
-        matrices: PoseStack,
-        immediate: MultiBufferSource.BufferSource,
-        center: Vec3,
-    ) {
-        // 26.x removed BlockRenderDispatcher/renderBatched: blocks tessellate via
-        // ModelBlockRenderer.tesselateBlock(BlockQuadOutput, x, y, z, view, pos,
-        // state, model, seed) - neighbor culling + AO + tint resolve against the
-        // view exactly like renderBatched(cull=true) did. Each emitted quad
-        // carries its own ChunkSectionLayer (materialInfo) and is pushed through
-        // VertexConsumer.putBakedQuad(Pose, BakedQuad, QuadInstance), which is
-        // vanilla's own moving-block path (BlockFeatureRenderer bytecode).
-        // The x/y/z floats handed to the output are the camera-relative offsets
-        // we pass in (plus any model offset the tessellator applies), so the
-        // pose translate happens per quad off those values.
-        //? if >=26.1 {
-        /*val client = Minecraft.getInstance()
-        val tessellator = blockTessellator
-            ?: ModelBlockRenderer(true, true, client.blockColors).also { blockTessellator = it }
-        val models = client.modelManager.blockStateModelSet
-        val output = BlockQuadOutput { x, y, z, quad, quadInstance ->
-            matrices.pushPose()
-            matrices.translate(x, y, z)
-            immediate.getBuffer(movingBlockLayer(quad.materialInfo().layer()))
-                .putBakedQuad(matrices.last(), quad, quadInstance)
-            matrices.popPose()
-        }
-        for (pos in source.blockPositions()) {
-            val state = source.view.getBlockState(pos)
-            tessellator.tesselateBlock(
-                output,
-                (pos.x - center.x).toFloat(),
-                (pos.y - center.y).toFloat(),
-                (pos.z - center.z).toFloat(),
-                source.view, pos, state,
-                models.get(state),
-                state.getSeed(pos),
-            )
-        }
-        *///?} else {
-        val blockRenderManager = Minecraft.getInstance().blockRenderer
-        val random = RandomSource.create(42L)
-        for (pos in source.blockPositions()) {
-            val state = source.view.getBlockState(pos)
-            val parts = blockRenderManager.getBlockModel(state).collectParts(random)
-            if (parts.isEmpty()) continue
-            val layer = ItemBlockRenderTypes.getMovingBlockRenderType(state)
-            matrices.pushPose()
-            matrices.translate(
-                (pos.x - center.x).toFloat(),
-                (pos.y - center.y).toFloat(),
-                (pos.z - center.z).toFloat(),
-            )
-            blockRenderManager.renderBatched(
-                state, pos, source.view, matrices,
-                immediate.getBuffer(layer),
-                /* cull = */ true,
-                parts,
-            )
-            matrices.popPose()
-        }
-        //?}
-    }
-
-    /**
-     * Pass 2: fluids. FluidRenderer writes vertices at `pos & 15` (section-local)
-     * and ignores the PoseStack, so wrap the buffer in a consumer that applies
-     * the camera matrix translated to (sectionOrigin - center).
-     */
-    //? if >=26.1 {
-    /*/** 26.x fluid tessellator, created lazily (needs the ModelManager's FluidStateModelSet). */
-    private var fluidTessellator: FluidRenderer? = null
-    *///?}
-
-    private fun renderFluids(
-        source: SchematicRenderSource,
-        matrices: PoseStack,
-        immediate: MultiBufferSource.BufferSource,
-        center: Vec3,
-    ) {
-        // 26.x: BlockRenderDispatcher.renderLiquid → FluidRenderer.tesselate(view,
-        // pos, Output, state, fluidState); Output.getBuilder(ChunkSectionLayer)
-        // hands us the layer (no more ItemBlockRenderTypes lookup). The 26.1
-        // tessellator STILL emits section-local coords (`pos & 15`,
-        // bytecode-confirmed against the deobf jar), so the section-origin
-        // translate + TransformingVertexConsumer scheme is unchanged.
-        //? if >=26.1 {
-        /*val fluidRenderer = fluidTessellator
-            ?: FluidRenderer(Minecraft.getInstance().modelManager.fluidStateModelSet)
-                .also { fluidTessellator = it }
-        *///?} else {
-        val blockRenderManager = Minecraft.getInstance().blockRenderer
-        //?}
-        // Same clamped sub-region as blockPositions()/blockEntities() - never
-        // iterate the full bounds of an over-cap build (see SchematicRenderSource).
-        for (pos in BlockPos.betweenClosed(source.renderMinPos, source.renderMaxPos)) {
-            val state = source.view.getBlockState(pos)
-            val fluidState = state.fluidState
-            if (fluidState.isEmpty) continue
-            // Section origin: floor to multiples of 16 (matches the renderer's `& 15`).
-            val ox = (pos.x shr 4) shl 4
-            val oy = (pos.y shr 4) shl 4
-            val oz = (pos.z shr 4) shl 4
-            matrices.pushPose()
-            matrices.translate(
-                (ox - center.x).toFloat(),
-                (oy - center.y).toFloat(),
-                (oz - center.z).toFloat(),
-            )
-            //? if >=26.1 {
-            /*val entry = matrices.last()
-            fluidRenderer.tesselate(
-                source.view, pos,
-                FluidRenderer.Output { layer ->
-                    TransformingVertexConsumer(immediate.getBuffer(movingBlockLayer(layer)), entry)
-                },
-                state, fluidState,
-            )
-            *///?} else {
-            val buffer = immediate.getBuffer(fluidRenderLayer(fluidState))
-            blockRenderManager.renderLiquid(
-                pos, source.view,
-                TransformingVertexConsumer(buffer, matrices.last()),
-                state, fluidState,
-            )
-            //?}
-            matrices.popPose()
-        }
-    }
-
-    /**
-     * Map the ChunkSectionLayer enum to an immediate-mode RenderType.
-     * 1.21.11 added per-layer *MovingBlock render types and removed CUTOUT_MIPPED;
-     * <=1.21.10 only has translucentMovingBlock, so the other layers use the
-     * general chunk render types (fine for immediate-mode fluid quads).
-     */
-    // 26.x: gone - ItemBlockRenderTypes no longer exists and FluidRenderer.Output
-    // hands the ChunkSectionLayer over directly (see movingBlockLayer above).
-    // Flattened into two whole-function variants (no nested conditionals).
-    //? if >=1.21.11 && <26.1 {
-    private fun fluidRenderLayer(fluidState: FluidState): RenderType =
-        when (ItemBlockRenderTypes.getRenderLayer(fluidState)) {
-            ChunkSectionLayer.TRANSLUCENT -> RenderTypes.translucentMovingBlock()
-            ChunkSectionLayer.TRIPWIRE -> RenderTypes.tripwireMovingBlock()
-            ChunkSectionLayer.CUTOUT -> RenderTypes.cutoutMovingBlock()
-            ChunkSectionLayer.SOLID -> RenderTypes.solidMovingBlock()
-        }
-    //?}
-    //? if <1.21.11 {
-    /*private fun fluidRenderLayer(fluidState: FluidState): RenderType =
-        when (ItemBlockRenderTypes.getRenderLayer(fluidState)) {
-            ChunkSectionLayer.TRANSLUCENT -> RenderTypes.translucentMovingBlock()
-            ChunkSectionLayer.TRIPWIRE -> RenderTypes.tripwire()
-            ChunkSectionLayer.CUTOUT -> RenderTypes.cutout()
-            ChunkSectionLayer.CUTOUT_MIPPED -> RenderTypes.cutoutMipped()
-            ChunkSectionLayer.SOLID -> RenderTypes.solid()
-        }
-    *///?}
 
     /**
      * Pass 3: block entities through the 1.21.11 render-state + command-queue
@@ -666,58 +518,5 @@ object OffscreenSchematicRenderer {
                 LOGGER.warn("SCHEMAT-CAPTURE: block-entity pass failed - block entities omitted from thumbnail", e)
             }
         }
-    }
-
-    /**
-     * Applies a PoseStack entry to positions/normals on the CPU before
-     * delegating - needed because renderFluid takes no PoseStack.
-     */
-    private class TransformingVertexConsumer(
-        private val delegate: VertexConsumer,
-        entry: PoseStack.Pose,
-    ) : VertexConsumer {
-        private val positionMatrix = Matrix4f(entry.pose())
-        private val normalMatrix = org.joml.Matrix3f(entry.normal())
-        private val posVec = Vector3f()
-        private val normVec = Vector3f()
-
-        override fun addVertex(x: Float, y: Float, z: Float): VertexConsumer {
-            positionMatrix.transformPosition(x, y, z, posVec)
-            delegate.addVertex(posVec.x, posVec.y, posVec.z)
-            return this
-        }
-
-        override fun setNormal(x: Float, y: Float, z: Float): VertexConsumer {
-            normalMatrix.transform(x, y, z, normVec)
-            delegate.setNormal(normVec.x, normVec.y, normVec.z)
-            return this
-        }
-
-        override fun setColor(r: Int, g: Int, b: Int, a: Int): VertexConsumer {
-            delegate.setColor(r, g, b, a); return this
-        }
-
-        override fun setColor(argb: Int): VertexConsumer {
-            delegate.setColor(argb); return this
-        }
-
-        override fun setUv(u: Float, v: Float): VertexConsumer {
-            delegate.setUv(u, v); return this
-        }
-
-        override fun setUv1(u: Int, v: Int): VertexConsumer {
-            delegate.setUv1(u, v); return this
-        }
-
-        override fun setUv2(u: Int, v: Int): VertexConsumer {
-            delegate.setUv2(u, v); return this
-        }
-
-        // VertexConsumer.setLineWidth was added in 1.21.11.
-        //? if >=1.21.11 {
-        override fun setLineWidth(width: Float): VertexConsumer {
-            delegate.setLineWidth(width); return this
-        }
-        //?}
     }
 }

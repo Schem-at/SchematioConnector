@@ -1,9 +1,12 @@
 package io.schemat.connector.fabric.client.keybind
 
 import com.mojang.blaze3d.platform.InputConstants
-import io.schemat.connector.fabric.client.ui.HomeScreen
-import io.schemat.connector.fabric.client.ui.QuickShareCreateScreen
-import io.schemat.connector.fabric.client.ui.UploadWizardScreen
+import io.schemat.connector.fabric.client.ui.framework.ImGuiOverlay
+import io.schemat.connector.fabric.client.ui.framework.PanelManager
+import io.schemat.connector.fabric.client.ui.panels.BrowsePanel
+import io.schemat.connector.fabric.client.ui.panels.QuickShareCreatePanel
+import io.schemat.connector.fabric.client.ui.panels.SettingsPanel
+import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel
 // 26.x fabric-api replaced fabric-key-binding-api-v1 (KeyBindingHelper) with
 // fabric-key-mapping-api-v1 (KeyMappingHelper.registerKeyMapping).
 //? if >=26.1 {
@@ -40,6 +43,9 @@ object Keybinds {
     )
     //?}
 
+    /** Master keybind: toggles the dockable Schematio workspace (DockHost + Toolbar). */
+    lateinit var overlay: KeyMapping
+        private set
     lateinit var browser: KeyMapping
         private set
     lateinit var upload: KeyMapping
@@ -51,7 +57,11 @@ object Keybinds {
 
     /** Registers every binding. Call once from onInitializeClient. */
     fun register() {
-        browser = bind("key.schematioconnector.browser", GLFW.GLFW_KEY_K)
+        // Master workspace toggle (the toolbar). Bound to K by default — the primary
+        // entry point to the dockable workspace.
+        overlay = bind("key.schematioconnector.overlay", GLFW.GLFW_KEY_K)
+        // Per-tool toggles ship unbound; user-assignable in Options > Controls.
+        browser = bind("key.schematioconnector.browser", GLFW.GLFW_KEY_UNKNOWN)
         upload = bind("key.schematioconnector.upload", GLFW.GLFW_KEY_UNKNOWN)
         quickShare = bind("key.schematioconnector.quickshare", GLFW.GLFW_KEY_UNKNOWN)
         settings = bind("key.schematioconnector.settings", GLFW.GLFW_KEY_UNKNOWN)
@@ -59,10 +69,12 @@ object Keybinds {
 
     /** Drains pending presses and opens the matching screen. Call each client tick. */
     fun handleInput(client: Minecraft) {
-        while (browser.consumeClick()) client.setScreen(HomeScreen())
-        while (upload.consumeClick()) client.setScreen(UploadWizardScreen(HomeScreen()))
-        while (quickShare.consumeClick()) client.setScreen(QuickShareCreateScreen(HomeScreen()))
-        while (settings.consumeClick()) client.setScreen(HomeScreen(HomeScreen.Tab.SETTINGS))
+        while (overlay.consumeClick()) ImGuiOverlay.toggleOverlay()
+        // Opening any tool window also ensures the workspace chrome is visible.
+        while (browser.consumeClick()) { ImGuiOverlay.ensureOpen(); PanelManager.toggle(BrowsePanel) }
+        while (upload.consumeClick()) { ImGuiOverlay.ensureOpen(); UploadWizardPanel.open() }
+        while (quickShare.consumeClick()) { ImGuiOverlay.ensureOpen(); QuickShareCreatePanel.show(null) }
+        while (settings.consumeClick()) { ImGuiOverlay.ensureOpen(); PanelManager.open(SettingsPanel) }
     }
 
     private fun bind(translationKey: String, defaultKey: Int): KeyMapping {
