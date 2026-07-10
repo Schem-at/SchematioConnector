@@ -64,6 +64,13 @@ class SchematioConnector : JavaPlugin(), Listener {
 
     var httpUtil: HttpUtil? = null
         private set
+
+    // Version endpoints client (plugin/schematics/... routes) + its transport.
+    // Created together with httpUtil; null when the API is unconfigured.
+    var versionApi: io.schemat.connector.core.modapi.VersionApi? = null
+        private set
+    private var versionTransport: io.schemat.connector.core.modapi.transport.HttpTransport? = null
+
     private var _hasWorldEdit = false
 
     // Platform adapters for core module integration
@@ -328,6 +335,12 @@ class SchematioConnector : JavaPlugin(), Listener {
         reloadConfig()
         val config = config
 
+        // Tear down version clients up front: every early-return below means "API not
+        // configured", and the happy path recreates them next to httpUtil.
+        versionApi = null
+        versionTransport?.close()
+        versionTransport = null
+
         // Get token (try new name first, then legacy)
         communityToken = config.getString("community-token")
             ?: config.getString("api-key")
@@ -375,6 +388,11 @@ class SchematioConnector : JavaPlugin(), Listener {
         httpUtil?.close()
         val trustAllCerts = config.getBoolean("trust-all-certificates", false)
         httpUtil = HttpUtil(communityToken, apiEndpoint, logger, trustAllCerts)
+
+        // Version endpoints client shares the endpoint/token but runs on the generalized
+        // ApiTransport (multipart + typed error mapping needed by the diff/commit flow).
+        versionTransport = io.schemat.connector.core.modapi.transport.HttpTransport(apiEndpoint, logger, trustAllCerts)
+        versionApi = io.schemat.connector.core.modapi.VersionApi(versionTransport!!) { communityToken.takeIf { it.isNotEmpty() } }
 
         // Re-initialize rate limiter with any updated config values
         initializeRateLimiter()
