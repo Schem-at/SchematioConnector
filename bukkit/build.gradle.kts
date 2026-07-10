@@ -97,40 +97,62 @@ tasks.processResources {
 }
 
 // ---------------------------------------------------------------------------
-// Integration test server: Paper 26.1 + WorldEdit, with this plugin injected.
-// Run with:  JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew :bukkit:runServer
+// Integration test server: Paper + WorldEdit + ProtocolLib, with this plugin injected.
+// Run with:  ./gradlew :bukkit:runServer                     (defaults to 1.21.8)
+//            ./gradlew :bukkit:runServer -PpaperRunVersion=26.1.2
 // The shadowJar is added automatically by run-paper. Stop with Ctrl-C / `stop`.
-// Run dir: bukkit/run (gitignored).
+// Run dir: bukkit/run/<version> (gitignored) — one world per MC version, so
+// switching versions never downgrade-corrupts a world.
 // ---------------------------------------------------------------------------
-tasks.runServer {
-    minecraftVersion("26.1.2")
-    runDirectory.set(layout.projectDirectory.dir("run"))
+val paperRunVersion: String = (project.findProperty("paperRunVersion") as String?) ?: "1.21.8"
 
-    // Paper 26.1+ requires Java 25 to RUN, even though this project builds on Java 21.
-    // Use a Java 25 toolchain just for the server JVM (Gradle auto-detects the local JDK).
+tasks.runServer {
+    minecraftVersion(paperRunVersion)
+    val versionedRunDir = layout.projectDirectory.dir("run/$paperRunVersion")
+    runDirectory.set(versionedRunDir)
+
+    // Paper 26.x requires Java 25 to RUN; 1.21.x runs on 21. The project still
+    // BUILDS on Java 21 either way — this only picks the server JVM.
     javaLauncher.set(
         javaToolchains.launcherFor {
-            languageVersion.set(JavaLanguageVersion.of(25))
+            languageVersion.set(JavaLanguageVersion.of(if (paperRunVersion.startsWith("26")) 25 else 21))
         }
     )
 
     downloadPlugins {
-        // WorldEdit 7.4.3 (Bukkit; supports MC 1.21.10–26.1.2). Modrinth version id.
-        modrinth("worldedit", "yDUBafTJ")
+        // WorldEdit: 7.4.x is compiled for Java 25 (26.x servers); 1.21.x servers run
+        // Java 21 and need 7.3.x. Modrinth version ids.
+        modrinth("worldedit", if (paperRunVersion.startsWith("26")) "qNuPcliz" else "2YDdVDmG")
+        // ProtocolLib 5.4.0 — required by the in-game diff viewer's per-player
+        // display-entity renderer.
+        github("dmulloy2", "ProtocolLib", "5.4.0", "ProtocolLib.jar")
     }
 
     doFirst {
-        val runDir = layout.projectDirectory.dir("run").asFile
+        val runDir = versionedRunDir.asFile
         runDir.mkdirs()
         // Accept the Mojang EULA for this LOCAL test server only (https://aka.ms/MinecraftEULA).
-        // Delete bukkit/run/eula.txt if you do not agree.
+        // Delete the run dir's eula.txt if you do not agree.
         runDir.resolve("eula.txt").takeUnless { it.exists() }?.writeText("eula=true\n")
         // Offline mode so the Fabric Loom dev client (runClient) can connect without a paid session.
         runDir.resolve("server.properties").takeUnless { it.exists() }?.writeText(
             buildString {
                 appendLine("online-mode=false")
-                appendLine("motd=Schematio IPC test server (26.1)")
+                appendLine("motd=Schematio test server ($paperRunVersion)")
                 appendLine("max-players=5")
+            }
+        )
+        // Bootstrap the plugin config against the LOCAL schemat.io backend (Herd,
+        // self-signed cert) so the server is API-ready on first boot. Only written
+        // if absent — drop your community token in via `/schematio settoken <jwt>`
+        // or edit the file.
+        val pluginCfgDir = runDir.resolve("plugins/SchematioConnector")
+        pluginCfgDir.mkdirs()
+        pluginCfgDir.resolve("config.yml").takeUnless { it.exists() }?.writeText(
+            buildString {
+                appendLine("api-endpoint: \"https://schemati.test/api/v1\"")
+                appendLine("community-token: \"\"")
+                appendLine("trust-all-certificates: true")
             }
         )
     }
