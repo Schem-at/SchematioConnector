@@ -12,7 +12,7 @@ stonecutter active "1.21.11"
 // GUI framework (GuiGraphics -> GuiGraphicsExtractor/ActiveTextCollector) and
 // the reworked block/fluid render pipeline is complete. It builds with the
 // Java 25 toolchain via mapping-less loom.
-val buildableVersions = listOf("1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1")
+val buildableVersions = listOf("1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.2")
 tasks.register("buildAllVersions") {
     group = "build"
     description = "Builds and collects the fabric jar for every supported Minecraft version."
