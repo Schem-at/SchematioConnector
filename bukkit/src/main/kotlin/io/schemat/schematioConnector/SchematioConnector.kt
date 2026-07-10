@@ -182,6 +182,9 @@ class SchematioConnector : JavaPlugin(), Listener {
             logger.warning("WorldEdit not found - upload/download commands disabled")
         }
         
+        // Nucleation (bundled JNI schematic library) - powers in-game diff; optional per platform
+        io.schemat.schematioConnector.vcs.NucleationRuntime.logStatus(logger)
+
         // Register event listeners (for cleanup on player quit, etc.)
         server.pluginManager.registerEvents(this, this)
 

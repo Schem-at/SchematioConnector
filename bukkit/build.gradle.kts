@@ -13,9 +13,27 @@ base {
 val devServerPath = file("${System.getProperty("user.home")}/Desktop/mc_dev_server_1.21.8")
 val pluginsFolder = devServerPath.resolve("plugins")
 
+repositories {
+    // Same local Nucleation fat JAR the fabric module bundles (fabric/libs/nucleation-<version>.jar,
+    // natives embedded as resources — see docs/nucleation-build.md). flatDir keeps the coordinate
+    // form (:nucleation:<version>) consistent with fabric/build.gradle.kts.
+    flatDir {
+        name = "LocalLibs"
+        dirs("${rootDir}/fabric/libs")
+    }
+}
+
 dependencies {
     // Core module
     implementation(project(":core"))
+
+    // Nucleation — Rust schematic library (JNI). Powers the in-game diff viewer
+    // (parse/diff/compose on .schem bytes). Shaded into the plugin jar (runtimeClasspath
+    // flows into shadowJar); NOT relocated — the embedded native registers JNI methods
+    // against the com.github.schemat.nucleation package names. Natives load lazily via
+    // NucleationRuntime; on unsupported platforms diff features degrade gracefully.
+    val nucleationVersion: String = property("nucleation_version") as String
+    implementation(":nucleation:$nucleationVersion")
 
     // HTTP Client (needed directly by some commands that use HttpResponse/HttpEntity)
     implementation("org.apache.httpcomponents:httpclient:4.5.14")
