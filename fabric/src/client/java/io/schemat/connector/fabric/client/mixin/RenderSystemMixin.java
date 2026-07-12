@@ -1,63 +1,79 @@
 package io.schemat.connector.fabric.client.mixin;
 
-//? if >=26.1 && <26.2 {
-/*import com.mojang.blaze3d.TracyFrameCapture;
+//? if <26.2 {
+import com.mojang.blaze3d.TracyFrameCapture;
 import io.schemat.connector.fabric.client.ui.framework.ImGuiOverlay;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-*///?}
+//?}
+//? if >=1.21.9 && <26.1 {
+import com.mojang.blaze3d.platform.Window;
+//?}
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import org.spongepowered.asm.mixin.Mixin;
 
 /**
- * On >=26.1: injects at HEAD of RenderSystem.flipFrame to draw ImGui onto FBO 0
- * before the buffer swap / present.
+ * Draws the ImGui overlay at HEAD of {@code RenderSystem.flipFrame} on every version that
+ * still has flipFrame (all MC {@code < 26.2}). On {@code >= 26.2} flipFrame is gone (GpuSurface
+ * present rework) and the equivalent hook lives in {@link GlSurfaceMixin}.
  *
- * Why HEAD on flipFrame (not INVOKE inside runTick):
- *   All three prior INVOKE-inside-runTick attempts ("endFrame", "blitToScreen",
- *   "flipFrame") reported "Scanned 0 target(s)" because those call sites live inside
- *   lambdas or inlined helper bodies, not in runTick's own bytecode — Mixin's INVOKE
- *   scanner only sees the owning method's opcodes.
+ * WHY flipFrame HEAD (not HudRenderCallback):
+ *   flipFrame's body is {@code pollEvents(); Tesselator.clear(); glfwSwapBuffers(...); ...} —
+ *   the GL buffer swap happens INSIDE flipFrame. At its HEAD the caller has already blitted
+ *   the main render target to FBO 0 (the default framebuffer) and the swap has NOT happened
+ *   yet. So FBO 0 holds the finished frame; binding FBO 0 + drawing ImGui here puts the overlay
+ *   on the presented frame.
  *
- *   Targeting flipFrame's OWN HEAD bypasses that entirely: the method is a real
- *   invokestatic target (confirmed via javap of minecraft-merged-deobf-26.1.2.jar),
- *   so the HEAD inject always resolves to exactly one point.
+ *   Crucially this is PIPELINE-AGNOSTIC. The old path (Fabric HudRenderCallback) fired during
+ *   the HUD phase, when MC's mainRenderTarget — not FBO 0 — is bound, on the assumption that
+ *   "FBO 0 is already current during HUD". That holds only in vanilla. Under Sodium/Iris the
+ *   world is composited through their own shader framebuffers and reaches FBO 0 outside the HUD
+ *   phase, so ImGui drew onto an empty (black) FBO 0 and the game never showed through the
+ *   passthrough dockspace → a black screen. flipFrame HEAD sits AFTER MC's own blit-to-screen,
+ *   so it is correct regardless of how the world got onto FBO 0.
  *
- * Frame order at HEAD of flipFrame:
- *   In Minecraft.runTick, mainRenderTarget is already blitted to FBO 0 before
- *   flipFrame is called (offset 266 → blit, offset 331 → flipFrame). At HEAD, FBO 0
- *   holds the finished frame and the GL swap has NOT happened yet. Binding FBO 0 +
- *   drawing ImGui here puts the overlay on screen before present.
+ * flipFrame is never overloaded, so {@code method = "flipFrame"} (name-only) resolves to exactly
+ * one target on every version. Its descriptor drifts, so the handler is version-gated:
+ *   - {@code <1.21.9}          : flipFrame(long, TracyFrameCapture)
+ *   - {@code >=1.21.9 && <26.1} : flipFrame(Window, TracyFrameCapture)
+ *   - {@code >=26.1 && <26.2}   : flipFrame(TracyFrameCapture)
+ * (buildAllVersions compiles every variant, so a wrong descriptor fails the build, not silently.)
  *
- * Verified signature (javap -p minecraft-merged-deobf-26.1.2.jar):
- *   public static void flipFrame(com.mojang.blaze3d.TracyFrameCapture)
- *   — STATIC, single param, NOT overloaded → name-only method = "flipFrame" is safe.
- *
- * On <26.1: this class has NO injectors. RenderSystem is a real class present on all
- *   versions, so @Mixin(RenderSystem.class) is always a valid (safe) inert target.
- *   HudRenderCallback handles rendering on those versions (registered in SchematioClientMod).
- *
- * On >=26.2: also NO injectors here - 26.2 removed RenderSystem.flipFrame with the
- *   GpuSurface present rework; the equivalent hook lives in {@link GlSurfaceMixin}
- *   (HEAD of GlSurface.present, after the frame blit, before the buffer swap).
+ * On {@code >=26.2} this class has NO injectors; {@code @Mixin(RenderSystem.class)} stays a valid
+ * inert target (RenderSystem exists on all versions), and {@link GlSurfaceMixin} does the work.
  */
 @Mixin(RenderSystem.class)
 public class RenderSystemMixin {
 
-    //? if >=26.1 && <26.2 {
-    /*@Inject(
-        method = "flipFrame",
-        at = @At("HEAD"),
-        require = 1
-    )
-    private static void schemat_renderImGuiBeforePresent(TracyFrameCapture frameCapture, CallbackInfo ci) {
-        // Guard: skip if a vanilla Screen is open (it handles its own rendering).
+    //? if <1.21.9 {
+    /*@Inject(method = "flipFrame", at = @At("HEAD"), require = 1)
+    private static void schemat_renderImGuiBeforePresent(long window, TracyFrameCapture frameCapture, CallbackInfo ci) {
+        // Skip while a vanilla Screen is open (it handles its own rendering + cursor).
         if (Minecraft.getInstance().screen != null) return;
-        // ImGuiManager.endFrame() binds FBO 0 + sets the window viewport before
-        // renderDrawData, so ImGui geometry lands on the default framebuffer.
+        // ImGuiManager.endFrame() binds FBO 0 + sets the window viewport before renderDrawData.
+        ImGuiOverlay.render();
+    }
+    *///?}
+
+    //? if >=1.21.9 && <26.1 {
+    @Inject(method = "flipFrame", at = @At("HEAD"), require = 1)
+    private static void schemat_renderImGuiBeforePresent(Window window, TracyFrameCapture frameCapture, CallbackInfo ci) {
+        // Skip while a vanilla Screen is open (it handles its own rendering + cursor).
+        if (Minecraft.getInstance().screen != null) return;
+        // ImGuiManager.endFrame() binds FBO 0 + sets the window viewport before renderDrawData.
+        ImGuiOverlay.render();
+    }
+    //?}
+
+    //? if >=26.1 && <26.2 {
+    /*@Inject(method = "flipFrame", at = @At("HEAD"), require = 1)
+    private static void schemat_renderImGuiBeforePresent(TracyFrameCapture frameCapture, CallbackInfo ci) {
+        // Skip while a vanilla Screen is open (it handles its own rendering + cursor).
+        if (Minecraft.getInstance().screen != null) return;
+        // ImGuiManager.endFrame() binds FBO 0 + sets the window viewport before renderDrawData.
         ImGuiOverlay.render();
     }
     *///?}

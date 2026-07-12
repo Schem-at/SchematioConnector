@@ -21,9 +21,6 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
-//? if <26.1 {
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
-//?}
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.network.chat.Component
 import net.minecraft.ChatFormatting
@@ -121,16 +118,13 @@ class SchematioClientMod : ClientModInitializer {
         }
 
 
-        // Render the ImGui overlay after the vanilla HUD each frame.
-        // On <26.1: HudRenderCallback fires post-HUD (in-frame, correct for immediate GL).
-        // On 26.1+: HudRenderCallback is gone and HudElementRegistry.extractRenderState fires
-        //   in the EXTRACT phase (pre-composite) — draws would be overwritten. The 26.1 path
-        //   uses GameRendererMixin instead, injecting AFTER GuiRenderer.endFrame() in render().
-        //? if <26.1 {
-        HudRenderCallback.EVENT.register { _, _ ->
-            ImGuiOverlay.render()
-        }
-        //?}
+        // The ImGui overlay is drawn from RenderSystemMixin (HEAD of RenderSystem.flipFrame,
+        // all <26.2) / GlSurfaceMixin (>=26.2) — i.e. after the world+HUD is composited to
+        // FBO 0 and before the buffer swap. That point is pipeline-agnostic: it works under
+        // vanilla AND under Sodium/Iris, which own the world composite and leave FBO 0 empty
+        // during the HUD phase. The previous HudRenderCallback path drew during the HUD phase
+        // (mainRenderTarget bound, FBO 0 empty under Iris) → the overlay landed on a black
+        // framebuffer with the game never showing through the passthrough dockspace.
 
         // /schematio command tree: bare command opens the Home screen; subcommands
         // cover open/browse/upload/download/quickshareget/quickshare/help.
