@@ -12,6 +12,7 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.event.HoverEvent
 import net.kyori.adventure.text.format.NamedTextColor
+import net.kyori.adventure.text.format.TextDecoration
 import org.apache.http.entity.ContentType
 import org.apache.http.entity.mime.MultipartEntityBuilder
 import org.apache.http.util.EntityUtils
@@ -120,8 +121,7 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                                     showCommunityMembershipError(player, jsonResponse)
                                 }
                                 "author_not_found" -> {
-                                    audience.sendMessage(Component.text("Your account was not found on schemat.io").color(NamedTextColor.RED))
-                                    audience.sendMessage(Component.text("Please link your Minecraft account at schemat.io first").color(NamedTextColor.GRAY))
+                                    showAccountNotLinkedError(player)
                                 }
                                 else -> {
                                     val errorMessage = jsonResponse.safeGetString("message") ?: errorCode
@@ -158,6 +158,41 @@ class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                 })
             }
         })
+    }
+
+    /**
+     * Shown when the backend can't resolve the uploader's Minecraft account (`author_not_found`).
+     * Two very different causes, told apart by the UUID version:
+     *   - v3 (name-based UUID) → an offline-mode / unauthenticated client. schemat.io can never
+     *     match this to a real account, so "link your account" is misleading — the real fix is to
+     *     join in online mode.
+     *   - v4 (random UUID)     → a genuine Mojang identity that just has no schemat.io account yet;
+     *     point them at the site to sign up (clickable link).
+     */
+    private fun showAccountNotLinkedError(player: Player) {
+        val audience = player.audience()
+        if (player.uniqueId.version() == 3) {
+            audience.sendMessage(Component.text("We couldn't verify your Minecraft account.").color(NamedTextColor.RED))
+            audience.sendMessage(
+                Component.text(
+                    "This server is in offline mode, so schemat.io can't confirm who you are. " +
+                        "Join from an online-mode (Mojang-authenticated) client to upload.",
+                ).color(NamedTextColor.GRAY),
+            )
+        } else {
+            val url = plugin.baseUrl.ifBlank { "https://schemat.io" }
+            audience.sendMessage(Component.text("No schemat.io account is linked to your Minecraft yet.").color(NamedTextColor.RED))
+            audience.sendMessage(
+                Component.text("Sign up free and link your account at ").color(NamedTextColor.GRAY)
+                    .append(
+                        Component.text(url).color(NamedTextColor.AQUA)
+                            .decorate(TextDecoration.UNDERLINED)
+                            .clickEvent(ClickEvent.openUrl(url))
+                            .hoverEvent(HoverEvent.showText(Component.text("Open schemat.io"))),
+                    )
+                    .append(Component.text(", then try again.").color(NamedTextColor.GRAY)),
+            )
+        }
     }
 
     private fun showCommunityMembershipError(player: Player, jsonResponse: com.google.gson.JsonObject) {
