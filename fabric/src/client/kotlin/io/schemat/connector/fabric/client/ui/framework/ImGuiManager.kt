@@ -6,9 +6,6 @@ import imgui.flag.ImGuiConfigFlags
 import imgui.glfw.ImGuiImplGlfw
 import net.minecraft.client.Minecraft
 import org.lwjgl.glfw.GLFW
-import org.lwjgl.opengl.GL11
-import org.lwjgl.opengl.GL20
-import org.lwjgl.opengl.GL30
 
 object ImGuiManager {
     private val imGuiGlfw = ImGuiImplGlfw()
@@ -115,31 +112,15 @@ object ImGuiManager {
 
     fun endFrame() {
         ImGui.render()
-        // Bind the default framebuffer (FBO 0 = screen) before drawing ImGui draw data.
-        // On MC 26.x the entire frame renders into an offscreen FBO owned by GlCommandEncoder;
-        // blitToScreen() copies it to FBO 0 but the encoder may leave a non-zero FBO bound
-        // afterward. imgui-java's renderDrawData never binds an FBO itself, so we must ensure
-        // FBO 0 is current. This is harmless on <26.x (FBO 0 is already bound during HUD phase).
-        // On 26.x: Window.getWidth()/getHeight() return framebufferWidth/framebufferHeight
-        // (verified from decompiled 26.1.2 Window.class).
-        val w = Minecraft.getInstance().window
-
-        // Reset host GL state before the immediate-mode ImGui draw. MC 26.x's GpuDevice/command-
-        // encoder may leave a leftover program or VAO bound; we render under OUR OWN VAO/program so a
-        // clean baseline (program 0, VAO 0) avoids inheriting host state. Harmless on <26.x.
-        GL20.glUseProgram(0)
-        GL30.glBindVertexArray(0)
-
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)
-
-        GL11.glViewport(0, 0, w.width, w.height)
-
-        // FIX (Task: 0x502 macOS core profile) — use our custom Apple-core-profile-correct renderer
-        // INSTEAD of imGuiGl3.renderDrawData(...). imgui-java 1.89.0's backend throws
-        // GL_INVALID_OPERATION (0x502) inside renderDrawData on Apple GL 4.1 core profile (its GL
-        // state save/restore — glPolygonMode(GL_FRONT_AND_BACK) restore + glBindSampler + the
-        // glDrawElementsBaseVertex path — is incompatible with Apple's strict forward-compat core
-        // profile). Our renderer does a minimal, correct draw with no state backup/restore.
+        // The renderer owns all GL state now: it backs up the host's state, binds FBO 0 (the
+        // screen — at flipFrame/present HEAD it already holds the finished frame), draws, then
+        // restores every bit of state it touched. That restore is what makes the overlay safe
+        // under Sodium/Iris: they keep a shadow copy of GL state and skip "redundant" state
+        // changes, so any state we leak corrupts the next frame's world render (flicker/artifacts).
+        //
+        // We still use our custom renderer rather than imgui-java's imGuiGl3.renderDrawData(): the
+        // latter throws GL_INVALID_OPERATION (0x502) on Apple GL 4.1 core profile via its
+        // glDrawElementsBaseVertex path. Ours uses plain glDrawElements + core-safe save/restore.
         ImGuiGl3Renderer.render(ImGui.getDrawData())
     }
 

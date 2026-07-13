@@ -202,6 +202,40 @@ object ImGuiGl3Renderer {
         if (fbWidth <= 0 || fbHeight <= 0) return
         if (drawData.cmdListsCount <= 0) return
 
+        // ── Backup host GL state so this draw is TRANSPARENT to Sodium/Iris ──
+        // Sodium/Iris keep a shadow copy of GL state and skip changes they think are redundant.
+        // Anything we leave dirty (depth test, cull, blend func, active unit, sampler, bindings…)
+        // is inherited by the next frame's world render → flicker + artifacts. We restore every
+        // bit we touch (at the bottom) so GL state is byte-identical before/after and their cache
+        // stays valid. Only core-profile-safe queries are used; the old 0x502 came from
+        // glDrawElementsBaseVertex (never used here), not from glGet/glIsEnabled.
+        val lastActiveTexture = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE)
+        GL13.glActiveTexture(GL13.GL_TEXTURE0)
+        val lastProgram = GL11.glGetInteger(GL20.GL_CURRENT_PROGRAM)
+        val lastTexture2D = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D)
+        val lastSampler = GL11.glGetInteger(GL33.GL_SAMPLER_BINDING)
+        val lastArrayBuffer = GL11.glGetInteger(GL15.GL_ARRAY_BUFFER_BINDING)
+        val lastVertexArray = GL11.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING)
+        val lastFramebuffer = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING)
+        val lastViewport = IntArray(4).also { GL11.glGetIntegerv(GL11.GL_VIEWPORT, it) }
+        val lastScissorBox = IntArray(4).also { GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, it) }
+        val lastBlendSrcRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB)
+        val lastBlendDstRgb = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB)
+        val lastBlendSrcAlpha = GL11.glGetInteger(GL14.GL_BLEND_SRC_ALPHA)
+        val lastBlendDstAlpha = GL11.glGetInteger(GL14.GL_BLEND_DST_ALPHA)
+        val lastBlendEqRgb = GL11.glGetInteger(GL20.GL_BLEND_EQUATION_RGB)
+        val lastBlendEqAlpha = GL11.glGetInteger(GL20.GL_BLEND_EQUATION_ALPHA)
+        val lastBlend = GL11.glIsEnabled(GL11.GL_BLEND)
+        val lastCullFace = GL11.glIsEnabled(GL11.GL_CULL_FACE)
+        val lastDepthTest = GL11.glIsEnabled(GL11.GL_DEPTH_TEST)
+        val lastStencilTest = GL11.glIsEnabled(GL11.GL_STENCIL_TEST)
+        val lastScissorTest = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST)
+        val lastPrimitiveRestart = GL11.glIsEnabled(GL31.GL_PRIMITIVE_RESTART)
+
+        // Draw onto the default framebuffer (screen); FBO 0 holds the finished frame at
+        // flipFrame/present HEAD. The host's previous binding is restored at the end.
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, 0)
+
         // ── Canonical Dear ImGui GL3 render state (set in full every frame because MC mutates GL state) ──
         GL11.glEnable(GL11.GL_BLEND)
         // Separate blend equations: color uses FUNC_ADD, alpha uses FUNC_ADD.
@@ -313,14 +347,29 @@ object ImGuiGl3Renderer {
             }
         }
 
-        // Leave a clean baseline (no save/restore — the host owns surrounding state).
-        GL30.glBindVertexArray(0)
-        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0)
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0)
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0)
-        GL20.glUseProgram(0)
-        GL11.glDisable(GL11.GL_SCISSOR_TEST)
-        GL11.glDisable(GL11.GL_BLEND)
+        // ── Restore host GL state EXACTLY (see backup at top) so Sodium/Iris's cache stays valid ──
+        GL20.glUseProgram(lastProgram)
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, lastTexture2D)
+        GL33.glBindSampler(0, lastSampler)
+        GL13.glActiveTexture(lastActiveTexture)
+        GL30.glBindVertexArray(lastVertexArray)
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, lastArrayBuffer)
+        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, lastFramebuffer)
+        GL20.glBlendEquationSeparate(lastBlendEqRgb, lastBlendEqAlpha)
+        GL14.glBlendFuncSeparate(lastBlendSrcRgb, lastBlendDstRgb, lastBlendSrcAlpha, lastBlendDstAlpha)
+        setCap(GL11.GL_BLEND, lastBlend)
+        setCap(GL11.GL_CULL_FACE, lastCullFace)
+        setCap(GL11.GL_DEPTH_TEST, lastDepthTest)
+        setCap(GL11.GL_STENCIL_TEST, lastStencilTest)
+        setCap(GL11.GL_SCISSOR_TEST, lastScissorTest)
+        setCap(GL31.GL_PRIMITIVE_RESTART, lastPrimitiveRestart)
+        GL11.glViewport(lastViewport[0], lastViewport[1], lastViewport[2], lastViewport[3])
+        GL11.glScissor(lastScissorBox[0], lastScissorBox[1], lastScissorBox[2], lastScissorBox[3])
+    }
+
+    /** Enable or disable a GL capability from a saved boolean. */
+    private fun setCap(cap: Int, enabled: Boolean) {
+        if (enabled) GL11.glEnable(cap) else GL11.glDisable(cap)
     }
 
     fun shutdown() {
