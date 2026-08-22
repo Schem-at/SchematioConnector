@@ -10,10 +10,12 @@ import io.schemat.connector.fabric.client.ui.framework.Panel
 import io.schemat.connector.fabric.client.services.ClientServices
 import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
-import io.schemat.connector.fabric.client.ui.widgets.ConfirmModal
+import dev.harrison.panellib.widgets.ConfirmModal
 import io.schemat.connector.fabric.client.ui.theme.ImGuiColors
 import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
+import io.schemat.connector.fabric.client.ui.theme.Icons
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
+import io.schemat.connector.fabric.client.ui.panels.BrowsePanel
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -231,8 +233,8 @@ object CommunityDetailPanel : Panel {
         ) { result ->
             when (result) {
                 is ApiResult.Success -> {
-                    // Invalidate the communities list so it refreshes
-                    CommunitiesPanel.invalidate()
+                    // Invalidate the Browse list so it refreshes
+                    BrowsePanel.invalidate()
                     io.schemat.connector.fabric.client.ui.framework.PanelManager.close(id)
                 }
                 is ApiResult.Failure -> {
@@ -274,6 +276,7 @@ object CommunityDetailPanel : Panel {
             ImGui.end()
             return
         }
+        ImGuiTheme.windowTitleAccent()
         if (!open.get()) {
             ImGui.end()
             io.schemat.connector.fabric.client.ui.framework.PanelManager.close(id)
@@ -389,7 +392,7 @@ object CommunityDetailPanel : Panel {
         }
 
         if (membersLoaded && members.isEmpty()) {
-            ImGui.textDisabled("No members found.")
+            Widgets.emptyState(Icons.USERS, "No members found")
             return
         }
 
@@ -496,7 +499,7 @@ object CommunityDetailPanel : Panel {
         }
 
         if (schemHasLoaded && schemItems.isEmpty()) {
-            ImGui.textDisabled("No schematics in this community yet.")
+            Widgets.emptyState(Icons.CUBE, "No schematics yet", "Uploads tagged to this community will appear here")
             return
         }
 

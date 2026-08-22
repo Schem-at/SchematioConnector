@@ -6,6 +6,7 @@ import io.schemat.connector.core.modapi.ApiError
 import io.schemat.connector.core.modapi.ApiResult
 import io.schemat.connector.fabric.SchematioConnectorMod
 import io.schemat.connector.fabric.client.SchematioClientMod
+import io.schemat.connector.fabric.client.ipc.OpenUiPrefs
 import io.schemat.connector.fabric.client.ui.framework.Panel
 import io.schemat.connector.fabric.client.ui.framework.PanelManager
 import io.schemat.connector.fabric.client.render.CaptureSpike
@@ -13,6 +14,7 @@ import io.schemat.connector.fabric.client.services.ClientServices
 import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
 import io.schemat.connector.fabric.client.ui.theme.ImGuiColors
+import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
 import net.fabricmc.loader.api.FabricLoader
 //? if >=1.21.11 {
@@ -35,6 +37,9 @@ object SettingsPanel : Panel {
     private val services: ClientServices get() = SchematioClientMod.instance.services
 
     private val reauthBusy = AtomicBoolean(false)
+    /** "Server may open UI" toggle (spec D, default ON); loaded from config on first render. */
+    private val allowServerOpenUi = ImBoolean(OpenUiPrefs.DEFAULT)
+    private var prefsLoaded = false
     /** Transient status message shown after an action. */
     private var statusText: String? = null
     private var statusKind: Widgets.StatusKind = Widgets.StatusKind.INFO
@@ -43,6 +48,7 @@ object SettingsPanel : Panel {
         val open = ImBoolean(true)
         ImGui.setNextWindowSize(520f, 440f, imgui.flag.ImGuiCond.FirstUseEver)
         val expanded = ImGui.begin("Settings###settings", open)
+        if (expanded) ImGuiTheme.windowTitleAccent()
         try {
             if (!open.get()) {
                 PanelManager.close(id)
@@ -112,6 +118,33 @@ object SettingsPanel : Panel {
                 Widgets.StatusKind.WARNING
             )
         }
+
+        ImGui.spacing()
+
+        // ---- PREFERENCES section ----
+        ImGui.textColored(
+            ImGuiColors.ACCENT.x, ImGuiColors.ACCENT.y, ImGuiColors.ACCENT.z, ImGuiColors.ACCENT.w,
+            "Preferences"
+        )
+        ImGui.separator()
+
+        if (!prefsLoaded) {
+            allowServerOpenUi.set(authManager.getConfigFlag(OpenUiPrefs.KEY, OpenUiPrefs.DEFAULT))
+            prefsLoaded = true
+        }
+        if (ImGui.checkbox("Allow this server to open Schematio windows", allowServerOpenUi)) {
+            authManager.setConfigFlag(OpenUiPrefs.KEY, allowServerOpenUi.get())
+            statusText = if (allowServerOpenUi.get()) {
+                "Attested servers may now open Schematio windows for /schematio commands"
+            } else {
+                "Servers can no longer open Schematio windows — /schematio returns to chat menus after rejoin"
+            }
+            statusKind = Widgets.StatusKind.INFO
+        }
+        ImGui.textColored(
+            ImGuiColors.TEXT_MUTED.x, ImGuiColors.TEXT_MUTED.y, ImGuiColors.TEXT_MUTED.z, ImGuiColors.TEXT_MUTED.w,
+            "When on, /schematio menus on attested Schematio servers open here instead of chat"
+        )
 
         ImGui.spacing()
 

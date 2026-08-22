@@ -13,6 +13,7 @@ import io.schemat.connector.fabric.client.services.ClientServices
 import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
 import io.schemat.connector.fabric.client.ui.theme.ImGuiColors
+import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
 import io.schemat.connector.fabric.client.ui.widgets.RichTextEditorWidget
 import io.schemat.connector.fabric.client.ui.widgets.TagSelectorPopup
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
@@ -119,6 +120,7 @@ object SchematicEditPanel : Panel {
             ImGui.end()
             return
         }
+        ImGuiTheme.windowTitleAccent()
         if (!openFlag.get()) {
             ImGui.end()
             PanelManager.close(id)
@@ -268,7 +270,6 @@ object SchematicEditPanel : Panel {
 
                     // Refresh the browse/mine listings and the open SchematicDetailPanel
                     BrowsePanel.invalidate()
-                    MySchematicsPanel.invalidate()
                     SchematicDetailPanel.refreshDetail(t.id)
 
                     statusText = "Changes saved"

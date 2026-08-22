@@ -60,6 +60,15 @@ repositories {
     // Local Nucleation JNI fat-jar — resolved as a group:name:version coordinate via
     // flatDir so Loom `include` sees a module component with capabilities (a raw
     // files() dependency cannot be nested as a jar-in-jar). See libs/nucleation-*.jar.
+    mavenLocal() // panel-lib (../panel-lib: ./gradlew publishToMavenLocal)
+    maven("https://maven.pkg.github.com/Nano112/panel-lib") {
+        name = "GitHubPackages"
+        credentials {
+            username = (findProperty("gpr.user") as String?) ?: System.getenv("GITHUB_ACTOR") ?: ""
+            password = (findProperty("gpr.key") as String?) ?: System.getenv("GITHUB_TOKEN") ?: ""
+        }
+        content { includeGroup("dev.harrison") }
+    }
     flatDir {
         name = "LocalLibs"
         // build.gradle.kts is shared across Stonecutter version subprojects, so
@@ -154,28 +163,10 @@ dependencies {
     val nucleationVersion: String = property("nucleation_version") as String
     include(implementation(":nucleation:$nucleationVersion")!!)
 
-    // Dear ImGui — client overlay UI. Loom `include` is NON-TRANSITIVE: binding, backend,
-    // and EVERY native classifier must be listed explicitly or the built jar crashes at runtime.
-    val imguiVersion: String = property("imgui_version") as String
-    include(implementation("io.github.spair:imgui-java-binding:$imguiVersion")!!)
-    include(implementation("io.github.spair:imgui-java-lwjgl3:$imguiVersion") {
-        // Exclude the entire org.lwjgl group (incl. the lwjgl-bom platform) from
-        // imgui-java-lwjgl3's transitive deps. MC ships its own LWJGL suite at
-        // runtime (3.3.3 on 1.21.x, 3.4.1 on 26.1) and those versions must win.
-        // The previous narrow exclude of only lwjgl-freetype was insufficient:
-        // imgui's BOM (lwjgl-bom:3.3.4) was force-upgrading the whole LWJGL suite
-        // (lwjgl-core, lwjgl-stb, lwjgl-glfw, lwjgl-opengl, lwjgl-openal,
-        // lwjgl-jemalloc, lwjgl-tinyfd) from MC's 3.3.3 → 3.3.4, causing
-        // NoSuchMethodError on STBImageResize.nstbir_resize_uint8 (API changed in
-        // 3.3.4). MC provides all LWJGL modules at runtime via Loom, so excluding
-        // the transitive group here is safe — imgui-java-lwjgl3 compiles and runs
-        // against MC's copy. imgui's OWN natives (imgui-java-natives-*) are NOT
-        // org.lwjgl and remain bundled.
-        exclude(group = "org.lwjgl")
-    }!!)
-    include(implementation("io.github.spair:imgui-java-natives-windows:$imguiVersion")!!)
-    include(implementation("io.github.spair:imgui-java-natives-linux:$imguiVersion")!!)
-    include(implementation("io.github.spair:imgui-java-natives-macos:$imguiVersion")!!)
+    // Shared ImGui overlay (panel-lib). Bundled so users only install SchematioConnector.
+    val panelLibVersion: String = property("panellib_version") as String
+    add(modImpl, "dev.harrison:panel-lib-mc$mcVersion:$panelLibVersion")
+    include("dev.harrison:panel-lib-mc$mcVersion:$panelLibVersion")
 }
 
 loom {
@@ -340,10 +331,3 @@ tasks.named("check") {
 // imgui-java-lwjgl3 (and its transitive LWJGL native JARs) are not needed for
 // unit tests and several native classifiers don't exist in Maven Central.
 // Exclude them from the test runtime so resolution doesn't fail.
-configurations.named("testRuntimeClasspath") {
-    exclude(group = "io.github.spair", module = "imgui-java-lwjgl3")
-    exclude(group = "io.github.spair", module = "imgui-java-natives-windows")
-    exclude(group = "io.github.spair", module = "imgui-java-natives-linux")
-    exclude(group = "io.github.spair", module = "imgui-java-natives-macos")
-    exclude(group = "org.lwjgl")
-}

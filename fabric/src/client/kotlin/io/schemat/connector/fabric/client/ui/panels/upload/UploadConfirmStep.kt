@@ -10,12 +10,13 @@ import io.schemat.connector.fabric.client.ui.widgets.Widgets
 
 internal fun UploadWizardPanel.renderConfirmStep() {
     val source = selectedSource
+    val draft = completingDraft
     val busy = uploadBusy.get() || exporting
 
     ImGui.beginChild("##confirm-card", 0f, -50f, true)
 
     sectionHeading("Summary")
-    summaryRow("Source", source?.let { ExportSources.label(it) } ?: "none")
+    summaryRow("Source", draft?.let { "Server clipboard draft (${it.shortId})" } ?: source?.let { ExportSources.label(it) } ?: "none")
     summaryRow("Name", nameBuf.get().trim().ifBlank { "(none)" })
     val descPlain = descEditor.plainText().replace('\n', ' ').trim()
     summaryRow(
@@ -27,27 +28,29 @@ internal fun UploadWizardPanel.renderConfirmStep() {
         },
     )
     summaryRow("Visibility", if (isPublic) "Public" else "Private")
-    summaryRow("Community", selectedCommunity?.name ?: "None")
+    summaryRow("Community", if (draft != null) "—" else (selectedCommunity?.name ?: "None"))
     summaryRow("Tags", if (selectedTagIds.isEmpty()) "None" else "${selectedTagIds.size} tag(s)")
     summaryRow("Collaborators", coAuthorPicker.uuids().size.let { if (it == 0) "None" else "$it" })
-    summaryRow("Format", ExportSources.formatFor(source))
+    summaryRow("Format", draft?.format ?: ExportSources.formatFor(source))
 
     ImGui.spacing()
     ImGui.spacing()
-    sectionHeading("Preview")
-    if (capturedPreviewPng != null) {
-        renderCapturedPreviewImage()
-        Widgets.statusText("Captured - it will be uploaded.", Widgets.StatusKind.SUCCESS)
-    } else {
-        Widgets.statusText(
-            "No preview captured - a placeholder will be used unless you compose one.",
-            Widgets.StatusKind.INFO,
-        )
-    }
-    ImGui.spacing()
-    val previewLabel = if (capturedPreviewPng != null) "Re-compose preview" else "Generate preview"
-    if (Widgets.button(previewLabel) && !busy) {
-        generatePreview()
+    if (draft == null) {
+        sectionHeading("Preview")
+        if (capturedPreviewPng != null) {
+            renderCapturedPreviewImage()
+            Widgets.statusText("Captured - it will be uploaded.", Widgets.StatusKind.SUCCESS)
+        } else {
+            Widgets.statusText(
+                "No preview captured - a placeholder will be used unless you compose one.",
+                Widgets.StatusKind.INFO,
+            )
+        }
+        ImGui.spacing()
+        val previewLabel = if (capturedPreviewPng != null) "Re-compose preview" else "Generate preview"
+        if (Widgets.button(previewLabel) && !busy) {
+            generatePreview()
+        }
     }
 
     ImGui.endChild()
@@ -55,15 +58,15 @@ internal fun UploadWizardPanel.renderConfirmStep() {
     renderStatus()
 
     if (busy) {
-        Widgets.statusText("Uploading...", Widgets.StatusKind.INFO)
+        Widgets.statusText(if (draft != null) "Saving..." else "Uploading...", Widgets.StatusKind.INFO)
     }
 
     renderNavButtons(
         backStep = Step.DETAILS,
-        nextLabel = "Upload",
+        nextLabel = if (draft != null) "Save & Publish" else "Upload",
         nextEnabled = !busy,
         nextAccent = true,
-        onNext = { startUpload() },
+        onNext = { if (completingDraft != null) completeDraftSubmit() else startUpload() },
     )
 }
 

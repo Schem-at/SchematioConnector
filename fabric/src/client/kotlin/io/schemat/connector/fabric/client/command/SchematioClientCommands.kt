@@ -64,9 +64,22 @@ object SchematioClientCommands {
     private fun forwards(action: ClientAction): Boolean =
         DispatchTable.resolve(action, ServerSession.pluginPresent) == DispatchMode.SERVER_COMMAND
 
-    /** Sends a `/`-less command line to the server as a vanilla command packet. */
+    /**
+     * Sends a `/`-less command line straight to the server as an unsigned command packet.
+     *
+     * MUST NOT use `ClientPacketListener.sendCommand(...)`: Fabric's client-command API
+     * mixins into the HEAD of `sendCommand` and re-dispatches any *client*-registered
+     * command through its own dispatcher, cancelling the vanilla server send. Because
+     * `/schematio` is registered client-side, forwarding `schematio …` there re-enters this
+     * command's executor → `forwardToServer` again → infinite recursion (StackOverflowError).
+     * We instead send the exact packet vanilla `sendCommand` sends for a no-signable-argument
+     * command (`ServerboundChatCommandPacket`) via `connection.send(...)`, which the mixin
+     * does not touch. All `/schematio` forwards have only plain string args, so unsigned is
+     * the correct vanilla behaviour.
+     */
     private fun forwardToServer(command: String): Int {
-        net.minecraft.client.Minecraft.getInstance().player?.connection?.sendCommand(command)
+        val connection = net.minecraft.client.Minecraft.getInstance().player?.connection ?: return 0
+        connection.send(net.minecraft.network.protocol.game.ServerboundChatCommandPacket(command))
         return 1
     }
 

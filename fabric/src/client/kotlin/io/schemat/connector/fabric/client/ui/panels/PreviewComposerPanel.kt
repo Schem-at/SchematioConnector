@@ -89,14 +89,14 @@ object PreviewComposerPanel : Panel {
     }
 
     override fun render() {
-        ImGuiTheme.apply()
-        try {
+        run {
             ImGui.setNextWindowSize(860f, 640f, ImGuiCond.FirstUseEver)
             val open = ImBoolean(true)
             if (!ImGui.begin("Compose preview###preview-composer", open, ImGuiWindowFlags.NoCollapse)) {
                 ImGui.end()
                 return
             }
+            ImGuiTheme.windowTitleAccent()
 
             val src = source
             when {
@@ -107,8 +107,6 @@ object PreviewComposerPanel : Panel {
 
             ImGui.end()
             if (!open.get()) closePanel()
-        } finally {
-            ImGuiTheme.unapply()
         }
     }
 

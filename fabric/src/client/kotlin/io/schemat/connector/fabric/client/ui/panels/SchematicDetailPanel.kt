@@ -3,6 +3,8 @@ package io.schemat.connector.fabric.client.ui.panels
 import com.mojang.blaze3d.opengl.GlTexture
 import imgui.ImGui
 import imgui.flag.ImGuiWindowFlags
+import io.schemat.connector.core.ipc.LoadRefType
+import io.schemat.connector.core.ipc.StatusState
 import io.schemat.connector.core.modapi.ApiResult
 import io.schemat.connector.core.modapi.dto.SchematicDetail
 import io.schemat.connector.core.modapi.dto.SchematicSummary
@@ -10,11 +12,11 @@ import io.schemat.connector.fabric.client.SchematioClientMod
 import io.schemat.connector.fabric.client.ui.framework.Panel
 import io.schemat.connector.fabric.client.integration.Bridges
 import io.schemat.connector.fabric.client.ipc.ServerIpc
-import io.schemat.connector.fabric.client.ipc.ServerSession
 import io.schemat.connector.fabric.client.services.ClientServices
 import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
-import io.schemat.connector.fabric.client.ui.widgets.ConfirmModal
+import io.schemat.connector.fabric.client.ui.theme.Icons
+import dev.harrison.panellib.widgets.ConfirmModal
 import io.schemat.connector.fabric.client.ui.theme.ImGuiColors
 import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
@@ -70,6 +72,9 @@ object SchematicDetailPanel : Panel {
     private var statusText: String? = null
     private var statusKind: Widgets.StatusKind = Widgets.StatusKind.INFO
 
+    /** requestId of an in-flight server clipboard load; null when idle. */
+    private var pendingServerLoad: Int? = null
+
     /**
      * Set the target schematic and open the panel. If the panel is already open for
      * a different schematic, the target is replaced in place (same singleton, same
@@ -84,6 +89,7 @@ object SchematicDetailPanel : Panel {
             fetchBusy.set(false)
             actionBusy.set(false)
             statusText = null
+            pendingServerLoad = null
         }
         io.schemat.connector.fabric.client.ui.framework.PanelManager.open(SchematicDetailPanel)
         loadDetailIfNeeded()
@@ -136,6 +142,7 @@ object SchematicDetailPanel : Panel {
             ImGui.end()
             return
         }
+        ImGuiTheme.windowTitleAccent()
         if (!open.get()) {
             ImGui.end()
             io.schemat.connector.fabric.client.ui.framework.PanelManager.close(id)
@@ -338,11 +345,12 @@ object SchematicDetailPanel : Panel {
             ImGui.sameLine()
         }
 
-        // Server-side WorldEdit clipboard via IPC — only when a Schematio server is connected.
-        if (ServerSession.pluginPresent) {
-            val serverDisabled = actionsDisabled  // includes !loaded / offline / busy
+        // Server-side WorldEdit clipboard, reference-pull (sub-project B): shown ONLY
+        // when the session is VERIFIED and the server advertised LOAD_CLIPBOARD.
+        if (ServerIpc.canLoadOnServer()) {
+            val serverDisabled = actionsDisabled || pendingServerLoad != null
             if (serverDisabled) ImGui.beginDisabled()
-            if (Widgets.button("Load to server clipboard")) { d?.let { loadToServerClipboard(it) } }
+            if (Widgets.button("${Icons.DOWNLOAD}  Load on server")) { d?.let { loadOnServer(it) } }
             if (serverDisabled) ImGui.endDisabled()
             ImGui.sameLine()
         }
@@ -476,34 +484,41 @@ object SchematicDetailPanel : Panel {
     }
 
     /**
-     * Downloads the schematic as .schem and ships the bytes to the connected Schematio server
-     * via IPC ([ServerIpc.sendLoadClipboard]); the server loads them into the player's WorldEdit
-     * clipboard. The send happens on the result callback (client thread). Fire-and-forget — the
-     * server sends no bytes back, so success here only means "request dispatched".
+     * Reference-pull server clipboard load: sends only the schematic id over IPC;
+     * the SERVER pulls the bytes from the backend itself. STATUS updates stream
+     * into [statusText] (toast-style, spec §Client); a terminal status (or the
+     * tracker's 30 s synthetic ERROR) re-enables the button.
      */
-    private fun loadToServerClipboard(d: SchematicDetail) {
-        val format = "schem"
-        services.call(
-            busy = actionBusy,
-            block = { services.cached.download(d.id, format) },
-        ) { result ->
-            when (result) {
-                is ApiResult.Success -> {
-                    if (ServerIpc.sendLoadClipboard(result.value, format)) {
-                        statusText = "Sent \"${d.name}\" to the server's WorldEdit clipboard"
-                        statusKind = Widgets.StatusKind.SUCCESS
-                    } else {
-                        statusText = "No Schematio server connected"
-                        statusKind = Widgets.StatusKind.WARNING
-                    }
-                }
-                is ApiResult.Failure -> {
-                    statusText = result.error.toUserMessage()
-                    statusKind = Widgets.StatusKind.DANGER
-                }
-            }
+    private fun loadOnServer(d: SchematicDetail) {
+        statusText = "Requesting server-side load…"
+        statusKind = Widgets.StatusKind.INFO
+        val requestId = ServerIpc.sendLoadRequest(LoadRefType.SCHEMATIC, d.id) { state, detail ->
+            if (state.isTerminal) pendingServerLoad = null
+            val (text, kind) = serverLoadMessage(state, detail, d.name)
+            statusText = text
+            statusKind = kind
+        }
+        if (requestId != null) {
+            pendingServerLoad = requestId // non-null disables the button until a terminal status/timeout
+        } else {
+            statusText = "No verified Schematio server connection"
+            statusKind = Widgets.StatusKind.WARNING
         }
     }
+
+    /** detail arrives pre-sanitized (ClipboardLoadTracker strips '§' codes). */
+    private fun serverLoadMessage(state: StatusState, detail: String, name: String): Pair<String, Widgets.StatusKind> =
+        when (state) {
+            StatusState.RESOLVING -> "Server is resolving \"$name\"…" to Widgets.StatusKind.INFO
+            StatusState.DOWNLOADING -> "Server is downloading \"$name\"…" to Widgets.StatusKind.INFO
+            StatusState.OK -> "Loaded \"$name\" into your server-side WorldEdit clipboard — //paste to place it" to Widgets.StatusKind.SUCCESS
+            StatusState.DENIED -> detail.ifBlank { "The server denied the request" } to Widgets.StatusKind.DANGER
+            StatusState.NOT_FOUND -> "The server's backend could not find this schematic" to Widgets.StatusKind.DANGER
+            StatusState.TOO_LARGE -> "Too large for a server clipboard load (8 MiB limit)" to Widgets.StatusKind.DANGER
+            StatusState.RATE_LIMITED -> detail.ifBlank { "Rate limited — try again shortly" } to Widgets.StatusKind.WARNING
+            StatusState.UNAVAILABLE -> detail.ifBlank { "The server can't load schematics right now" } to Widgets.StatusKind.DANGER
+            StatusState.ERROR -> detail.ifBlank { "Unexpected error during the server-side load" } to Widgets.StatusKind.DANGER
+        }
 
     private fun openQuickShare(d: SchematicDetail) {
         val format = d.format
@@ -524,7 +539,6 @@ object SchematicDetailPanel : Panel {
                     io.schemat.connector.fabric.client.ui.framework.PanelManager.close(id)
                     // Invalidate the browse/mine listings so the deleted item disappears
                     BrowsePanel.invalidate()
-                    MySchematicsPanel.invalidate()
                 }
                 is ApiResult.Failure -> {
                     statusText = result.error.toUserMessage()

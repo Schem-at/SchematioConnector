@@ -7,6 +7,8 @@ import io.schemat.connector.fabric.client.SchematioClientMod
 import io.schemat.connector.fabric.client.ui.framework.Panel
 import io.schemat.connector.fabric.client.ui.framework.PanelManager
 import io.schemat.connector.fabric.client.services.ClientServices
+import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
+import io.schemat.connector.fabric.client.ui.theme.Icons
 import io.schemat.connector.fabric.client.ui.widgets.TagSelectorPopup
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
 import io.schemat.connector.fabric.client.ui.panels.SchematicListView.Context
@@ -17,8 +19,8 @@ import io.schemat.connector.fabric.client.ui.panels.SchematicListView.sameAs
  *
  * Was the Browse tab of the former multi-tab `BrowserPanel`. Owns its own
  * [SchematicListView.SchematicListState] plus the browse-only context cycler and tag-filter
- * state; all list rendering is delegated to [SchematicListView] (shared with
- * [MySchematicsPanel]). Toggled from the toolbar / keybinds via [PanelManager].
+ * state; all list rendering is delegated to [SchematicListView].
+ * Toggled from the toolbar / keybinds via [PanelManager].
  */
 object BrowsePanel : Panel {
 
@@ -29,10 +31,10 @@ object BrowsePanel : Panel {
     private val state = SchematicListView.SchematicListState()
 
     // Browse-only extras (Mine has no context or tag filters)
+    private var scope: BrowseScope = BrowseScope.All
     private var context: Context = Context.Public
     private var selectedTagIds: Set<String> = emptySet()
     private var tagConstraints: List<FilterConstraint> = emptyList()
-    private var contextIndex = 0
 
     /** Reload from scratch (e.g. after an item is deleted/edited elsewhere). */
     fun invalidate() = resetAndLoad()
@@ -41,6 +43,7 @@ object BrowsePanel : Panel {
         val open = ImBoolean(true)
         ImGui.setNextWindowSize(820f, 600f, imgui.flag.ImGuiCond.FirstUseEver)
         val expanded = ImGui.begin("Browse###browse", open)
+        if (expanded) ImGuiTheme.windowTitleAccent()
         try {
             if (!open.get()) {
                 PanelManager.close(id)
@@ -55,7 +58,7 @@ object BrowsePanel : Panel {
             SchematicListView.renderSchematicGrid(
                 state = state,
                 scrollId = "##browse_scroll",
-                showAuthor = true,
+                showAuthor = scope !is BrowseScope.Mine,
                 emptyNoSearchMsg = "No schematics found",
                 emptySearchMsg = { q -> "No schematics match \"$q\"" },
                 loadNext = { loadNextPage() },
@@ -66,22 +69,28 @@ object BrowsePanel : Panel {
     }
 
     private fun renderControls() {
-        // Context cycler (Public / Mine / community names)
-        val contexts = buildContextList()
-        if (contextIndex >= contexts.size) contextIndex = 0
-        val currentContext = contexts[contextIndex]
-        if (!(currentContext sameAs context)) {
-            context = currentContext
+        // --- Scope selector: All | Mine | Communities ▾ ---
+        scopeButton("All", scope is BrowseScope.All) { setScope(BrowseScope.All) }
+        ImGui.sameLine()
+        scopeButton("Mine", scope is BrowseScope.Mine) { setScope(BrowseScope.Mine) }
+        ImGui.sameLine()
+        val communities = services.me?.communities.orEmpty()
+        val communityLabel = (scope as? BrowseScope.Community)?.name ?: "Communities"
+        if (ImGui.beginMenu("$communityLabel  ${Icons.CHEVRON_DOWN}", communities.isNotEmpty())) {
+            for (c in communities) {
+                if (ImGui.menuItem(c.name, "", scope.let { it is BrowseScope.Community && it.slug == c.slug })) {
+                    setScope(BrowseScope.Community(c.slug, c.name))
+                }
+            }
+            ImGui.endMenu()
         }
-
-        if (ImGui.button("Context: ${currentContext.label}")) {
-            contextIndex = (contextIndex + 1) % contexts.size
-            val newCtx = contexts[contextIndex]
-            if (!(newCtx sameAs context)) {
-                context = newCtx
-                selectedTagIds = emptySet()
-                tagConstraints = emptyList()
-                resetAndLoad()
+        // "Manage community" only in a Community scope
+        (scope as? BrowseScope.Community)?.let { cs ->
+            ImGui.sameLine()
+            if (Widgets.secondaryButton("Manage")) {
+                services.me?.communities?.firstOrNull { it.slug == cs.slug }?.let {
+                    CommunityDetailPanel.show(it)   // existing show(summary) entry point
+                }
             }
         }
 
@@ -123,10 +132,18 @@ object BrowsePanel : Panel {
         SchematicListView.tickSearchDebounce(state) { resetAndLoad() }
     }
 
-    private fun buildContextList(): List<Context> = buildList {
-        add(Context.Public)
-        add(Context.Mine)
-        services.me?.communities?.forEach { add(Context.Community(it.slug, it.name)) }
+    private fun scopeButton(label: String, active: Boolean, onClick: () -> Unit) {
+        if (active) { if (Widgets.primaryButton(label)) onClick() }
+        else { if (Widgets.secondaryButton(label)) onClick() }
+    }
+
+    private fun setScope(next: BrowseScope) {
+        if (next == scope) return
+        scope = next
+        context = BrowseScope.toContext(next)
+        selectedTagIds = emptySet()
+        tagConstraints = emptyList()
+        resetAndLoad()
     }
 
     private fun resetAndLoad() {

@@ -11,7 +11,6 @@ import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
 import io.schemat.connector.fabric.client.ui.framework.PanelManager
 import io.schemat.connector.fabric.client.ui.panels.BrowsePanel
-import io.schemat.connector.fabric.client.ui.panels.MySchematicsPanel
 import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel
 import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel.Step
 import io.schemat.connector.fabric.client.ui.widgets.ExportSources
@@ -103,7 +102,6 @@ internal fun UploadWizardPanel.performUpload(source: ExportSource, bytesProvider
             is ApiResult.Success -> {
                 val detail = result.value
                 BrowsePanel.invalidate()
-                MySchematicsPanel.invalidate()
                 PanelManager.close(id)
                 val webUrl = webLink(detail)
                 ChatNotice.success(
@@ -156,3 +154,78 @@ internal fun UploadWizardPanel.performUpload(source: ExportSource, bytesProvider
 internal fun UploadWizardPanel.isMissingUploadPermission(error: ApiError.Forbidden): Boolean =
     error.message.contains("permission", ignoreCase = true) ||
         error.message.contains("upload_schematic", ignoreCase = true)
+
+/**
+ * Complete-draft save (sub-project C): the bytes are already on the backend, so this
+ * is metadata-only — updateSchematic (name/description/visibility; the name-carrying
+ * PUT is what PUBLISHES the draft server-side), then tags, then co-authors.
+ * All with the USER's own auth — the server is out of the loop entirely.
+ */
+internal fun UploadWizardPanel.completeDraftSubmit() {
+    val draft = completingDraft ?: return
+    if (uploadBusy.get()) return
+    val authorId = services.authManager.session?.playerUuid
+    if (authorId == null) {
+        statusMessage = "Not signed in to schemat.io"
+        statusKind = Widgets.StatusKind.DANGER
+        return
+    }
+    statusMessage = null
+    val name = nameBuf.get().trim()
+    val description = descEditor.toHtml()
+    val tagIds = selectedTagIds.toList()
+    val tagFilters = selectedTagFilters
+    val coAuthorIds = coAuthorPicker.uuids()
+        .filter { it.lowercase().replace("-", "") != authorId.lowercase().replace("-", "") }
+
+    services.call(
+        busy = uploadBusy,
+        block = {
+            val updated = services.cached.updateSchematic(
+                draft.id,
+                name = name,
+                description = description,
+                isPublic = isPublic,
+            )
+            val afterTags = when {
+                updated is ApiResult.Failure -> updated
+                tagIds.isEmpty() && tagFilters.isEmpty() -> updated
+                else -> when (val tags = services.cached.setTags(draft.id, tagIds, tagFilters)) {
+                    is ApiResult.Failure -> ApiResult.Failure(tags.error)
+                    is ApiResult.Success -> updated
+                }
+            }
+            if (afterTags is ApiResult.Success) {
+                // Best-effort: a failed co-author add must not fail the publish.
+                coAuthorIds.forEach { services.cached.addCoAuthor(draft.id, it) }
+            }
+            afterTags
+        },
+    ) { result ->
+        when (result) {
+            is ApiResult.Success -> {
+                val detail = result.value
+                BrowsePanel.invalidate()
+                PanelManager.close(id)
+                ChatNotice.success(
+                    "Published \"${detail.name}\" successfully",
+                    webLink(detail),
+                    "Open in browser",
+                )
+            }
+            is ApiResult.Failure -> {
+                val error = result.error
+                if (error is ApiError.Validation) {
+                    step = Step.DETAILS
+                    statusMessage = if (error.fieldErrors.isEmpty()) error.message
+                    else error.fieldErrors.entries.joinToString("; ") { (field, messages) ->
+                        "$field: ${messages.firstOrNull() ?: "invalid"}"
+                    }
+                } else {
+                    statusMessage = error.toUserMessage()
+                }
+                statusKind = Widgets.StatusKind.DANGER
+            }
+        }
+    }
+}

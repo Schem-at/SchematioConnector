@@ -41,6 +41,7 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 
 ### Fabric client (the full experience)
 
+- **Shared overlay** - the client UI lives in the [panel-lib](https://github.com/Nano112/panel-lib) overlay (**K**): one toolbar and dockspace shared with other panel-lib mods, the game embedded beside the panels, and a common theme. Schematio adds a **Schematio ▾** menu with Browse / Upload / Quick Shares / Settings.
 - **Schematic browser** - search, tag filtering (including tag *filter values*), thumbnails, detail view, save to disk. Open it with the **K** key (rebindable, *Controls → Misc*) or `/schematio`.
 - **Upload wizard** - upload from a local file, your Litematica schematic, or your WorldEdit clipboard, with metadata, tags, and co-authors (with head avatars).
 - **Thumbnail composer** - render your schematic to a thumbnail in-game: orbit/pan/zoom camera, isometric or perspective projection, FOV control, angle presets, and transparent / HDRI / studio backgrounds. 16:9 offscreen capture.

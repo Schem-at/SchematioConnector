@@ -13,16 +13,25 @@ import io.schemat.connector.fabric.client.ui.widgets.Widgets
 
 internal fun UploadWizardPanel.renderDetailsStep() {
     // Source affordance
-    val srcLabel = "Source: " + (selectedSource?.let { ExportSources.label(it) } ?: "none selected")
-    ImGui.textColored(
-        ImGuiColors.TEXT_MUTED.x, ImGuiColors.TEXT_MUTED.y,
-        ImGuiColors.TEXT_MUTED.z, ImGuiColors.TEXT_MUTED.w,
-        srcLabel,
-    )
-    ImGui.sameLine()
-    if (Widgets.button("Change...")) {
-        step = Step.SOURCE
-        statusMessage = null
+    val draft = completingDraft
+    if (draft != null) {
+        ImGui.textColored(
+            ImGuiColors.TEXT_MUTED.x, ImGuiColors.TEXT_MUTED.y,
+            ImGuiColors.TEXT_MUTED.z, ImGuiColors.TEXT_MUTED.w,
+            "Source: server clipboard — already uploaded as draft ${draft.shortId}",
+        )
+    } else {
+        val srcLabel = "Source: " + (selectedSource?.let { ExportSources.label(it) } ?: "none selected")
+        ImGui.textColored(
+            ImGuiColors.TEXT_MUTED.x, ImGuiColors.TEXT_MUTED.y,
+            ImGuiColors.TEXT_MUTED.z, ImGuiColors.TEXT_MUTED.w,
+            srcLabel,
+        )
+        ImGui.sameLine()
+        if (Widgets.button("Change...")) {
+            step = Step.SOURCE
+            statusMessage = null
+        }
     }
     ImGui.separator()
     ImGui.spacing()
@@ -58,13 +67,15 @@ internal fun UploadWizardPanel.renderDetailsStep() {
     }
     ImGui.spacing()
 
-    // Community selector
-    val communityNames = (listOf("None") + communities.map { it.name }).toTypedArray()
-    ImGui.setNextItemWidth(220f)
-    ImGui.combo("Community", communityIndexBuf, communityNames)
-    // Keep index in range if community list shrinks
-    if (communityIndexBuf.get() > communities.size) communityIndexBuf.set(0)
-    ImGui.spacing()
+    if (draft == null) {
+        // Community selector
+        val communityNames = (listOf("None") + communities.map { it.name }).toTypedArray()
+        ImGui.setNextItemWidth(220f)
+        ImGui.combo("Community", communityIndexBuf, communityNames)
+        // Keep index in range if community list shrinks
+        if (communityIndexBuf.get() > communities.size) communityIndexBuf.set(0)
+        ImGui.spacing()
+    }
 
     // Tags (via TagSelectorPopup in ASSIGN mode — collects literal tag-filter values).
     val tagSummary = if (selectedTagIds.isEmpty()) "None selected" else "${selectedTagIds.size} tag(s) selected"
@@ -109,7 +120,7 @@ internal fun UploadWizardPanel.renderDetailsStep() {
     renderStatus()
 
     renderNavButtons(
-        backStep = Step.SOURCE,
+        backStep = if (completingDraft != null) null else Step.SOURCE,
         nextLabel = "Next >",
         nextEnabled = true,
         onNext = { validateDetailsAndAdvance() },

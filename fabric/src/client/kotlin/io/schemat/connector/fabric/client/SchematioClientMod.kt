@@ -8,13 +8,15 @@ import io.schemat.connector.fabric.client.integration.NoopLitematicaBridge
 import io.schemat.connector.fabric.client.integration.NoopWorldEditBridge
 import io.schemat.connector.fabric.client.integration.litematica.LitematicaBridgeLoader
 import io.schemat.connector.fabric.client.integration.worldedit.WorldEditBridgeLoader
+import io.schemat.connector.fabric.client.ipc.ClipboardLoadTracker
+import io.schemat.connector.fabric.client.ipc.ClipboardUploadFlow
+import io.schemat.connector.fabric.client.ipc.ClipboardUploadTracker
 import io.schemat.connector.fabric.client.ipc.ServerIpc
 import io.schemat.connector.fabric.client.ipc.ServerSession
 import io.schemat.connector.fabric.client.keybind.Keybinds
 import io.schemat.connector.fabric.client.services.ClientServices
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import io.schemat.connector.fabric.client.ui.framework.ImGuiManager
 import io.schemat.connector.fabric.client.ui.framework.ImGuiOverlay
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
@@ -53,10 +55,16 @@ class SchematioClientMod : ClientModInitializer {
         ServerIpc.init()
         ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
             ServerSession.reset()
+            ClipboardLoadTracker.reset()
+            ClipboardUploadTracker.reset()
+            ClipboardUploadFlow.reset()
             ServerIpc.sendClientHello() // fallback trigger; server greets on register-event too
         }
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             ServerSession.reset()
+            ClipboardLoadTracker.reset()
+            ClipboardUploadTracker.reset()
+            ClipboardUploadFlow.reset()
         }
 
         // Silent auth on startup (regardless of Litematica), then warm the /mod/me snapshot.
@@ -72,7 +80,6 @@ class SchematioClientMod : ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register { _ ->
             services.shutdown()
             authManager.shutdown()
-            ImGuiManager.shutdown()
         }
 
         // One-time "limited mode" notice on world join when neither Litematica nor
@@ -115,6 +122,8 @@ class SchematioClientMod : ClientModInitializer {
         Keybinds.register()
         ClientTickEvents.END_CLIENT_TICK.register { client ->
             Keybinds.handleInput(client)
+            ClipboardLoadTracker.tick()
+            ClipboardUploadTracker.tick()
         }
 
 

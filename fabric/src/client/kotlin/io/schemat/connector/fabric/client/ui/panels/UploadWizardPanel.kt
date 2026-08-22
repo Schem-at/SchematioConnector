@@ -17,9 +17,10 @@ import io.schemat.connector.fabric.client.ui.framework.PanelManager
 import io.schemat.connector.fabric.client.integration.Bridges
 import io.schemat.connector.fabric.client.integration.ExportSource
 import io.schemat.connector.fabric.client.services.ClientServices
+import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
 import io.schemat.connector.fabric.client.ui.panels.upload.*
 import io.schemat.connector.fabric.client.ui.widgets.PlayerListPicker
-import io.schemat.connector.fabric.client.ui.widgets.ConfirmModal
+import dev.harrison.panellib.widgets.ConfirmModal
 import io.schemat.connector.fabric.client.ui.widgets.RichTextEditorWidget
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
 import io.schemat.connector.fabric.client.ui.widgets.ExportSources
@@ -89,6 +90,9 @@ object UploadWizardPanel : Panel {
     internal var selectedTagFilters: Map<Long, String> = emptyMap()
     internal var globalTagNodes: List<TagNode> = emptyList()
 
+    /** Non-null = "complete draft" mode: the bytes are already on the backend (sub-project C). */
+    internal var completingDraft: SchematicDetail? = null
+
     // ---- async guards ----
     internal val loadBusy = AtomicBoolean(false)
     internal val uploadBusy = AtomicBoolean(false)
@@ -145,10 +149,29 @@ object UploadWizardPanel : Panel {
         PanelManager.open(this)
     }
 
+    /**
+     * Open in "complete draft" mode (IPC sub-project C): the schematic bytes already
+     * live on the backend as [detail]; the Source step is skipped and Save publishes
+     * the draft via the USER's normal update path (name-carrying PUT clears the
+     * expiry server-side). The preview composer is unavailable in this mode — the
+     * update API cannot carry an image.
+     */
+    fun openCompleteDraft(detail: SchematicDetail) {
+        reset()
+        completingDraft = detail
+        selectedSource = null           // reset() may have auto-picked a Litematica source
+        nameBuf.set(detail.name)
+        isPublic = detail.isPublic
+        visibilityBuf.set(detail.isPublic)
+        step = Step.DETAILS
+        PanelManager.open(this)
+    }
+
     private fun reset() {
         step = Step.SOURCE
         sources = emptyList()
         selectedSource = null
+        completingDraft = null
         nameBuf.set("")
         descEditor.clear()
         coAuthorPicker.clear()
@@ -200,6 +223,7 @@ object UploadWizardPanel : Panel {
             ImGui.end()
             return
         }
+        ImGuiTheme.windowTitleAccent()
         if (!open.get()) {
             ImGui.end()
             requestClose()
