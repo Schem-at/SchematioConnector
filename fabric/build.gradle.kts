@@ -61,12 +61,12 @@ repositories {
     // flatDir so Loom `include` sees a module component with capabilities (a raw
     // files() dependency cannot be nested as a jar-in-jar). See libs/nucleation-*.jar.
     mavenLocal() // panel-lib (../panel-lib: ./gradlew publishToMavenLocal)
-    maven("https://maven.pkg.github.com/Nano112/panel-lib") {
-        name = "GitHubPackages"
-        credentials {
-            username = (findProperty("gpr.user") as String?) ?: System.getenv("GITHUB_ACTOR") ?: ""
-            password = (findProperty("gpr.key") as String?) ?: System.getenv("GITHUB_TOKEN") ?: ""
-        }
+    // panel-lib's public maven, served from its gh-pages branch. Anonymous by
+    // design: GitHub Packages requires a token even for public packages, which
+    // makes this repo's CI unable to resolve it (401). Published by panel-lib's
+    // release.yml on every v* tag.
+    maven("https://nano112.github.io/panel-lib/maven/") {
+        name = "PanelLib"
         content { includeGroup("dev.harrison") }
     }
     flatDir {
