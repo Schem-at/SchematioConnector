@@ -113,6 +113,14 @@ object WorldEditUtil {
                     return clipboard
                 }
             }
+        } catch (e: LinkageError) {
+            // FastAsyncWorldEdit (and older WorldEdit builds) ship a ClipboardFormats
+            // without findByInputStream(Supplier), so the call fails to link at runtime.
+            // LinkageError is an Error, not an Exception - without this catch it escapes
+            // the method entirely and the explicit-format fallback below never runs.
+            SchematioConnector.instance.logger.warning(
+                "Auto-detection unavailable (${e.javaClass.simpleName}), falling back to explicit formats"
+            )
         } catch (e: Exception) {
             SchematioConnector.instance.logger.warning("Auto-detection failed: ${e.javaClass.simpleName}: ${e.message}")
         }
