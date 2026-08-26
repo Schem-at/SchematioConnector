@@ -7,10 +7,7 @@
   "client": [
     "EditBoxWidgetAccessor",
     "GuiSchematicLoadMixin",
-    "GuiSchematicPlacementsListMixin",
-    "KeyboardMixin",
-    "MouseMixin",
-    "RenderSystemMixin"
+    "GuiSchematicPlacementsListMixin"
   ],
   "injectors": {
     "defaultRequire": 0

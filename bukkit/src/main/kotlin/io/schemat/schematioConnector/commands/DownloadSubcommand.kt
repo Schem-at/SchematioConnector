@@ -9,9 +9,13 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction
 import io.papermc.paper.registry.data.dialog.body.DialogBody
 import io.papermc.paper.registry.data.dialog.input.DialogInput
 import io.papermc.paper.registry.data.dialog.type.DialogType
+import io.schemat.connector.core.modapi.ApiResult
 import io.schemat.connector.core.validation.InputValidator
 import io.schemat.connector.core.validation.ValidationResult
+import io.schemat.connector.bukkit.adapter.BukkitPlayerStorage
 import io.schemat.schematioConnector.SchematioConnector
+import io.schemat.schematioConnector.vcs.Checkout
+import io.schemat.schematioConnector.vcs.CheckoutStore
 import io.schemat.schematioConnector.utils.UIMode
 import io.schemat.schematioConnector.utils.WorldEditUtil
 import kotlinx.coroutines.runBlocking
@@ -294,6 +298,7 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                                     val clipboard = WorldEditUtil.byteArrayToClipboard(bytes)
                                     if (clipboard != null) {
                                         WorldEditUtil.setClipboard(player, clipboard)
+                                        if (!isQuickShare) recordCheckout(player, id)
                                         when (uiMode) {
                                             UIMode.CHAT -> showChatSuccess(player, id, format)
                                             UIMode.DIALOG -> showDialogSuccess(player, id, format)
@@ -363,6 +368,37 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                     }
                 })
             }
+        })
+    }
+
+    /**
+     * Records the fetched schematic as the player's checkout (the commit-time
+     * expected-head / future 3-way base). The download endpoint serves bytes without
+     * version metadata, so the schematic id is written immediately and the default
+     * branch's head is filled in asynchronously via VersionApi when the schematic is
+     * versioned (404/offline leaves the ids null; the commit flow falls back to
+     * fetching the head itself).
+     */
+    private fun recordCheckout(player: Player, schematicId: String) {
+        try {
+            CheckoutStore(BukkitPlayerStorage(player, plugin))
+                .set(Checkout(schematicId = schematicId, versionId = null, branchId = null))
+        } catch (e: Exception) {
+            plugin.logger.warning("Failed to record checkout for ${player.name}: ${e.message}")
+            return
+        }
+
+        val api = plugin.versionApi ?: return
+        plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
+            val result = runBlocking { api.branches(schematicId) }
+            if (result !is ApiResult.Success) return@Runnable
+            val branch = result.value.firstOrNull { it.isDefault } ?: result.value.firstOrNull() ?: return@Runnable
+            plugin.server.scheduler.runTask(plugin, Runnable {
+                if (player.isOnline) {
+                    CheckoutStore(BukkitPlayerStorage(player, plugin))
+                        .set(Checkout(schematicId, branch.headVersionId, branch.id))
+                }
+            })
         })
     }
 

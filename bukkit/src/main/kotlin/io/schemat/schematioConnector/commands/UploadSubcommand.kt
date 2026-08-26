@@ -1,249 +1,116 @@
 package io.schemat.schematioConnector.commands
 
 import io.schemat.schematioConnector.SchematioConnector
-import io.schemat.connector.core.validation.InputValidator
-import io.schemat.connector.core.validation.ValidationResult
-import io.schemat.schematioConnector.utils.WorldEditUtil
-import io.schemat.connector.core.json.parseJsonSafe
-import io.schemat.connector.core.json.safeGetObject
-import io.schemat.connector.core.json.safeGetString
-import kotlinx.coroutines.runBlocking
+import io.schemat.schematioConnector.ipc.ClipboardUploadService
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.event.ClickEvent
 import net.kyori.adventure.text.event.HoverEvent
 import net.kyori.adventure.text.format.NamedTextColor
-import org.apache.http.entity.ContentType
-import org.apache.http.entity.mime.MultipartEntityBuilder
-import org.apache.http.util.EntityUtils
+import net.kyori.adventure.text.format.TextDecoration
 import org.bukkit.entity.Player
 
 /**
- * Uploads the player's current WorldEdit clipboard to schemat.io.
+ * Uploads the player's current WorldEdit clipboard to schemat.io as a DRAFT
+ * (IPC sub-project C, standalone path — works without the client mod).
  *
- * Results are always shown in chat - no dialog needed for simple confirmations.
+ * Drives the same [ClipboardUploadService] as the IPC handler: guards, 2/min token
+ * bucket, main-thread snapshot, async serialize + community-token POST. The result
+ * is a clickable web link to finish labelling in the browser; the draft expires in
+ * 48h if left unfinished. No user credentials are involved anywhere in this flow.
  *
  * Usage: /schematio upload
- *
- * @property plugin The main plugin instance
  */
 class UploadSubcommand(private val plugin: SchematioConnector) : Subcommand {
 
-    private val SCHEMAT_UPLOAD_URL_ENDPOINT = "/schematics/upload"
-
     override val name = "upload"
-    override val permission = "schematio.upload"
-    override val description = "Upload your clipboard to schemat.io"
+
+    // The router checks this before execute() — the guard object re-checks it for
+    // the IPC path, where there is no router.
+    override val permission = io.schemat.schematioConnector.ipc.ClipboardUploadGuards.UPLOAD_PERMISSION
+
+    override val description = "Upload your clipboard to schemat.io as a draft"
 
     override fun execute(player: Player, args: Array<out String>): Boolean {
         val audience = player.audience()
+        audience.sendMessage(Component.text("Uploading your clipboard as a draft...").color(NamedTextColor.YELLOW))
 
-        // Get clipboard synchronously on main thread
-        val clipboard = WorldEditUtil.getClipboard(player)
-        if (clipboard == null) {
-            audience.sendMessage(Component.text("No clipboard found").color(NamedTextColor.RED))
-            return false
+        plugin.clipboardUploadService.uploadCurrentClipboard(
+            player,
+            requireAttested = false, // standalone chat path — no IPC session to attest
+            attested = false,
+        ) { result ->
+            when (result) {
+                is ClipboardUploadService.Result.Created -> showDraftLink(player, result.webUrl)
+                is ClipboardUploadService.Result.Failed ->
+                    if (result.notLinked) {
+                        showAccountNotLinkedError(player)
+                    } else {
+                        player.audience().sendMessage(Component.text(result.detail).color(NamedTextColor.RED))
+                    }
+            }
         }
-
-        val schematicBytes = WorldEditUtil.clipboardToByteArray(clipboard)
-        if (schematicBytes == null) {
-            audience.sendMessage(Component.text("Could not convert clipboard to schematic format.").color(NamedTextColor.RED))
-            return false
-        }
-
-        // Validate schematic size
-        val sizeResult = InputValidator.validateSchematicSize(schematicBytes.size)
-        if (sizeResult is ValidationResult.Invalid) {
-            audience.sendMessage(Component.text(sizeResult.message).color(NamedTextColor.RED))
-            return false
-        }
-
-        // Check rate limit
-        val rateLimitResult = plugin.rateLimiter.tryAcquire(player.uniqueId)
-        if (rateLimitResult == null) {
-            val waitTime = plugin.rateLimiter.getWaitTimeSeconds(player.uniqueId)
-            audience.sendMessage(Component.text("Rate limited. Please wait ${waitTime}s before making another request.").color(NamedTextColor.RED))
-            return true
-        }
-
-        // Check API connection
-        val httpUtil = plugin.httpUtil
-        if (httpUtil == null) {
-            audience.sendMessage(Component.text("API not connected. Run /schematio reload after configuring token.").color(NamedTextColor.RED))
-            return true
-        }
-
-        // Upload always shows results in chat - no dialog needed for simple confirmation
-        audience.sendMessage(Component.text("Uploading schematic...").color(NamedTextColor.YELLOW))
-        uploadSchematic(player, schematicBytes)
 
         return true
     }
 
-    private fun uploadSchematic(player: Player, schematicBytes: ByteArray) {
-        val audience = player.audience()
-        val httpUtil = plugin.httpUtil ?: return
-        val authorUUID = player.uniqueId.toString()
-
-        plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
-            try {
-                val builder = MultipartEntityBuilder.create()
-                    .addTextBody("author", authorUUID)
-                    .addBinaryBody("schematic", schematicBytes, ContentType.DEFAULT_BINARY, "schematic")
-
-                val response = runBlocking {
-                    httpUtil.sendMultiPartRequest(SCHEMAT_UPLOAD_URL_ENDPOINT, builder.build())
-                }
-
-                plugin.server.scheduler.runTask(plugin, Runnable {
-                    if (response == null) {
-                        audience.sendMessage(Component.text("Could not connect to schemat.io API").color(NamedTextColor.RED))
-                        audience.sendMessage(Component.text("The service may be temporarily unavailable").color(NamedTextColor.GRAY))
-                        return@Runnable
-                    }
-
-                    try {
-                        val responseString = EntityUtils.toString(response)
-                        val jsonResponse = parseJsonSafe(responseString)
-
-                        if (jsonResponse == null) {
-                            audience.sendMessage(Component.text("Error: Invalid response from server").color(NamedTextColor.RED))
-                            return@Runnable
-                        }
-
-                        val link = jsonResponse.safeGetString("link")
-                        if (link == null) {
-                            val errorCode = jsonResponse.safeGetString("error")
-
-                            // Handle specific error cases with user-friendly messages
-                            when (errorCode) {
-                                "user_not_in_community" -> {
-                                    showCommunityMembershipError(player, jsonResponse)
-                                }
-                                "author_not_found" -> {
-                                    audience.sendMessage(Component.text("Your account was not found on schemat.io").color(NamedTextColor.RED))
-                                    audience.sendMessage(Component.text("Please link your Minecraft account at schemat.io first").color(NamedTextColor.GRAY))
-                                }
-                                else -> {
-                                    val errorMessage = jsonResponse.safeGetString("message") ?: errorCode
-                                    if (errorMessage != null) {
-                                        audience.sendMessage(Component.text("Error: $errorMessage").color(NamedTextColor.RED))
-                                    } else {
-                                        audience.sendMessage(Component.text("Error: Upload succeeded but no link was returned").color(NamedTextColor.RED))
-                                    }
-                                }
-                            }
-                            return@Runnable
-                        }
-
-                        // Always show result in chat - no dialog needed for simple confirmation
-                        showChatResult(player, link)
-                    } catch (e: Exception) {
-                        plugin.logger.warning("Error parsing upload response: ${e.message}")
-                        audience.sendMessage(Component.text("Error processing server response").color(NamedTextColor.RED))
-                    }
-                })
-            } catch (e: Exception) {
-                plugin.server.scheduler.runTask(plugin, Runnable {
-                    val msg = e.message ?: "Unknown error"
-                    when {
-                        msg.contains("Connection refused") || msg.contains("timed out") -> {
-                            audience.sendMessage(Component.text("schemat.io API is currently unavailable").color(NamedTextColor.RED))
-                            audience.sendMessage(Component.text("Please try again later").color(NamedTextColor.GRAY))
-                        }
-                        else -> {
-                            plugin.logger.warning("Upload error: $msg")
-                            audience.sendMessage(Component.text("Error uploading schematic. Please try again.").color(NamedTextColor.RED))
-                        }
-                    }
-                })
-            }
-        })
-    }
-
-    private fun showCommunityMembershipError(player: Player, jsonResponse: com.google.gson.JsonObject) {
-        val audience = player.audience()
-        val communityInfo = jsonResponse.safeGetObject("community")
-        val communityName = communityInfo.safeGetString("name") ?: "this community"
-        val communitySlug = communityInfo.safeGetString("slug")
-
-        // Build the community URL
-        val communityUrl = if (communitySlug != null) "${plugin.baseUrl}/communities/$communitySlug" else plugin.baseUrl
-
-        // Header
-        audience.sendMessage(Component.empty())
-        audience.sendMessage(
-            Component.text("✖ ").color(NamedTextColor.RED)
-                .append(Component.text("Community Membership Required").color(NamedTextColor.RED))
-        )
-        audience.sendMessage(Component.empty())
-
-        // Explanation
-        audience.sendMessage(
-            Component.text("This server uses a community token from ").color(NamedTextColor.GRAY)
-                .append(Component.text(communityName).color(NamedTextColor.GOLD))
-                .append(Component.text(".").color(NamedTextColor.GRAY))
-        )
-        audience.sendMessage(
-            Component.text("To upload schematics, you must be a member of this community.").color(NamedTextColor.GRAY)
-        )
-        audience.sendMessage(Component.empty())
-
-        // How to join
-        audience.sendMessage(
-            Component.text("How to join:").color(NamedTextColor.YELLOW)
-        )
-        audience.sendMessage(
-            Component.text("1. ").color(NamedTextColor.GRAY)
-                .append(Component.text("Visit the community page on schemat.io").color(NamedTextColor.WHITE))
-        )
-        audience.sendMessage(
-            Component.text("2. ").color(NamedTextColor.GRAY)
-                .append(Component.text("Click \"Join Community\" (you may need to log in first)").color(NamedTextColor.WHITE))
-        )
-        audience.sendMessage(
-            Component.text("3. ").color(NamedTextColor.GRAY)
-                .append(Component.text("Return here and try uploading again!").color(NamedTextColor.WHITE))
-        )
-        audience.sendMessage(Component.empty())
-
-        // Clickable link button
-        val linkComponent = Component.text("  ➜ ")
-            .color(NamedTextColor.DARK_GRAY)
-            .append(
-                Component.text("[Open Community Page]")
-                    .color(NamedTextColor.AQUA)
-                    .clickEvent(ClickEvent.openUrl(communityUrl))
-                    .hoverEvent(HoverEvent.showText(
-                        Component.text("Click to open ").color(NamedTextColor.GRAY)
-                            .append(Component.text(communityName).color(NamedTextColor.GOLD))
-                            .append(Component.text(" in your browser").color(NamedTextColor.GRAY))
-                    ))
-            )
-
-        audience.sendMessage(linkComponent)
-        audience.sendMessage(Component.empty())
-    }
-
-    private fun showChatResult(player: Player, link: String) {
+    private fun showDraftLink(player: Player, url: String) {
         val audience = player.audience()
 
-        val linkComponent = Component.text("Click here to view the schematic")
-            .color(NamedTextColor.AQUA)
-            .clickEvent(ClickEvent.openUrl(link))
-            .hoverEvent(HoverEvent.showText(Component.text("Open the schematic link")))
-
-        audience.sendMessage(Component.text("Schematic uploaded successfully!").color(NamedTextColor.GREEN))
-        audience.sendMessage(linkComponent)
-
+        audience.sendMessage(Component.text("Draft created!").color(NamedTextColor.GREEN))
+        audience.sendMessage(
+            Component.text("Finish it in your browser: ").color(NamedTextColor.GRAY)
+                .append(
+                    Component.text("[Complete your upload]")
+                        .color(NamedTextColor.AQUA)
+                        .decorate(TextDecoration.UNDERLINED)
+                        .clickEvent(ClickEvent.openUrl(url))
+                        .hoverEvent(HoverEvent.showText(Component.text("Open the draft upload page"))),
+                ),
+        )
         audience.sendMessage(
             Component.text("[Click to copy link]")
                 .color(NamedTextColor.YELLOW)
-                .clickEvent(ClickEvent.copyToClipboard(link))
-                .hoverEvent(HoverEvent.showText(Component.text("Copy link to clipboard")))
+                .clickEvent(ClickEvent.copyToClipboard(url))
+                .hoverEvent(HoverEvent.showText(Component.text("Copy link to clipboard"))),
+        )
+        audience.sendMessage(
+            Component.text("The draft expires in 48 hours if left unfinished.").color(NamedTextColor.GRAY),
         )
     }
 
-    override fun tabComplete(player: Player, args: Array<out String>): List<String> {
-        return emptyList()
+    /**
+     * Shown when the backend can't match the uploader to an account (400 player_not_linked).
+     * Two very different causes, told apart by the UUID version:
+     *   - v3 (name-based UUID) -> an offline-mode / unauthenticated client. schemat.io can
+     *     never match this to a real account — the real fix is to join in online mode.
+     *   - v4 (random UUID) -> a genuine Mojang identity with no schemat.io account yet;
+     *     point them at the site to sign up (clickable link).
+     */
+    private fun showAccountNotLinkedError(player: Player) {
+        val audience = player.audience()
+        if (player.uniqueId.version() == 3) {
+            audience.sendMessage(Component.text("We couldn't verify your Minecraft account.").color(NamedTextColor.RED))
+            audience.sendMessage(
+                Component.text(
+                    "This server is in offline mode, so schemat.io can't confirm who you are. " +
+                        "Join from an online-mode (Mojang-authenticated) client to upload.",
+                ).color(NamedTextColor.GRAY),
+            )
+        } else {
+            val url = plugin.baseUrl.ifBlank { "https://schemat.io" }
+            audience.sendMessage(Component.text("No schemat.io account is linked to your Minecraft yet.").color(NamedTextColor.RED))
+            audience.sendMessage(
+                Component.text("Sign up free and link your account at ").color(NamedTextColor.GRAY)
+                    .append(
+                        Component.text(url).color(NamedTextColor.AQUA)
+                            .decorate(TextDecoration.UNDERLINED)
+                            .clickEvent(ClickEvent.openUrl(url))
+                            .hoverEvent(HoverEvent.showText(Component.text("Open schemat.io"))),
+                    )
+                    .append(Component.text(", then try again.").color(NamedTextColor.GRAY)),
+            )
+        }
     }
+
+    override fun tabComplete(player: Player, args: Array<out String>): List<String> = emptyList()
 }

@@ -24,14 +24,14 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Owns ALL the list-rendering machinery — card grid, search/sort/order controls, status
  * banners, search debounce, pagination/infinite-scroll, thumbnail GL-texture resolution —
- * so that each standalone window ([BrowsePanel], [MySchematicsPanel], …) reuses it instead
+ * so that each standalone window ([BrowsePanel], …) reuses it instead
  * of copy-pasting. Behavior is identical to the old single-window browser.
  *
  * Each window owns one [SchematicListState] (so its scroll/filter/result state persists
  * across close/reopen) and drives it through the helpers here. The component is stateless
  * itself apart from [glLinearFixed] (a process-wide GL-completeness cache).
  */
-internal object SchematicListView {
+object SchematicListView {
 
     // ---- card grid constants ----
 
@@ -69,7 +69,7 @@ internal object SchematicListView {
     sealed class Context(val label: String) {
         object Public : Context("Public")
         object Mine : Context("Mine")
-        class Community(val slug: String, name: String) : Context(name)
+        class Community(val slug: String, val name: String) : Context(name)
     }
 
     infix fun Context.sameAs(other: Context): Boolean = when {

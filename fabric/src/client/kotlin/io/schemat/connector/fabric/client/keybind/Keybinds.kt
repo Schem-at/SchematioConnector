@@ -43,9 +43,6 @@ object Keybinds {
     )
     //?}
 
-    /** Master keybind: toggles the dockable Schematio workspace (DockHost + Toolbar). */
-    lateinit var overlay: KeyMapping
-        private set
     lateinit var browser: KeyMapping
         private set
     lateinit var upload: KeyMapping
@@ -57,9 +54,7 @@ object Keybinds {
 
     /** Registers every binding. Call once from onInitializeClient. */
     fun register() {
-        // Master workspace toggle (the toolbar). Bound to K by default — the primary
-        // entry point to the dockable workspace.
-        overlay = bind("key.schematioconnector.overlay", GLFW.GLFW_KEY_K)
+        // The overlay toggle (K) is owned by panel-lib.
         // Per-tool toggles ship unbound; user-assignable in Options > Controls.
         browser = bind("key.schematioconnector.browser", GLFW.GLFW_KEY_UNKNOWN)
         upload = bind("key.schematioconnector.upload", GLFW.GLFW_KEY_UNKNOWN)
@@ -69,7 +64,6 @@ object Keybinds {
 
     /** Drains pending presses and opens the matching screen. Call each client tick. */
     fun handleInput(client: Minecraft) {
-        while (overlay.consumeClick()) ImGuiOverlay.toggleOverlay()
         // Opening any tool window also ensures the workspace chrome is visible.
         while (browser.consumeClick()) { ImGuiOverlay.ensureOpen(); PanelManager.toggle(BrowsePanel) }
         while (upload.consumeClick()) { ImGuiOverlay.ensureOpen(); UploadWizardPanel.open() }

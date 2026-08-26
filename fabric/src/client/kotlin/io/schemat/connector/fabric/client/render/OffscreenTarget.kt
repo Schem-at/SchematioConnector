@@ -3,6 +3,12 @@ package io.schemat.connector.fabric.client.render
 import com.mojang.blaze3d.buffers.GpuBuffer
 import com.mojang.blaze3d.systems.RenderSystem
 import com.mojang.blaze3d.pipeline.TextureTarget
+// 26.2: TextureTarget takes an explicit GpuFormat, and clearColorAndDepthTextures
+// takes a Vector4fc clear color instead of a packed ARGB int.
+//? if >=26.2 {
+/*import com.mojang.blaze3d.GpuFormat
+import org.joml.Vector4f
+*///?}
 import com.mojang.blaze3d.platform.NativeImage
 import net.minecraft.client.Screenshot
 import org.slf4j.LoggerFactory
@@ -37,24 +43,39 @@ class OffscreenTarget(
         private val LOGGER = LoggerFactory.getLogger("schematioconnector-client")
     }
 
+    // 26.2 added an explicit GpuFormat parameter; RGBA8_UNORM matches what
+    // vanilla passes for its own colour targets (LevelRenderer "Entity Outline"
+    // ctor, bytecode-verified against the 26.2 jar).
+    //? if >=26.2 {
+    /*val framebuffer = TextureTarget("schemat-capture", width, height, true, GpuFormat.RGBA8_UNORM)
+    *///?} else {
     val framebuffer = TextureTarget("schemat-capture", width, height, /* useDepth = */ true)
+    //?}
 
     private var closed = false
 
     /** Clear color + depth via the GpuDevice command encoder. Components in 0..1. */
     fun clear(r: Float, g: Float, b: Float, a: Float) {
+        // colorTexture/depthTexture are @Nullable on RenderTarget but always set
+        // for a TextureTarget created with useDepth = true.
+        //? if >=26.2 {
+        /*// 26.2 replaced the packed ARGB int with a Vector4fc (RGBA, 0..1).
+        RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
+            framebuffer.colorTexture!!, Vector4f(r, g, b, a),
+            framebuffer.depthTexture!!, 1.0,
+        )
+        *///?} else {
         // UNCERTAIN (runtime-unverified): the int color is assumed to be packed ARGB,
         // matching vanilla call sites that pass ARGB constants to clearColorTexture.
         val argb = (((a * 255f).toInt() and 0xFF) shl 24) or
             (((r * 255f).toInt() and 0xFF) shl 16) or
             (((g * 255f).toInt() and 0xFF) shl 8) or
             ((b * 255f).toInt() and 0xFF)
-        // colorTexture/depthTexture are @Nullable on RenderTarget but always set
-        // for a TextureTarget created with useDepth = true.
         RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
             framebuffer.colorTexture!!, argb,
             framebuffer.depthTexture!!, 1.0,
         )
+        //?}
     }
 
     /**
@@ -125,6 +146,14 @@ class OffscreenTarget(
      * (0 where only the alpha-0 clear is visible) survives into the PNG.
      */
     private fun readPngWithAlpha(onResult: (ByteArray?) -> Unit) {
+        //? if >=26.2 {
+        /*// 26.2 removed CommandEncoder.mapBuffer (the buffer readback API was
+        // reworked); the alpha-preserving readback has not been ported. Not
+        // reachable in practice: SchematicRenderEngine gates every 26.2 capture
+        // entry point with a CaptureResult.Failure before rendering starts.
+        LOGGER.error("SCHEMAT-CAPTURE: alpha-preserving readback is not supported on MC 26.2")
+        onResult(null)
+        *///?} else {
         try {
             val device = RenderSystem.getDevice()
             val texture = framebuffer.colorTexture
@@ -176,6 +205,7 @@ class OffscreenTarget(
             LOGGER.error("SCHEMAT-CAPTURE: alpha readback setup failed", e)
             onResult(null)
         }
+        //?}
     }
 
     /** PNG-encode via the temp-file round-trip (NativeImage has no byte[] encoder). */

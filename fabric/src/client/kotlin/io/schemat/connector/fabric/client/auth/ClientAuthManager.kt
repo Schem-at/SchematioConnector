@@ -175,19 +175,19 @@ class ClientAuthManager(private val configDir: Path) {
     }
 
     /**
-     * Read a boolean flag from config.properties (e.g. `limited_mode_notice_shown`).
-     * Missing/malformed values read as false.
+     * Read a boolean flag from config.properties (e.g. `limited_mode_notice_shown`,
+     * `allow_server_open_ui`). Missing/malformed values read as [default].
      */
-    fun getConfigFlag(name: String): Boolean {
+    fun getConfigFlag(name: String, default: Boolean = false): Boolean {
         return try {
             val configFile = configDir.resolve("config.properties").toFile()
-            if (!configFile.exists()) return false
+            if (!configFile.exists()) return default
             val props = Properties()
             configFile.inputStream().use { props.load(it) }
-            props.getProperty(name)?.toBoolean() ?: false
+            props.getProperty(name)?.toBooleanStrictOrNull() ?: default
         } catch (e: Exception) {
             LOGGER.warn("Failed to read config flag $name: ${e.message}")
-            false
+            default
         }
     }
 

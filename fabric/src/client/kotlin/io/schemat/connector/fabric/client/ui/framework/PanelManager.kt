@@ -1,60 +1,24 @@
 package io.schemat.connector.fabric.client.ui.framework
 
+import dev.harrison.panellib.PanelLib
+import dev.harrison.panellib.api.PanelHandle
+
 /**
- * Registry of open ImGui panels, preserving insertion/z-order via [LinkedHashMap].
- *
- * Dedup policy: [open] is a no-op if a panel with the same [Panel.id] is already open.
- * This prevents accidental double-registration while keeping the existing panel instance.
+ * Thin adapter over panel-lib: Schematio panels are registered as raw panels (they draw their own
+ * windows) in [io.schemat.connector.fabric.client.ui.SchematioPanels]; this keeps the old call sites
+ * (`PanelManager.open(BrowsePanel)`) working.
  */
 object PanelManager {
+    private val handles = HashMap<String, PanelHandle>()
 
-    private val panels = LinkedHashMap<String, Panel>()
+    internal fun bind(id: String, handle: PanelHandle) { handles[id] = handle }
+    private fun handle(id: String): PanelHandle = handles[id] ?: error("panel '$id' is not registered with panel-lib")
 
-    /** Opens [panel]. No-op if a panel with the same id is already open. */
-    fun open(panel: Panel) {
-        panels.putIfAbsent(panel.id, panel)
-    }
-
-    /** Closes the panel with the given [id]. No-op if not open. */
-    fun close(id: String) {
-        panels.remove(id)
-    }
-
-    /**
-     * Toggles [panel]: closes it if open, opens it if closed.
-     * Uses [panel.id] for the lookup.
-     */
-    fun toggle(panel: Panel) {
-        if (panels.containsKey(panel.id)) close(panel.id) else open(panel)
-    }
-
-    /** Returns true if a panel with [id] is currently open. */
-    fun isOpen(id: String): Boolean = panels.containsKey(id)
-
-    /** Returns true if at least one panel is open. */
-    fun anyOpen(): Boolean = panels.isNotEmpty()
-
-    /** Returns a snapshot list of open panels in insertion order. */
-    fun openPanels(): List<Panel> = panels.values.toList()
-
-    /** Closes all open panels. */
-    fun closeAll() {
-        panels.clear()
-    }
-
-    /**
-     * Closes the most-recently-opened (topmost/last-in-order) panel.
-     * Called by the Escape key handler so Escape dismisses panels one at a time
-     * instead of opening the MC pause menu.
-     * No-op if no panels are open.
-     */
-    fun closeTop() {
-        val lastKey = panels.keys.lastOrNull() ?: return
-        panels.remove(lastKey)
-    }
-
-    /** Calls [Panel.render] on each open panel in insertion order. */
-    fun renderAll() {
-        panels.values.toList().forEach { it.render() }
-    }
+    fun open(panel: Panel) = handle(panel.id).open()
+    fun close(id: String) = handles[id]?.close() ?: Unit
+    fun toggle(panel: Panel) = handle(panel.id).toggle()
+    fun isOpen(id: String): Boolean = handles[id]?.isOpen ?: false
+    fun anyOpen(): Boolean = handles.values.any { it.isOpen }
+    fun closeAll() = handles.values.forEach { it.close() }
+    fun closeTop() = PanelLib.api().closeTopPanel()
 }

@@ -25,6 +25,12 @@
         "adapter": "kotlin",
         "value": "io.schemat.connector.fabric.client.SchematioClientMod"
       }
+    ],
+    "panellib": [
+      {
+        "adapter": "kotlin",
+        "value": "io.schemat.connector.fabric.client.ui.SchematioPanels"
+      }
     ]
   },
   "mixins": [
@@ -38,6 +44,7 @@
     "fabric-api": "*",
     "fabric-language-kotlin": ">=${flk_min}",
     "conditional-mixin": ">=0.6.0",
+    "panellib": "*",
     "minecraft": "${minecraft_compat}",
     "java": ">=${java_version}"
   },

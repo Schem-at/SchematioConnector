@@ -81,6 +81,7 @@ object CaptureSpike {
                 matrices.mulPose(Axis.YP.rotationDegrees(45f))
                 matrices.translate(-0.5f, -0.5f, -0.5f)
 
+                //? if <26.2 {
                 val immediate = client.renderBuffers().bufferSource()
                 //? if >=26.1 {
                 /*// 26.x single-block render: tessellate against an all-air
@@ -116,6 +117,12 @@ object CaptureSpike {
                 //?}
                 // Flush all buffered layers into the (overridden) output target.
                 immediate.endBatch()
+                //?} else {
+                /*// MC 26.2 removed the immediate-mode draw path (MultiBufferSource /
+                // RenderType.draw); the spike draws no block. The readback below
+                // still proves clear + output-override + readback end to end.
+                LOGGER.warn("SCHEMAT-SPIKE: block draw skipped on MC 26.2 (immediate-mode path removed); expect a solid-colour PNG")
+                *///?}
             } finally {
                 RenderSystem.restoreProjectionMatrix()
                 target.unbind()

@@ -1,6 +1,7 @@
 package io.schemat.schematioConnector.commands
 
 import io.schemat.schematioConnector.SchematioConnector
+import io.schemat.schematioConnector.ipc.CommandOwnershipRouting
 import net.kyori.adventure.audience.Audience
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
@@ -26,7 +27,13 @@ class SchematioCommand(
             return true
         }
 
+        // Command-ownership handoff (IPC sub-project D): menu-style surfaces open the
+        // client's ImGui UI when the session is attested and the client asked for it.
+        // Vanilla clients never satisfy the gate, so their behavior is unchanged.
+        val handoff = CommandOwnershipRouting.handoffFor(args.toList())
+
         if (args.isEmpty()) {
+            if (handoff != null && tryHandOff(sender, handoff)) return true
             sendHelpMessage(sender)
             return true
         }
@@ -54,7 +61,26 @@ class SchematioCommand(
             return true
         }
 
+        // Ownership handoff runs AFTER the permission check: modded players obey exactly
+        // the same permission gates as vanilla players.
+        if (handoff != null && tryHandOff(sender, handoff)) return true
+
         return subcommand.execute(sender, args.drop(1).toTypedArray())
+    }
+
+    /**
+     * Sends the OPEN_UI handoff; on success prints the spec's one-line chat ack and
+     * swallows the command. Returns false (caller falls through to the chat flow) when
+     * the IPC service is absent, the player's session doesn't qualify, or the channel
+     * isn't deliverable.
+     */
+    private fun tryHandOff(player: Player, handoff: CommandOwnershipRouting.Handoff): Boolean {
+        val ipc = plugin.ipcService ?: return false
+        if (!ipc.sendOpenUi(player, handoff.surface, handoff.contextId)) return false
+        player.audience().sendMessage(
+            Component.text("Opened in your Schematio client.").color(NamedTextColor.GREEN)
+        )
+        return true
     }
 
     override fun onTabComplete(sender: CommandSender, command: Command, alias: String, args: Array<out String>): List<String> {

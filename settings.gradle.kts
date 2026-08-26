@@ -28,7 +28,7 @@ include(":bukkit")
 // The active development version is set in fabric/stonecutter.gradle.kts.
 stonecutter {
     create(":fabric") {
-        versions("1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1")
+        versions("1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.2")
         vcsVersion = "1.21.11"
     }
 }

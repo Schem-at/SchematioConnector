@@ -207,7 +207,15 @@ class CachedSchematicMesh : AutoCloseable {
         // MeshData takes ownership of `result`; RenderType.draw closes the MeshData
         // (and thus the Result), freeing the scratch region for next frame.
         val mesh = MeshData(result, layer.drawState)
+        //? if <26.2 {
         renderType.draw(mesh)
+        //?} else {
+        /*// 26.2 removed RenderType.draw(MeshData) (ad-hoc meshes now go through
+        // PreparedRenderType/StagedVertexBuffer). Unreachable on 26.2 - the whole
+        // preview pipeline is gated off in OffscreenSchematicRenderer.render -
+        // but keep the Result freed if it ever runs.
+        mesh.close()
+        *///?}
     }
 
     override fun close() {
@@ -235,9 +243,16 @@ class CachedSchematicMesh : AutoCloseable {
 
         fun getBuffer(renderType: RenderType): VertexConsumer =
             builders.getOrPut(renderType) {
+                //? if <26.2 {
                 val bb = ByteBufferBuilder(renderType.bufferSize())
                 byteBuffers += bb
                 com.mojang.blaze3d.vertex.BufferBuilder(bb, renderType.mode(), renderType.format())
+                //?} else {
+                /*// 26.2 removed RenderType.bufferSize()/mode() with the immediate
+                // draw path. Unreachable: tessellation is gated off on 26.2
+                // (OffscreenSchematicRenderer.render bails before buildFrom).
+                error("schematic preview tessellation is not supported on MC 26.2")
+                *///?}
             }
 
         override fun close() {

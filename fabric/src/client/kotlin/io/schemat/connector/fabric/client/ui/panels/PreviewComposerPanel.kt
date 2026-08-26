@@ -89,14 +89,14 @@ object PreviewComposerPanel : Panel {
     }
 
     override fun render() {
-        ImGuiTheme.apply()
-        try {
+        run {
             ImGui.setNextWindowSize(860f, 640f, ImGuiCond.FirstUseEver)
             val open = ImBoolean(true)
             if (!ImGui.begin("Compose preview###preview-composer", open, ImGuiWindowFlags.NoCollapse)) {
                 ImGui.end()
                 return
             }
+            ImGuiTheme.windowTitleAccent()
 
             val src = source
             when {
@@ -107,8 +107,6 @@ object PreviewComposerPanel : Panel {
 
             ImGui.end()
             if (!open.get()) closePanel()
-        } finally {
-            ImGuiTheme.unapply()
         }
     }
 
@@ -153,7 +151,11 @@ object PreviewComposerPanel : Panel {
             handleViewportInput(w, h, hovered, active)
         } else {
             ImGui.dummy(w, h)
+            //? if >=26.2 {
+            /*ImGui.text("Schematic preview is not yet supported on Minecraft 26.2")
+            *///?} else {
             ImGui.text("Preview unavailable (no GL texture)")
+            //?}
         }
 
         ImGui.spacing()

@@ -10,9 +10,10 @@ import io.schemat.connector.fabric.client.ui.framework.PanelManager
 import io.schemat.connector.fabric.client.services.ClientServices
 import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
-import io.schemat.connector.fabric.client.ui.widgets.ConfirmModal
+import dev.harrison.panellib.widgets.ConfirmModal
 import io.schemat.connector.fabric.client.ui.theme.ImGuiColors
 import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
+import io.schemat.connector.fabric.client.ui.theme.Icons
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
 import net.minecraft.client.Minecraft
 import java.time.Duration
@@ -53,6 +54,7 @@ object SharesPanel : Panel {
         val open = ImBoolean(true)
         ImGui.setNextWindowSize(720f, 480f, imgui.flag.ImGuiCond.FirstUseEver)
         val expanded = ImGui.begin("Quick Shares###quick-shares", open)
+        if (expanded) ImGuiTheme.windowTitleAccent()
         try {
             if (!open.get()) {
                 PanelManager.close(id)
@@ -107,7 +109,7 @@ object SharesPanel : Panel {
             if (loadBusy.get()) {
                 ImGui.textDisabled("Loading...")
             } else if (hasLoaded && statusText == null) {
-                ImGui.textDisabled("No quick shares — create one with New Share")
+                Widgets.emptyState(Icons.SHARE, "No quick shares", "Create one with New Share")
             }
             return
         }

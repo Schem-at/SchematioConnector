@@ -8,22 +8,21 @@ import io.schemat.connector.fabric.client.integration.NoopLitematicaBridge
 import io.schemat.connector.fabric.client.integration.NoopWorldEditBridge
 import io.schemat.connector.fabric.client.integration.litematica.LitematicaBridgeLoader
 import io.schemat.connector.fabric.client.integration.worldedit.WorldEditBridgeLoader
+import io.schemat.connector.fabric.client.ipc.ClipboardLoadTracker
+import io.schemat.connector.fabric.client.ipc.ClipboardUploadFlow
+import io.schemat.connector.fabric.client.ipc.ClipboardUploadTracker
 import io.schemat.connector.fabric.client.ipc.ServerIpc
 import io.schemat.connector.fabric.client.ipc.ServerSession
 import io.schemat.connector.fabric.client.keybind.Keybinds
 import io.schemat.connector.fabric.client.services.ClientServices
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import io.schemat.connector.fabric.client.ui.framework.ImGuiManager
 import io.schemat.connector.fabric.client.ui.framework.ImGuiOverlay
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
-//? if <26.1 {
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback
-//?}
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.network.chat.Component
 import net.minecraft.ChatFormatting
@@ -56,10 +55,16 @@ class SchematioClientMod : ClientModInitializer {
         ServerIpc.init()
         ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
             ServerSession.reset()
+            ClipboardLoadTracker.reset()
+            ClipboardUploadTracker.reset()
+            ClipboardUploadFlow.reset()
             ServerIpc.sendClientHello() // fallback trigger; server greets on register-event too
         }
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             ServerSession.reset()
+            ClipboardLoadTracker.reset()
+            ClipboardUploadTracker.reset()
+            ClipboardUploadFlow.reset()
         }
 
         // Silent auth on startup (regardless of Litematica), then warm the /mod/me snapshot.
@@ -75,7 +80,6 @@ class SchematioClientMod : ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register { _ ->
             services.shutdown()
             authManager.shutdown()
-            ImGuiManager.shutdown()
         }
 
         // One-time "limited mode" notice on world join when neither Litematica nor
@@ -118,19 +122,18 @@ class SchematioClientMod : ClientModInitializer {
         Keybinds.register()
         ClientTickEvents.END_CLIENT_TICK.register { client ->
             Keybinds.handleInput(client)
+            ClipboardLoadTracker.tick()
+            ClipboardUploadTracker.tick()
         }
 
 
-        // Render the ImGui overlay after the vanilla HUD each frame.
-        // On <26.1: HudRenderCallback fires post-HUD (in-frame, correct for immediate GL).
-        // On 26.1+: HudRenderCallback is gone and HudElementRegistry.extractRenderState fires
-        //   in the EXTRACT phase (pre-composite) — draws would be overwritten. The 26.1 path
-        //   uses GameRendererMixin instead, injecting AFTER GuiRenderer.endFrame() in render().
-        //? if <26.1 {
-        HudRenderCallback.EVENT.register { _, _ ->
-            ImGuiOverlay.render()
-        }
-        //?}
+        // The ImGui overlay is drawn from RenderSystemMixin (HEAD of RenderSystem.flipFrame,
+        // all <26.2) / GlSurfaceMixin (>=26.2) — i.e. after the world+HUD is composited to
+        // FBO 0 and before the buffer swap. That point is pipeline-agnostic: it works under
+        // vanilla AND under Sodium/Iris, which own the world composite and leave FBO 0 empty
+        // during the HUD phase. The previous HudRenderCallback path drew during the HUD phase
+        // (mainRenderTarget bound, FBO 0 empty under Iris) → the overlay landed on a black
+        // framebuffer with the game never showing through the passthrough dockspace.
 
         // /schematio command tree: bare command opens the Home screen; subcommands
         // cover open/browse/upload/download/quickshareget/quickshare/help.

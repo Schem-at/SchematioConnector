@@ -18,6 +18,8 @@ import io.schemat.connector.fabric.client.services.ClientServices
 import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
 import io.schemat.connector.fabric.client.ui.theme.ImGuiColors
+import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
+import io.schemat.connector.fabric.client.ui.theme.Icons
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
 import net.minecraft.client.Minecraft
 import java.nio.file.Files
@@ -39,7 +41,6 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Entry points wired in Task 19:
  *  - [SchematicDetailPanel] "Quick share" button → `show(RemoteSchematicSource(...))`
  *  - [SharesPanel] Quick Shares "New Share" → `show(null)`
- *  - [MySchematicsPanel] "Quick link" → `show(null)`
  *  - Keybinds `quickShare` → `show(null)`
  */
 object QuickShareCreatePanel : Panel {
@@ -150,6 +151,7 @@ object QuickShareCreatePanel : Panel {
             ImGui.end()
             return
         }
+        ImGuiTheme.windowTitleAccent()
         if (!open.get()) {
             PanelManager.close(id)
             ImGui.end()
@@ -178,8 +180,11 @@ object QuickShareCreatePanel : Panel {
         ImGui.separator()
 
         if (sources.isEmpty()) {
-            ImGui.textDisabled("No local sources found — put .litematic/.schem files in your schematics folder,")
-            ImGui.textDisabled("or have a WorldEdit clipboard or Litematica placement active.")
+            Widgets.emptyState(
+                Icons.FOLDER,
+                "No local sources found",
+                "Put .litematic/.schem files in your schematics folder, or have a WorldEdit clipboard or Litematica placement active.",
+            )
         } else {
             for (src in sources) {
                 val selected = selectedSource?.id == src.id

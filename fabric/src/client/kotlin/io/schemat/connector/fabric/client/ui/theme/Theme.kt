@@ -71,6 +71,14 @@ object Theme {
 
     /** Near-opaque full-screen backdrop (kills world bleed-through). */
     const val SCRIM = 0xF00A0A0C.toInt()
+    /** Raised surface - active tabs, focused title bars (between ALT and HOVER). */
+    const val SURFACE_RAISED = 0xFF21212A.toInt()
+    /** Accent wash at ~25% alpha - text selection, docking preview. */
+    const val ACCENT_MUTED = 0x40DB45F0
+    /** 3% white - table row striping. */
+    const val STRIPE = 0x08FFFFFF
+    /** Soft dim behind modals (game stays faintly visible). */
+    const val SCRIM_SOFT = 0xA00A0A0C.toInt()
 
     // =========================================================================
     // Scale

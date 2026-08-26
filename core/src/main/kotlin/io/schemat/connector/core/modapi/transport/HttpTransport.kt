@@ -42,6 +42,7 @@ class HttpTransport(
     private val apiEndpoint: String,
     private val logger: Logger,
     trustAllCertificates: Boolean = false,
+    private val maxResponseSizeBytes: Long = MAX_RESPONSE_SIZE.toLong(),
 ) : ApiTransport, Closeable {
 
     companion object {
@@ -130,9 +131,9 @@ class HttpTransport(
                     val entity = response.entity
                     val bytes: ByteArray? = if (entity != null) {
                         val contentLength = entity.contentLength
-                        if (contentLength > MAX_RESPONSE_SIZE) {
+                        if (contentLength > maxResponseSizeBytes) {
                             EntityUtils.consume(entity)
-                            throw TransportException("Response too large: $contentLength bytes (max: $MAX_RESPONSE_SIZE)")
+                            throw ResponseTooLargeException("Response too large: $contentLength bytes (max: $maxResponseSizeBytes)")
                         }
                         val content = ByteArrayOutputStream()
                         entity.content.use { inputStream ->
@@ -141,8 +142,8 @@ class HttpTransport(
                             var totalBytes = 0L
                             while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                                 totalBytes += bytesRead
-                                if (totalBytes > MAX_RESPONSE_SIZE) {
-                                    throw TransportException("Response exceeded max size during transfer (max: $MAX_RESPONSE_SIZE)")
+                                if (totalBytes > maxResponseSizeBytes) {
+                                    throw ResponseTooLargeException("Response exceeded max size during transfer (max: $maxResponseSizeBytes)")
                                 }
                                 content.write(buffer, 0, bytesRead)
                             }

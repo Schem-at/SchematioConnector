@@ -292,7 +292,12 @@ object ThumbnailCapture {
             return
         }
         try {
+            // 26.2 moved the main render target accessor onto GameRenderer.
+            //? if >=26.2 {
+            /*Screenshot.takeScreenshot(client.gameRenderer.mainRenderTarget()) { image ->
+            *///?} else {
             Screenshot.takeScreenshot(client.mainRenderTarget) { image ->
+            //?}
                 var result: CaptureResult
                 try {
                     // Largest centered 16:9 crop of the screenshot.

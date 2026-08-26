@@ -1,6 +1,6 @@
 # SchematioConnector
 
-![Minecraft](https://img.shields.io/badge/Minecraft-1.21.8%20%E2%80%93%201.21.11%2C%2026.1-62b47a)
+![Minecraft](https://img.shields.io/badge/Minecraft-1.21.8%20%E2%80%93%201.21.11%2C%2026.1%2C%2026.2-62b47a)
 ![Paper](https://img.shields.io/badge/Paper-1.21.x-blue)
 ![Fabric](https://img.shields.io/badge/Fabric-client%20%2B%20server-dbd0b4)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -12,24 +12,36 @@ SchematioConnector ships as two things:
 | Component | What it is | Where it runs |
 |---|---|---|
 | **Paper plugin** | Server-side `/schematio` commands with chat and native-dialog UIs | Paper 1.21.x servers (and forks) |
-| **Fabric mod** | A full client-side UI (browser, upload wizard, thumbnail composer, communities) plus the same server commands when installed on a Fabric server | Fabric 1.21.8 - 1.21.11 and 26.1 |
+| **Fabric mod** | A full client-side UI (browser, upload wizard, thumbnail composer, communities) plus the same server commands when installed on a Fabric server | Fabric 1.21.8 - 1.21.11, 26.1 and 26.2 |
 
 ## Supported versions
 
 | Platform | Versions | Notes |
 |---|---|---|
 | Paper | 1.21.x | One version-agnostic jar (`api-version: 1.21`) |
-| Fabric | **1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1** | One jar per Minecraft version |
+| Fabric | **1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, 26.2** | One jar per Minecraft version |
 | Fabric (1.20.x) | *Planned* | A future backport target, deliberately deferred until the multi-version pipeline is settled. |
 
 26.1 is newly supported: MC 26.x rewrote the GUI framework (`GuiGraphics` is gone) and the block/fluid render pipeline, and the client UI - including the thumbnail renderer - is a fresh port. It builds and is validated, but please report any rendering issues you hit.
 
-Java 21+ is required at runtime on the 1.21.x targets; MC 26.1 itself requires Java 25.
+26.2 is supported with one caveat: MC 26.2 removed the immediate-mode draw path
+(`RenderType.draw` / `MultiBufferSource`) that the in-client schematic
+preview/thumbnail renderer is built on, and that pipeline has not been ported yet.
+On 26.2 the preview composer shows a "not yet supported" placeholder and captures
+report a clear error; everything else (browser, upload wizard, communities,
+Litematica integration, server commands) works as on 26.1.
+
+The Paper plugin also runs on 26.x Paper servers (the jar is version-agnostic); for
+a 26.x dev server use the run-paper version flag, e.g.
+`./gradlew :bukkit:runServer -PpaperRunVersion=26.1.2` (defaults to 1.21.8).
+
+Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 
 ## Features
 
 ### Fabric client (the full experience)
 
+- **Shared overlay** - the client UI lives in the [panel-lib](https://github.com/Nano112/panel-lib) overlay (**K**): one toolbar and dockspace shared with other panel-lib mods, the game embedded beside the panels, and a common theme. Schematio adds a **Schematio ▾** menu with Browse / Upload / Quick Shares / Settings.
 - **Schematic browser** - search, tag filtering (including tag *filter values*), thumbnails, detail view, save to disk. Open it with the **K** key (rebindable, *Controls → Misc*) or `/schematio`.
 - **Upload wizard** - upload from a local file, your Litematica schematic, or your WorldEdit clipboard, with metadata, tags, and co-authors (with head avatars).
 - **Thumbnail composer** - render your schematic to a thumbnail in-game: orbit/pan/zoom camera, isometric or perspective projection, FOV control, angle presets, and transparent / HDRI / studio backgrounds. 16:9 offscreen capture.
@@ -189,7 +201,7 @@ login). To run exactly one:
 - **Command line, a specific version:**
 
   ```bash
-  export JAVA_HOME=/path/to/jdk-21   # JDK 25 for the 26.1 client
+  export JAVA_HOME=/path/to/jdk-21   # JDK 25 for the 26.x clients
   ./gradlew :fabric:1.21.8:runClient
   ```
 
@@ -230,7 +242,7 @@ The Fabric module builds one jar per Minecraft version from a single source tree
 3. Add it to `buildableVersions` in `fabric/stonecutter.gradle.kts` once it compiles.
 4. Fix any API differences with Stonecutter version comments (`//? if >=<version>`).
 
-**26.1** went through exactly this process and is now a full release target (mapping-less loom via `fabric.loom.disableObfuscation=true`, Java 25 toolchain, client UI ported to the post-`GuiGraphics` framework). **1.20.x** is a planned future target via the same per-version mechanism.
+**26.1** went through exactly this process and is now a full release target (mapping-less loom via `fabric.loom.disableObfuscation=true`, Java 25 toolchain, client UI ported to the post-`GuiGraphics` framework). **26.2** followed the same path (Gui-based screen/chat accessors, GpuSurface present hook), with the offscreen preview renderer feature-gated off until the post-immediate-mode draw pipeline (`PreparedRenderType`/`StagedVertexBuffer` + submit nodes) is ported. **1.20.x** is a planned future target via the same per-version mechanism.
 
 ## Releasing
 

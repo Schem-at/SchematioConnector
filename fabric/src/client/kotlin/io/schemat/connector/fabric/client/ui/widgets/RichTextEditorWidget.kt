@@ -6,7 +6,7 @@ import imgui.flag.ImGuiKey
 import imgui.flag.ImGuiMouseButton
 import io.schemat.connector.core.text.RichSpan
 import io.schemat.connector.core.text.RichText
-import io.schemat.connector.fabric.client.ui.framework.ImGuiGl3Renderer
+import dev.harrison.panellib.framework.ImGuiGl3Renderer
 import io.schemat.connector.fabric.client.ui.framework.ImGuiManager
 import io.schemat.connector.fabric.client.ui.theme.Theme
 import io.schemat.connector.fabric.client.ui.widgets.richtext.RichTextLayout
