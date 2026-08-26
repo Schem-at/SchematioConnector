@@ -161,7 +161,12 @@ dependencies {
     // resource ships in the mod. Linux/Windows natives + CI fat-JAR are a follow-up
     // (build via nucleation-jvm `./gradlew crossJar`; see docs/nucleation-build.md).
     val nucleationVersion: String = property("nucleation_version") as String
-    include(implementation(":nucleation:$nucleationVersion")!!)
+    // The group is load-bearing: Loom generates a fabric.mod.json for included non-mod
+    // jars and derives the mod id from "<group>_<name>". With an empty group that is
+    // "_nucleation", which Fabric rejects at discovery ("starts with an invalid
+    // character '_'") and which kills the whole mod list. flatDir matches on name and
+    // version only, so naming a group here costs nothing at resolution time.
+    include(implementation("io.schemat:nucleation:$nucleationVersion")!!)
 
     // Shared ImGui overlay (panel-lib). Bundled so users only install SchematioConnector.
     val panelLibVersion: String = property("panellib_version") as String
