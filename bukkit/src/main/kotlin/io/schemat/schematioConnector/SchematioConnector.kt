@@ -7,6 +7,9 @@ import io.schemat.connector.core.api.WorldEditAdapter
 import io.schemat.connector.core.cache.RateLimiter
 import io.schemat.connector.core.cache.SchematicCache
 import io.schemat.connector.core.http.HttpUtil
+import io.schemat.connector.core.json.parseJsonSafe
+import io.schemat.connector.core.json.safeGetObject
+import io.schemat.connector.core.json.safeGetString
 import io.schemat.connector.core.offline.OfflineMode
 import io.schemat.connector.core.service.SchematicsApiService
 import io.schemat.connector.core.validation.ValidationConstants
@@ -63,6 +66,10 @@ import org.bukkit.event.player.PlayerQuitEvent
 class SchematioConnector : JavaPlugin(), Listener {
 
     var httpUtil: HttpUtil? = null
+        private set
+
+    /** IPC service (handshake + OPEN_UI handoff); command routing queries its ownership gate. */
+    var ipcService: io.schemat.schematioConnector.ipc.PluginIpcService? = null
         private set
 
     // Version endpoints client (plugin/schematics/... routes) + its transport.
@@ -136,6 +143,33 @@ class SchematioConnector : JavaPlugin(), Listener {
     var communityToken: String = ""
         private set
 
+    // Community identity fetched from /plugin/community after a successful connect;
+    // advertised (best-effort — may still be empty if a player joins first) in v2 HELLO_SERVER.
+    var communityId: String = ""
+        private set
+    var communitySlug: String = ""
+        private set
+
+    // Shared attestation fetcher for the verified handshake (protocol v2).
+    var attestationClient: io.schemat.connector.core.attest.AttestationClient? = null
+        private set
+
+    // Reference-pull clipboard loads (IPC sub-project B): dedicated transport with a
+    // hard 8 MiB + slack byte-counted cap (defense against a lying Content-Length).
+    var clipboardResolveClient: io.schemat.connector.core.modapi.ClipboardResolveClient? = null
+        private set
+    private var clipboardTransport: io.schemat.connector.core.modapi.transport.HttpTransport? = null
+
+    // Server clipboard -> backend draft uploads (IPC sub-project C). Shares B's
+    // clipboardTransport; its response cap easily fits the small draft-JSON reply.
+    var clipboardUploadClient: io.schemat.connector.core.modapi.ClipboardUploadClient? = null
+        private set
+
+    /** Shared draft-upload flow for the IPC handler and /schematio upload. */
+    val clipboardUploadService: io.schemat.schematioConnector.ipc.ClipboardUploadService by lazy {
+        io.schemat.schematioConnector.ipc.ClipboardUploadService(this)
+    }
+
     val hasWorldEdit: Boolean
         get() = _hasWorldEdit
 
@@ -204,7 +238,7 @@ class SchematioConnector : JavaPlugin(), Listener {
         server.pluginManager.registerEvents(this, this)
 
         // Client↔mod interop (plugin-messaging handshake + capability advertisement)
-        PluginIpcService(this).register()
+        ipcService = PluginIpcService(this).also { it.register() }
 
         // Check for ProtocolLib (optional) - load handler dynamically
         hasProtocolLib = server.pluginManager.isPluginEnabled("ProtocolLib")
@@ -348,6 +382,11 @@ class SchematioConnector : JavaPlugin(), Listener {
         versionApi = null
         versionTransport?.close()
         versionTransport = null
+        attestationClient = null
+        clipboardResolveClient = null
+        clipboardTransport?.close()
+        clipboardTransport = null
+        clipboardUploadClient = null
 
         // Get token (try new name first, then legacy)
         communityToken = config.getString("community-token")
@@ -402,17 +441,45 @@ class SchematioConnector : JavaPlugin(), Listener {
         versionTransport = io.schemat.connector.core.modapi.transport.HttpTransport(apiEndpoint, logger, trustAllCerts)
         versionApi = io.schemat.connector.core.modapi.VersionApi(versionTransport!!) { communityToken.takeIf { it.isNotEmpty() } }
 
+        attestationClient = io.schemat.connector.core.attest.AttestationClient(
+            versionTransport!!,
+            tokenProvider = { communityToken.takeIf { it.isNotEmpty() } },
+        )
+
+        clipboardTransport?.close()
+        clipboardTransport = io.schemat.connector.core.modapi.transport.HttpTransport(
+            apiEndpoint,
+            logger,
+            trustAllCerts,
+            maxResponseSizeBytes = io.schemat.connector.core.modapi.ClipboardResolveClient.MAX_SCHEMATIC_BYTES.toLong() + 1024,
+        )
+        clipboardResolveClient = io.schemat.connector.core.modapi.ClipboardResolveClient(
+            clipboardTransport!!,
+            tokenProvider = { communityToken.takeIf { it.isNotEmpty() } },
+        )
+        clipboardUploadClient = io.schemat.connector.core.modapi.ClipboardUploadClient(
+            clipboardTransport!!,
+            tokenProvider = { communityToken.takeIf { it.isNotEmpty() } },
+        )
+
         // Re-initialize rate limiter with any updated config values
         initializeRateLimiter()
 
         // Test API connection asynchronously to avoid blocking startup
         val http = httpUtil!!  // safe: just assigned on line above
+        val identityTransport = versionTransport!!
         server.scheduler.runTaskAsynchronously(this, Runnable {
             offlineMode.recordAttempt()
             val connected = runBlocking { http.checkConnection() }
+            val identity: Pair<String, String>? =
+                if (connected) runBlocking { fetchCommunityIdentity(identityTransport) } else null
 
             server.scheduler.runTask(this, Runnable {
                 isApiConnected = connected
+                if (identity != null) {
+                    communityId = identity.first
+                    communitySlug = identity.second
+                }
                 if (isApiConnected) {
                     offlineMode.recordSuccess()
                     logger.info("Connected to schemat.io API at $apiEndpoint")
@@ -432,6 +499,31 @@ class SchematioConnector : JavaPlugin(), Listener {
 
         // Return true optimistically - actual connection status set async
         return true
+    }
+
+    /**
+     * GET /plugin/community → (id, slug), used by the v2 HELLO_SERVER identity fields.
+     * Best-effort: null on any failure keeps the fields empty (client stays UNVERIFIED).
+     */
+    private suspend fun fetchCommunityIdentity(
+        transport: io.schemat.connector.core.modapi.transport.HttpTransport,
+    ): Pair<String, String>? {
+        return try {
+            val response = transport.execute(
+                io.schemat.connector.core.modapi.transport.ApiRequest(
+                    io.schemat.connector.core.modapi.transport.HttpMethod.GET,
+                    "/plugin/community",
+                ),
+                communityToken.takeIf { it.isNotEmpty() },
+            )
+            if (!response.isSuccess) return null
+            val json = parseJsonSafe(response.bodyAsString() ?: return null)
+            val community = json.safeGetObject("community") ?: return null
+            val id = community.safeGetString("id") ?: return null
+            id to (community.safeGetString("slug") ?: "")
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**
@@ -623,5 +715,6 @@ class SchematioConnector : JavaPlugin(), Listener {
         // Close HTTP clients
         httpUtil?.close()
         versionTransport?.close()
+        clipboardTransport?.close()
     }
 }

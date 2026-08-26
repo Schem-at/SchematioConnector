@@ -22,6 +22,10 @@ class FakeTransport : ApiTransport {
         queue.addLast(Result.failure(TransportException(message)))
     }
 
+    fun enqueueFailure(exception: Throwable) {
+        queue.addLast(Result.failure(exception))
+    }
+
     override suspend fun execute(request: ApiRequest, bearerToken: String?): ApiResponse {
         requests.add(request to bearerToken)
         val next = queue.removeFirstOrNull() ?: error("FakeTransport queue empty for ${request.method} ${request.path}")

@@ -53,6 +53,11 @@ dependencies {
 
     // Paper API (1.21.8 for Dialog API support)
     compileOnly("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
+    // Also needed for tests: PluginIpcService implements PluginMessageListener, so simply
+    // classloading it (e.g. to call the pure PluginIpcService.wantsAttestation gate) requires
+    // Paper's classes to be resolvable at runtime; testImplementation additionally lets test
+    // sources reference Bukkit/Paper types directly (e.g. to mockk a greet() call).
+    testImplementation("io.papermc.paper:paper-api:1.21.8-R0.1-SNAPSHOT")
 
     // WorldEdit
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.10")
@@ -134,10 +139,14 @@ tasks.runServer {
         // Accept the Mojang EULA for this LOCAL test server only (https://aka.ms/MinecraftEULA).
         // Delete the run dir's eula.txt if you do not agree.
         runDir.resolve("eula.txt").takeUnless { it.exists() }?.writeText("eula=true\n")
-        // Offline mode so the Fabric Loom dev client (runClient) can connect without a paid session.
+        // Online mode so players get their real Mojang UUID (v4) — required to link to a
+        // schemat.io account (attestation / clipboard flows). The Loom dev client
+        // authenticates via DevAuth (-Ddevauth.enabled=true in fabric runClient); complete
+        // its one-time Microsoft device-code login on first launch. (Only written when
+        // server.properties is absent, so an existing run dir keeps its current setting.)
         runDir.resolve("server.properties").takeUnless { it.exists() }?.writeText(
             buildString {
-                appendLine("online-mode=false")
+                appendLine("online-mode=true")
                 appendLine("motd=Schematio test server ($paperRunVersion)")
                 appendLine("max-players=5")
             }

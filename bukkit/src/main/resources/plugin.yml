@@ -25,6 +25,12 @@ permissions:
     schematio.download:
         description: Download schematics from schemat.io
         default: true
+    schematio.clipboard.load:
+        description: Load schematics from schemat.io into your server-side WorldEdit clipboard via the client mod
+        default: true
+    schematio.clipboard.upload:
+        description: Upload your server-side WorldEdit clipboard to schemat.io as a draft
+        default: true
     schematio.list:
         description: List and browse schematics
         default: true

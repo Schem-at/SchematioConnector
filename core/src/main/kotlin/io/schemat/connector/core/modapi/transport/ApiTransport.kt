@@ -73,7 +73,14 @@ data class ApiResponse(
 }
 
 /** Thrown/returned transport-level failure (no HTTP response at all). */
-class TransportException(message: String, cause: Throwable? = null) : Exception(message, cause)
+open class TransportException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/**
+ * The response exceeded the transport's byte-counted size cap (declared OR actual —
+ * a lying Content-Length is caught during transfer). Distinct so callers can map it
+ * to a TOO_LARGE outcome rather than a generic "backend unavailable".
+ */
+class ResponseTooLargeException(message: String) : TransportException(message)
 
 interface ApiTransport {
     /**

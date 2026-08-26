@@ -1,7 +1,17 @@
 package io.schemat.connector.core.ipc
 
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
+
 /** Thrown when a buffer is malformed or truncated. */
-class IpcFormatException(message: String) : RuntimeException(message)
+open class IpcFormatException(message: String) : RuntimeException(message)
+
+/**
+ * Thrown by decoders when a payload exceeds its opcode's [IpcCaps] limit. Distinct
+ * from plain format errors so handlers can drop it QUIETLY (spec: no parse, no log spam).
+ */
+class IpcPayloadTooLargeException(message: String) : IpcFormatException(message)
 
 /**
  * Minimal writer using Minecraft-compatible primitives:
@@ -62,7 +72,14 @@ class IpcReader(private val bytes: ByteArray) {
     fun readString(): String {
         val len = readVarInt()
         if (len < 0 || len > remaining()) throw IpcFormatException("string length $len exceeds buffer")
-        val s = String(bytes, pos, len, Charsets.UTF_8)
+        val decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        val s = try {
+            decoder.decode(ByteBuffer.wrap(bytes, pos, len)).toString()
+        } catch (e: CharacterCodingException) {
+            throw IpcFormatException("string is not valid UTF-8")
+        }
         pos += len
         return s
     }
