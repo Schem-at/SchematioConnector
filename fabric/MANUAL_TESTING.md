@@ -1,3 +1,7 @@
+> For the 1.3.3 release, use [the current validation report](../docs/release-readiness.md).
+> The historical implementation checklist below includes obsolete statements about
+> integrations that were unfinished at the time.
+
 # Fabric Client UI - Manual Testing Checklist
 
 Run the dev client against the **local schemati backend**.

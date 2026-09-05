@@ -61,6 +61,7 @@ dependencies {
 
     // WorldEdit
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.10")
+    testImplementation("com.sk89q.worldedit:worldedit-bukkit:7.3.10")
 
     // ProtocolLib (optional - for advanced features like sign input)
     compileOnly("net.dmulloy2:ProtocolLib:5.4.0")

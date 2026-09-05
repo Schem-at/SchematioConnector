@@ -1,0 +1,39 @@
+// Optional MC-Inspector is loaded only for interactive release verification.
+gradle.beforeProject { project ->
+    project.afterEvaluate {
+        def inspectorRoot = System.getProperty('schematio.inspector.root')
+        if (inspectorRoot && project.path.startsWith(':fabric:')) {
+            def jar = new File(inspectorRoot, "build/libs/0.1.0/MC-Inspector-mc${project.name}-0.1.0.jar")
+            if (!jar.isFile()) throw new GradleException("Missing MC-Inspector jar: $jar")
+            project.dependencies.add(project.name.startsWith('26.') ? 'runtimeOnly' : 'modRuntimeOnly', project.files(jar))
+        }
+    }
+}
+// Opt-in test harness. Run exactly one :fabric:<version>:runClient task.
+gradle.projectsEvaluated {
+    allprojects {
+        if (plugins.hasPlugin('fabric-loom')) {
+            extensions.getByName('loom').runs.named('client') {
+                runDir project.projectDir.toPath().relativize(rootProject.file("build/release-readiness/clients/${project.name}").toPath()).toString()
+            }
+        }
+        tasks.withType(JavaExec).configureEach { task ->
+            if (task.name == 'runClient') {
+                def output = rootProject.file("build/release-readiness/clients/${project.name}")
+                output.mkdirs()
+                def cfg = new File(output, 'config/schematioconnector/config.properties')
+                cfg.parentFile.mkdirs()
+                cfg.text = "api_endpoint=${System.getProperty('schematio.smoke.endpoint', 'http://127.0.0.1:9/api/v1')}\n"
+                if (System.getProperty('schematio.inspector.root')) {
+                    new File(output, 'config/mcinspector.json').text = '{"port":38271,"enabled":true,"packet_capture":false}'
+                }
+                workingDir output
+                if (!System.getProperty('schematio.smoke.interactive', 'false').toBoolean()) jvmArgs "-javaagent:${rootProject.file('build/release-readiness/client-smoke-agent.jar')}"
+                jvmArgs '-XX:ActiveProcessorCount=4'
+                systemProperty 'schematio.smoke.output', output.absolutePath
+                jvmArgs = jvmArgs.findAll { !it.startsWith('-Ddevauth.enabled=') }
+                systemProperty 'devauth.enabled', 'false'
+            }
+        }
+    }
+}

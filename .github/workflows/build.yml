@@ -4,7 +4,7 @@
 #   - Paper plugin: bukkit/build/libs/SchematioConnector-Paper-<version>.jar
 #   - Fabric mod:   build/libs/<version>/SchematioConnector-Fabric-mc<mc>-<version>.jar
 #     (one jar per Minecraft version - currently 1.21.8, 1.21.9, 1.21.10,
-#     1.21.11 and 26.1; the version list lives in
+#     1.21.11, 26.1 and 26.2; the version list lives in
 #     fabric/stonecutter.gradle.kts `buildableVersions`)
 #
 # Adding a new MC version: add it to `buildableVersions` in
@@ -57,8 +57,11 @@ jobs:
 
       - name: Build Fabric mod (all supported Minecraft versions)
         # Builds one jar per version in `buildableVersions`
-        # (currently 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1).
+        # (currently 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, 26.2).
         run: ./gradlew :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
+
+      - name: Check packaged release artifacts
+        run: python3 scripts/verify-release.py
 
       - name: Upload Paper plugin jar
         uses: actions/upload-artifact@v4
@@ -73,3 +76,9 @@ jobs:
           name: SchematioConnector-Fabric
           path: build/libs/*/SchematioConnector-Fabric-mc*.jar
           if-no-files-found: error
+
+  runtime:
+    needs: build
+    uses: ./.github/workflows/server-smoke.yml
+    with:
+      artifact-pattern: SchematioConnector-*

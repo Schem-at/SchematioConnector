@@ -75,15 +75,19 @@ jobs:
 
       - name: Determine version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_TAG: ${{ inputs.tag }}
         run: |
           VERSION=$(awk -F= '/^versionMajor=/{ma=$2} /^versionMinor=/{mi=$2} /^versionPatch=/{pa=$2} END{print ma"."mi"."pa}' gradle.properties)
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ github.event.inputs.tag }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$REQUESTED_TAG"
           else
             TAG="${GITHUB_REF#refs/tags/}"
           fi
           if [ "v$VERSION" != "$TAG" ]; then
-            echo "::warning::Tag $TAG does not match gradle.properties version $VERSION"
+            echo "::error::Tag $TAG does not match gradle.properties version $VERSION"
+            exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
@@ -96,6 +100,9 @@ jobs:
 
       - name: Build Fabric mod (all supported Minecraft versions)
         run: ./gradlew :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
+
+      - name: Check packaged release artifacts
+        run: python3 scripts/verify-release.py
 
       - name: Stage release artifacts
         env:
@@ -113,17 +120,26 @@ jobs:
             echo "::error::Expected $EXPECTED_JAR_COUNT release jars, found $COUNT"
             exit 1
           fi
+          python3 scripts/verify-release.py --stage staging
+          cp build/release-readiness/SHA256SUMS staging/
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-jars
-          path: staging/*.jar
+          path: staging/*
           if-no-files-found: error
+
+  runtime:
+    needs: build
+    uses: ./.github/workflows/server-smoke.yml
+    with:
+      artifact-pattern: release-jars
+      source-ref: ${{ needs.build.outputs.tag }}
 
   github-release:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [build, runtime]
     permissions:
       contents: write
     steps:
@@ -157,7 +173,9 @@ jobs:
         with:
           tag_name: ${{ needs.build.outputs.tag }}
           name: SchematioConnector v${{ needs.build.outputs.version }}
-          files: staging/*.jar
+          files: |
+            staging/*.jar
+            staging/SHA256SUMS
           body: |
             ${{ steps.notes.outputs.body }}
 
@@ -335,6 +353,8 @@ jobs:
             1.21.9
             1.21.10
             1.21.11
+            26.1.2
+            26.2
           dependencies: |
             worldedit(optional)
           changelog: ${{ steps.changelog.outputs.body }}

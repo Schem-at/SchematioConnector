@@ -6,6 +6,8 @@
   "plugin": "io.schemat.connector.fabric.client.mixin.SchematioMixinConfigPlugin",
   "client": [
     "EditBoxWidgetAccessor",
+    "PanelFontsMixin",
+    "PanelLifecycleMixin",
     "GuiSchematicLoadMixin",
     "GuiSchematicPlacementsListMixin"
   ],

@@ -83,7 +83,7 @@ jobs:
           Path('staging').mkdir(exist_ok=True)
           with ZipFile('fabric/libs/nucleation-0.2.19.jar') as source, ZipFile('staging/nucleation-0.2.19.jar', 'w', ZIP_DEFLATED) as dest:
               for name in source.namelist():
-                  if not name.startswith('native/'):
+                  if not name.startswith('native/') and name != 'META-INF/NATIVE-SOURCE':
                       dest.writestr(name, source.read(name))
               for path in sorted(files):
                   dest.writestr('native/' + path.relative_to('native-bundle').as_posix(), path.read_bytes())

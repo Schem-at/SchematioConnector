@@ -10,6 +10,7 @@ import sys
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+NATIVE_PLATFORMS = {'linux-x64', 'linux-arm64', 'macos-x64', 'macos-arm64', 'windows-x64'}
 MOD_ID = re.compile(r"[a-z][a-z0-9_-]{1,63}\Z")
 
 
@@ -100,6 +101,8 @@ def main():
                     native_jar = next(n for n in nested_names if "/nucleation-" in n)
                     with zipfile.ZipFile(io.BytesIO(jar.read(native_jar))) as native:
                         record["native_platforms"] = sorted({n.split("/")[1] for n in native.namelist() if n.startswith("native/") and not n.endswith("/")})
+                        if set(record["native_platforms"]) != NATIVE_PLATFORMS:
+                            errors.append(f"{name}: incomplete native platform bundle")
                 else:
                     plugin = jar.read("plugin.yml").decode()
                     if not re.search(r"^version:\s*['\"]?" + re.escape(version) + r"['\"]?\s*$", plugin, re.M):

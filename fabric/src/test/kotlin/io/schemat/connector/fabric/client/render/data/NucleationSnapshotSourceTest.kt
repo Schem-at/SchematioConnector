@@ -5,16 +5,13 @@ import net.minecraft.world.level.block.Blocks
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.junit.jupiter.api.condition.EnabledOnOs
-import org.junit.jupiter.api.condition.OS
 import kotlin.test.assertEquals
 
 /**
  * Integration test: schematic bytes -> Nucleation iterate -> BlockStateMapper ->
- * frozen snapshot render source. Needs the Nucleation native (macOS-gated) AND MC
+ * frozen snapshot render source. Needs the bundled Nucleation native and MC
  * registries (bootstrapped) for the block parse.
  */
-@EnabledOnOs(OS.MAC)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class NucleationSnapshotSourceTest {
     @BeforeAll

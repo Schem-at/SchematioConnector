@@ -38,11 +38,8 @@ import net.minecraft.client.renderer.rendertype.RenderTypes
 import net.minecraft.client.renderer.RenderType as RenderTypes
 *///?}
 import com.mojang.blaze3d.vertex.VertexConsumer
-// 26.2 removed MultiBufferSource entirely (immediate mode is gone: custom
-// geometry now flows through SubmitNodeCollector/FeatureRenderDispatcher and
-// ad-hoc meshes through PreparedRenderType/StagedVertexBuffer). The offscreen
-// preview pipeline is built on the immediate path and is DISABLED on 26.2
-// (see render(); SchematicRenderEngine gates the UI entry points).
+// 26.2 draws cached GPU meshes through PreparedRenderType. Earlier versions
+// use MultiBufferSource for the sky and block-entity passes.
 //? if <26.2 {
 import net.minecraft.client.renderer.MultiBufferSource
 //?}
@@ -165,6 +162,9 @@ object OffscreenSchematicRenderer {
     private var beQueue: SubmitNodeStorage? = null
     private var beDispatcher: FeatureRenderDispatcher? = null
     //?}
+    //? if >=26.2 {
+    /*private var beBuffers: net.minecraft.client.renderer.RenderBuffers? = null
+    *///?}
 
     /**
      * GPU-geometry cache for the static snapshot (see [CachedSchematicMesh]).
@@ -200,26 +200,12 @@ object OffscreenSchematicRenderer {
         // source; an orbit/zoom/pan only changes the camera, never the geometry,
         // so this no-ops on every frame after the first for a given source.
         val cache = meshCache ?: CachedSchematicMesh().also { meshCache = it }
-        //? if <26.2 {
         cache.buildFrom(source)
-        //?}
 
         when (background) {
             BackgroundMode.STUDIO -> target.clear(BACKDROP_R, BACKDROP_G, BACKDROP_B, 1f)
             BackgroundMode.TRANSPARENT -> target.clear(0f, 0f, 0f, 0f)
         }
-        //? if >=26.2 {
-        /*// MC 26.2 removed the immediate-mode draw path this renderer is built on
-        // (RenderType.draw(MeshData) and MultiBufferSource$BufferSource are gone;
-        // drawing now flows through PreparedRenderType/StagedVertexBuffer and the
-        // submit-node pipeline). That port has not been done yet, so leave the
-        // cleared backdrop and bail. Not silent: SchematicRenderEngine gates the
-        // UI entry points (renderToTexture returns 0, capture reports Failure).
-        if (warnedBeKeys.add("26.2-preview-unsupported")) {
-            LOGGER.warn("SCHEMAT-CAPTURE: offscreen schematic preview is not supported on MC 26.2 yet; rendered backdrop only")
-        }
-        return
-        *///?}
         target.bind()
 
         // 26.x renamed PerspectiveProjectionMatrixBuffer → ProjectionMatrixBuffer;
@@ -246,8 +232,12 @@ object OffscreenSchematicRenderer {
             matrices.mulPose(Axis.XP.rotationDegrees(pose.pitch))
             matrices.mulPose(Axis.YP.rotationDegrees(pose.yaw))
 
-            //? if <26.2 {
+            //? if >=26.2 {
+            /*val immediate = PreviewBuffers26()
+            *///?} else {
             val immediate = client.renderBuffers().bufferSource()
+            //?}
+            try {
             if (pose.projection == Projection.PERSPECTIVE && background == BackgroundMode.STUDIO) {
                 // Draw + flush the skybox FIRST so blocks overwrite it by depth
                 // and translucent fluids blend over it. TRANSPARENT mode skips
@@ -265,7 +255,11 @@ object OffscreenSchematicRenderer {
             // each BE adds its own (pos - center) translate inside the pass).
             renderBlockEntities(source, pose, matrices, immediate, center, camDist)
             immediate.endBatch()
-            //?}
+            } finally {
+                //? if >=26.2 {
+                /*immediate.close()
+                *///?}
+            }
         } finally {
             RenderSystem.restoreProjectionMatrix()
             projection.close()
@@ -285,7 +279,13 @@ object OffscreenSchematicRenderer {
                 // vertically also fits horizontally.
                 val s = maxOf(radius * pose.distance * ORTHO_EXTENT_FACTOR, 0.1f)
                 val sX = s * CAPTURE_ASPECT
+                // 26.2 uses reversed depth and the GPU backend's clip-space range.
+                //? if >=26.2 {
+                /*Matrix4f().setOrtho(-sX, sX, -s, s, camDist + 4f * radius, 0.05f,
+                    RenderSystem.getDevice().deviceInfo.isZZeroToOne) to
+                *///?} else {
                 Matrix4f().setOrtho(-sX, sX, -s, s, 0.05f, camDist + 4f * radius) to
+                //?}
                     ProjectionType.ORTHOGRAPHIC
             }
             Projection.PERSPECTIVE -> {
@@ -295,7 +295,12 @@ object OffscreenSchematicRenderer {
                 // aspect widens the horizontal FOV so the frame matches the
                 // capture target with no stretch.
                 Matrix4f().setPerspective(
-                    Math.toRadians(pose.fovDeg.toDouble()).toFloat(), CAPTURE_ASPECT, near, far,
+                    Math.toRadians(pose.fovDeg.toDouble()).toFloat(), CAPTURE_ASPECT,
+                    //? if >=26.2 {
+                    /*far, near, RenderSystem.getDevice().deviceInfo.isZZeroToOne,
+                    *///?} else {
+                    near, far,
+                    //?}
                 ) to
                     ProjectionType.PERSPECTIVE
             }
@@ -310,10 +315,13 @@ object OffscreenSchematicRenderer {
      * the later block/fluid passes draw over it. Any failure here is warn-once
      * and non-fatal - the #7ea8ff clear color remains as the fallback.
      */
-    //? if <26.2 {
     private fun renderHdriBackground(
         pose: CameraPose,
+        //? if >=26.2 {
+        /*immediate: PreviewBuffers26,
+        *///?} else {
         immediate: MultiBufferSource.BufferSource,
+        //?}
         radius: Float,
         camDist: Float,
     ) {
@@ -371,7 +379,6 @@ object OffscreenSchematicRenderer {
             }
         }
     }
-    //?}
 
     /**
      * Release the GPU-geometry cache (frees the off-heap vertex buffers + scratch
@@ -382,6 +389,13 @@ object OffscreenSchematicRenderer {
         runCatching { meshCache?.close() }
             .onFailure { LOGGER.debug("Error closing mesh cache: {}", it.message) }
         meshCache = null
+        //? if >=26.2 {
+        /*beDispatcher?.close()
+        beDispatcher = null
+        beBuffers?.close()
+        beBuffers = null
+        beQueue = null
+        *///?}
     }
 
     /**
@@ -407,14 +421,15 @@ object OffscreenSchematicRenderer {
      * broken BE renderer must never kill the frame). Warnings are logged once
      * per BE type, not per frame.
      */
-    // Disabled on 26.2 with the rest of the preview pipeline: the pass flushes
-    // through the client's shared BufferSource, which no longer exists.
-    //? if <26.2 {
     private fun renderBlockEntities(
         source: SchematicRenderSource,
         pose: CameraPose,
         matrices: PoseStack,
+        //? if >=26.2 {
+        /*immediate: PreviewBuffers26,
+        *///?} else {
         immediate: MultiBufferSource.BufferSource,
+        //?}
         center: Vec3,
         camDist: Float,
     ) {
@@ -458,7 +473,12 @@ object OffscreenSchematicRenderer {
             // 26.x FeatureRenderDispatcher ctor (javap): arg 2 became the
             // ModelManager (BlockRenderDispatcher is gone) and a trailing
             // GameRenderState was added (GameRenderer.getGameRenderState()).
-            //? if >=26.1 {
+            //? if >=26.2 {
+            /*val buffers = beBuffers ?: net.minecraft.client.renderer.RenderBuffers(1).also { beBuffers = it }
+            val dispatcher = beDispatcher ?: FeatureRenderDispatcher(
+                buffers, client.modelManager, client.atlasManager, client.font, client.gameRenderer.gameRenderState(),
+            ).also { beDispatcher = it }
+            *///?} else if >=26.1 {
             /*val dispatcher = beDispatcher ?: FeatureRenderDispatcher(
                 queue,
                 client.modelManager,
@@ -504,7 +524,11 @@ object OffscreenSchematicRenderer {
                 // state type is a valid instantiation (every concrete state
                 // extends it), and render() below is generic in S the same way.
                 val state: BlockEntityRenderState = try {
+                    //? if >=26.2 {
+                    /*manager.tryExtractRenderState<BlockEntity, BlockEntityRenderState>(blockEntity, 0f, null, false)
+                    *///?} else {
                     manager.tryExtractRenderState<BlockEntity, BlockEntityRenderState>(blockEntity, 0f, null)
+                    //?}
                         ?: continue
                 } catch (e: Exception) {
                     if (warnedBeKeys.add("state:${blockEntity.type}")) {
@@ -531,13 +555,22 @@ object OffscreenSchematicRenderer {
                 }
             }
             try {
+                //? if >=26.2 {
+                /*dispatcher.renderAllFeatures(queue)
+                *///?} else {
                 dispatcher.renderAllFeatures()
+                //?}
             } catch (e: Exception) {
                 if (warnedBeKeys.add("dispatcher-flush")) {
                     LOGGER.warn("SCHEMAT-CAPTURE: BE dispatcher flush failed - block entities omitted from thumbnail", e)
                 }
             } finally {
+                //? if >=26.2 {
+                /*buffers.endFrame()
+                beQueue = null
+                *///?} else {
                 queue.clear()
+                //?}
             }
             //?}
         } catch (e: Exception) {
@@ -547,5 +580,4 @@ object OffscreenSchematicRenderer {
             }
         }
     }
-    //?}
 }
