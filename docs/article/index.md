@@ -32,7 +32,7 @@ Search for a schematic and open its details. Save the file to disk, or use the L
 
 ## Install the Paper plugin
 
-Put the Paper jar in your server's `plugins` folder and restart. Install WorldEdit to enable clipboard uploads and downloads.
+Put the Paper jar in your server's `plugins` folder and restart. Install WorldEdit to enable clipboard uploads and downloads. On Minecraft 1.21.x with Java 21, use WorldEdit 7.3.19. WorldEdit 7.4.x requires Java 25.
 
 In your Schematio community settings, create a plugin token. Set it from the server console:
 

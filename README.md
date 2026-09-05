@@ -85,7 +85,7 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
    schematio settoken <token>
    ```
 
-4. *(Optional)* Install **WorldEdit** to enable clipboard upload/download, and **ProtocolLib** / **MapEngine** for preview rendering.
+4. *(Optional)* Install **WorldEdit** (7.3.19 for Java 21; 7.4.x requires Java 25) to enable clipboard upload/download, and **ProtocolLib** / **MapEngine** for preview rendering.
 
 ## Commands
 

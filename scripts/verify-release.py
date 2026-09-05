@@ -112,6 +112,9 @@ def main():
                     entry = re.search(r"^main:\s*(\S+)", plugin, re.M)[1].replace(".", "/") + ".class"
                     if entry not in jar.namelist():
                         errors.append(f"{name}: missing plugin entrypoint")
+                    record["native_platforms"] = sorted({n.split("/")[1] for n in jar.namelist() if n.startswith("native/") and not n.endswith("/")})
+                    if set(record["native_platforms"]) != NATIVE_PLATFORMS:
+                        errors.append(f"{name}: incomplete native platform bundle")
         except (KeyError, ValueError, StopIteration, zipfile.BadZipFile) as exc:
             errors.append(f"{name}: {exc}")
         records.append(record)

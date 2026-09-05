@@ -13,21 +13,23 @@ gradle.beforeProject { project ->
 }
 // Opt-in test harness. Run exactly one :fabric:<version>:runClient task.
 gradle.projectsEvaluated {
+    def clientGroup = System.getProperty('schematio.smoke.client-group', 'clients')
+    if (!(clientGroup ==~ /[a-zA-Z0-9-]+/)) throw new GradleException('Invalid smoke client group')
     allprojects {
         if (plugins.hasPlugin('fabric-loom')) {
             extensions.getByName('loom').runs.named('client') {
-                runDir project.projectDir.toPath().relativize(rootProject.file("build/release-readiness/clients/${project.name}").toPath()).toString()
+                runDir project.projectDir.toPath().relativize(rootProject.file("build/release-readiness/${clientGroup}/${project.name}").toPath()).toString()
             }
         }
         tasks.withType(JavaExec).configureEach { task ->
             if (task.name == 'runClient') {
-                def output = rootProject.file("build/release-readiness/clients/${project.name}")
+                def output = rootProject.file("build/release-readiness/${clientGroup}/${project.name}")
                 output.mkdirs()
                 def cfg = new File(output, 'config/schematioconnector/config.properties')
                 cfg.parentFile.mkdirs()
                 cfg.text = "api_endpoint=${System.getProperty('schematio.smoke.endpoint', 'http://127.0.0.1:9/api/v1')}\ntrust_all_certificates=${System.getProperty('schematio.smoke.trust-local', 'false')}\n"
                 if (System.getProperty('schematio.inspector.root')) {
-                    new File(output, 'config/mcinspector.json').text = '{"port":38271,"enabled":true,"packet_capture":false}'
+                    new File(output, 'config/mcinspector.json').text = "{\"port\":${System.getProperty('schematio.inspector.port', '38271')},\"enabled\":true,\"packet_capture\":false}"
                 }
                 workingDir output
                 if (!System.getProperty('schematio.smoke.interactive', 'false').toBoolean()) jvmArgs "-javaagent:${rootProject.file('build/release-readiness/client-smoke-agent.jar')}"

@@ -146,6 +146,7 @@ jobs:
       - name: Checkout (for tag annotation)
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.build.outputs.tag }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -167,6 +168,9 @@ jobs:
             echo "$BODY"
             echo "EOF_RELEASE_NOTES"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Verify production bridge keys
+        run: python3 scripts/check-backend.py
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -205,6 +209,7 @@ jobs:
       - name: Checkout (for changelog extraction)
         uses: actions/checkout@v4
         with:
+          ref: ${{ needs.build.outputs.tag }}
           fetch-depth: 0
           fetch-tags: true
 

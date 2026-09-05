@@ -1,7 +1,9 @@
 # SchematioConnector 1.3.3 release checks
 
 Candidate branch: `release-readiness-1.3.3`. Results recorded on 5 September 2026.
-Publication remains pending until the player flows below have been checked.
+Publication remains pending: production has no attestation key, and the cached
+Minecraft login has expired. Authenticated player flows and article visual review
+still need to finish.
 
 ## Automated results
 
@@ -9,7 +11,7 @@ Publication remains pending until the player flows below have been checked.
 | --- | --- | --- |
 | Shared core tests | Pass | 627 tests |
 | Paper tests | Pass | 36 tests, including bridge round trips and reconnect races |
-| Fabric tests | Pass | 45 tests per Minecraft target |
+| Fabric tests | Pass | 46 tests per Minecraft target; 939 JVM tests in total |
 | Release packaging | Pass | Seven jars, metadata, entrypoints, licenses, nested dependencies, five native platforms, SHA-256 manifest |
 | Native parser | Pass | Parse/write/diff using the shipped wrapper on Windows x64, Linux x64/arm64, macOS x64/arm64 |
 | Schematio backend bridge tests | Pass | 43 tests, 188 assertions: attestation, keys, clipboard resolve and drafts |
@@ -29,11 +31,38 @@ This does not establish rendering on other GPUs or operating systems.
 | 26.1 | Pass | Pass on Paper 26.1.2 | Pass |
 | 26.2 | Pass | Pass | Pass |
 
-The initial packaged server matrix passed before the final bridge and renderer
-fixes. CI reruns all twelve packaged servers against the final candidate jars.
+The [Build run on 5 September](https://github.com/Schem-at/SchematioConnector/actions/runs/33951712737)
+passed all twelve packaged servers. The Build workflow repeats these checks for
+each candidate update.
 Server startup checks include mod/plugin loading, `/schematio info`, and shutdown;
 they do not connect a player. Fabric server checks use required dependencies only.
 Paper checks include WorldEdit; a separate Paper 1.21.8 check also passed without it.
+Minecraft 1.21.x checks use Java 21 and WorldEdit 7.3.19; 26.x checks use Java 25
+and WorldEdit 7.4.5.
+
+## In-game results
+
+MC-Inspector drove a real Fabric client connected to Paper with WorldEdit on all
+six targets. Every version passed these checks and both processes exited cleanly:
+
+- Verify the backend's signed server attestation.
+- Open the mod's browser through the server's `/schematio` command.
+- Load a schematic reference into WorldEdit without changing the world.
+- Paste explicitly and check stone plus a directional oak log in the world.
+- Upload the WorldEdit clipboard and receive a draft identifier.
+- Create a Litematica placement, export it, and check the original block states.
+- Render a chest from schematic bytes and read back a nonempty PNG with alpha.
+- Disconnect, clear trust, reconnect with a new nonce, and verify a new attestation.
+
+The bridge matrix uses a localhost HTTP fixture with an ephemeral Ed25519 key.
+It validates the uploaded schematic's block contents. It does **not** establish
+Mojang authentication or production Schematio permissions; the backend's separate
+43-test suite covers its attestation and clipboard endpoints.
+
+The 26.2 preview composer's Capture button also produced a valid 1280×720 PNG in
+a joined world. File previews instantiate default block entities; the current
+Nucleation wrapper does not expose their custom NBT, so sign text and other custom
+block-entity data are not represented in these previews.
 
 ## Reproduce
 
@@ -59,13 +88,31 @@ the release:
 python3 scripts/inspector-call.py get_state
 ```
 
+For the bridge matrix, start `scripts/BridgeBackend.java` with the bundled
+Nucleation jar and Gson on its classpath. Populate Paper server caches with
+`smoke-server.py`, then run:
+
+```sh
+python3 scripts/smoke-bridge.py 1.21.8 1.21.9 1.21.10 1.21.11 26.1 26.2 \
+  --inspector-root /path/to/MC-Inspector --jdk21 /path/to/jdk21 --jdk25 /path/to/jdk25
+```
+
+The inspector jars must match each Minecraft version. MC-Inspector needed its
+26.1 presentation hook updated and its 26.2 toast API adjusted for these checks;
+those edits are in the local MC-Inspector checkout. Logs and machine-readable
+results from the final run are in `build/release-readiness/final-bridge/`, with
+the combined result in `build/release-readiness/final-bridge-matrix.log`.
+
 ## Player and publication checks
 
-- [ ] Real Paper/Fabric connection: attestation, server command opening the mod,
+- [x] Real Paper/Fabric connection: attestation, server command opening the mod,
   load into WorldEdit, explicit paste, clipboard upload, reconnect.
 - [ ] Mojang sign-in and authenticated browsing against Schematio.
-- [ ] Litematica load/placement and local file upload through the UI.
-- [ ] Preview composer controls and block entities in a joined world.
+- [x] Litematica load/placement/export on all six versions.
+- [x] Block-entity previews on all six versions; composer Capture button on 26.2.
+- [ ] Remaining composer controls and authenticated local-file upload through the UI.
+- [ ] Production signing key and authenticated bridge round trip. See
+  [production-bridge-setup.md](production-bridge-setup.md).
 - [ ] Article visual review in Schematio; final download links return all seven jars.
 
 The article source is [article/index.md](article/index.md). Its Pagina bundle was

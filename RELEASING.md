@@ -22,6 +22,10 @@ jars target Minecraft 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, and 26.2.
    on each target and the Paper plugin with WorldEdit on each listed Paper version.
 5. Check that the article's download filenames match the candidate. Keep it as a
    draft until the release exists and every link returns a file.
+6. Run `python3 scripts/check-backend.py` against production and complete an
+   authenticated bridge round trip. If no signing key is configured, follow
+   [docs/production-bridge-setup.md](docs/production-bridge-setup.md). The Release
+   workflow requires a usable public key before publishing.
 
 Fabric outputs go to `build/libs/<version>/`; Paper goes to `bukkit/build/libs/`.
 `build/release-readiness/artifacts.json` records hashes and packaging results.

@@ -6,6 +6,9 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import com.github.schemat.nucleation.Schematic
+import net.minecraft.world.level.block.entity.ChestBlockEntity
 
 /**
  * Integration test: schematic bytes -> Nucleation iterate -> BlockStateMapper ->
@@ -33,5 +36,17 @@ class NucleationSnapshotSourceTest {
             Blocks.STONE.defaultBlockState(),
             source.view.getBlockState(BlockPos(0, 0, 0)),
         )
+    }
+
+    @Test
+    fun includesDefaultBlockEntitiesForFilePreviews() {
+        val bytes = Schematic("chest-preview").use {
+            it.setBlock(0, 0, 0, "minecraft:chest[facing=north,type=single,waterlogged=false]")
+            it.toSchematic()
+        }
+        val source = NucleationSnapshotSource.snapshotFromBytes(bytes)
+        val chest = assertIs<ChestBlockEntity>(source.view.getBlockEntity(BlockPos.ZERO))
+        assertEquals(source.view.getBlockState(BlockPos.ZERO), chest.blockState)
+        assertEquals(listOf(chest), source.blockEntities())
     }
 }

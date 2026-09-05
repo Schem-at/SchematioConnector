@@ -18,11 +18,12 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = ROOT / 'build/release-readiness'
 IPC = 'Packages.io.schemat.connector.fabric.client.ipc.'
+INSPECTOR_PORT = 38271
 
 
 def call(name, args=None):
     body = json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': name, 'arguments': args or {}}}).encode()
-    req = urllib.request.Request('http://127.0.0.1:38271/mcp', data=body, headers={'Content-Type': 'application/json'})
+    req = urllib.request.Request(f'http://127.0.0.1:{INSPECTOR_PORT}/mcp', data=body, headers={'Content-Type': 'application/json'})
     result = json.load(urllib.request.urlopen(req, timeout=45))['result']
     if result.get('isError'):
         raise RuntimeError(result)
@@ -50,16 +51,22 @@ def until(predicate, timeout=45):
 
 
 def health():
-    return urllib.request.urlopen('http://127.0.0.1:38271/health', timeout=1).status == 200
+    return urllib.request.urlopen(f'http://127.0.0.1:{INSPECTOR_PORT}/health', timeout=1).status == 200
 
 
 def main():
+    global INSPECTOR_PORT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('versions', nargs='+')
     parser.add_argument('--inspector-root', type=pathlib.Path, required=True)
     parser.add_argument('--jdk21', type=pathlib.Path, required=True)
     parser.add_argument('--jdk25', type=pathlib.Path, required=True)
+    parser.add_argument('--inspector-port', type=int, default=38271)
+    parser.add_argument('--server-port', type=int, default=25576)
+    parser.add_argument('--run-name', default='bridge')
     args = parser.parse_args()
+    INSPECTOR_PORT = args.inspector_port
+    assert args.run_name.replace('-', '').isalnum(), 'run-name must be one directory name'
     spec = importlib.util.spec_from_file_location('server_smoke', ROOT / 'scripts/smoke-server.py')
     downloads = importlib.util.module_from_spec(spec); spec.loader.exec_module(downloads)
     records = []
@@ -67,7 +74,7 @@ def main():
         paper = '26.1.2' if version == '26.1' else version
         java = (args.jdk25 if version.startswith('26.') else args.jdk21) / 'bin/java'
         cache = next((OUT / 'servers').glob(f'paper-{paper}-*-worldedit'))
-        run = OUT / 'bridge' / f'server-{version}'
+        run = OUT / args.run_name / f'server-{version}'
         run.mkdir(parents=True, exist_ok=True)
         for name in ['server.jar', 'eula.txt']:
             shutil.copy2(cache / name, run / name)
@@ -82,7 +89,7 @@ def main():
         downloads.download(asset['url'], plugins / asset['filename'])
         cfg = plugins / 'SchematioConnector/config.yml'; cfg.parent.mkdir(exist_ok=True)
         cfg.write_text('api-endpoint: http://127.0.0.1:38272/api/v1\ncommunity-token: smoke.community.token\ndisabled-commands: []\n')
-        (run / 'server.properties').write_text('server-ip=127.0.0.1\nserver-port=25576\nonline-mode=false\nenforce-secure-profile=false\nlevel-type=minecraft:flat\ngenerator-settings={"layers":[{"block":"minecraft:bedrock","height":1}],"biome":"minecraft:plains"}\ngenerate-structures=false\nview-distance=2\nsimulation-distance=2\nspawn-protection=0\n')
+        (run / 'server.properties').write_text('server-ip=127.0.0.1\nserver-port=' + str(args.server_port) + '\nonline-mode=false\nenforce-secure-profile=false\nlevel-type=minecraft:flat\ngenerator-settings={"layers":[{"block":"minecraft:bedrock","height":1}],"biome":"minecraft:plains"}\ngenerate-structures=false\nview-distance=2\nsimulation-distance=2\nspawn-protection=0\n')
         server_log = run / 'console.log'
         client_log = OUT / f'bridge-client-{version}.log'
         server = client = None
@@ -92,10 +99,10 @@ def main():
                 server = subprocess.Popen([str(java), '-XX:ActiveProcessorCount=2', '-Xms256M', '-Xmx1536M', '-jar', 'server.jar', 'nogui'], cwd=run, stdin=subprocess.PIPE, stdout=slog, stderr=subprocess.STDOUT, text=True)
                 until(lambda: 'Done (' in server_log.read_text(), 120)
                 assert 'WorldEdit integration enabled' in server_log.read_text()
-                client = subprocess.Popen(['./gradlew', f':fabric:{version}:runClient', '-I', 'scripts/client-smoke.init.gradle', '-Dschematio.smoke.interactive=true', f'-Dschematio.inspector.root={args.inspector_root}', '-Dschematio.smoke.endpoint=http://127.0.0.1:38272/api/v1', '--console=plain'], cwd=ROOT, stdout=clog, stderr=subprocess.STDOUT)
+                client = subprocess.Popen(['./gradlew', f':fabric:{version}:runClient', '-I', 'scripts/client-smoke.init.gradle', '-Dschematio.smoke.interactive=true', f'-Dschematio.smoke.client-group={args.run_name}-clients', f'-Dschematio.inspector.root={args.inspector_root}', f'-Dschematio.inspector.port={INSPECTOR_PORT}', '-Dschematio.smoke.endpoint=http://127.0.0.1:38272/api/v1', '--console=plain'], cwd=ROOT, stdout=clog, stderr=subprocess.STDOUT)
                 until(health, 180)
                 call('packets_capture', {'paused': False, 'exclude': ['move_player|move_entity|chunk|light_update|keep_alive|time']})
-                call('connect_server', {'address': '127.0.0.1:25576'})
+                call('connect_server', {'address': f'127.0.0.1:{args.server_port}'})
                 until(lambda: call('get_state')['inWorld'])
                 until(lambda: js(f'String({IPC}ServerSession.INSTANCE.getTrust())') == 'VERIFIED')
                 nonce = js(f'Packages.java.util.Arrays.toString({IPC}ServerSession.INSTANCE.getNonce())')
@@ -117,9 +124,16 @@ def main():
                 js(f'''var status = new JavaAdapter(Packages.kotlin.jvm.functions.Function2, {{invoke:function(state, detail) {{return Packages.kotlin.Unit.INSTANCE;}}}}); var draft = new JavaAdapter(Packages.kotlin.jvm.functions.Function1, {{invoke:function(id) {{Packages.java.lang.System.setProperty("schematio.bridge.draft", String(id));return Packages.kotlin.Unit.INSTANCE;}}}}); {IPC}ServerIpc.INSTANCE.sendUploadClipboard(status,draft)''')
                 until(lambda: js('Packages.java.lang.System.getProperty("schematio.bridge.draft")') == 'bridge-draft')
                 record['checks'].append('WorldEdit clipboard serialized and returned a draft')
+                js('Packages.java.lang.System.setProperty("schematio.features.output", ' + json.dumps(str(run)) + ')')
+                js((ROOT / 'scripts/inspector-client-features.js').read_text())
+                for feature in ['placement', 'chest']:
+                    result = until(lambda: js(f'Packages.java.lang.System.getProperty("schematio.features.{feature}")') not in ['undefined', 'null'] and js(f'Packages.java.lang.System.getProperty("schematio.features.{feature}")'))
+                    assert result == 'PASS', result
+                record['checks'].append('Litematica placement loaded and exported with original block states')
+                record['checks'].append('file preview rendered a chest block entity with transparent PNG readback')
                 call('disconnect')
                 assert js(f'String({IPC}ServerSession.INSTANCE.getTrust())') == 'NONE'
-                call('connect_server', {'address': '127.0.0.1:25576'})
+                call('connect_server', {'address': f'127.0.0.1:{args.server_port}'})
                 until(lambda: js(f'String({IPC}ServerSession.INSTANCE.getTrust())') == 'VERIFIED')
                 assert js(f'Packages.java.util.Arrays.toString({IPC}ServerSession.INSTANCE.getNonce())') != nonce
                 record['checks'].append('reconnect rotated nonce and verified a new attestation')

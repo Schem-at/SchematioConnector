@@ -2,6 +2,7 @@ package io.schemat.connector.fabric.client.render
 
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.level.block.Blocks
+import net.minecraft.world.level.block.EntityBlock
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.client.Minecraft
 import net.minecraft.nbt.CompoundTag
@@ -68,6 +69,20 @@ class SchematicSnapshot private constructor(
         /** Record an already-instantiated block entity (area-selection capture from the live world). */
         fun setBlockEntity(pos: BlockPos, blockEntity: BlockEntity) {
             blockEntities[pos.immutable()] = blockEntity
+        }
+
+        /** Use the block's default entity when the file reader cannot expose its NBT. */
+        fun setDefaultBlockEntity(pos: BlockPos) {
+            val immutable = pos.immutable()
+            val state = states[immutable] ?: return
+            val block = state.block as? EntityBlock ?: return
+            try {
+                val blockEntity = block.newBlockEntity(immutable, state) ?: return
+                Minecraft.getInstance()?.level?.let { blockEntity.setLevel(it) }
+                blockEntities[immutable] = blockEntity
+            } catch (t: Throwable) {
+                LOGGER.debug("Skipping default block entity at {} in snapshot: {}", immutable, t.message)
+            }
         }
 
         /**
