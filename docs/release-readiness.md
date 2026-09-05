@@ -128,8 +128,9 @@ The article source is [article/index.md](article/index.md). Its Pagina bundle wa
 built, verified, and imported as a local Schematio draft. No public release or
 article has been published. The revised article has been reviewed in Chrome on the local instance.
 
-The illustrated draft now includes six real game captures, four responsive
-Kineglyph illustrations, a command typing video, hosted candidate jars, and the example build. See
+The illustrated draft includes six real game captures, the actual build rendered
+with Nucleation on a transparent Kineglyph drawing, a compact bridge sequence,
+an animated SVG command example, grouped hosted downloads, and the example build. See
 [article-capture-notes.md](article-capture-notes.md) for the additional 26.2
 singleplayer and local-backend checks, capture provenance, and the newly observed
 private-preview authentication issue.

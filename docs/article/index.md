@@ -2,7 +2,13 @@
 
 Schematio Connector brings your [schemat.io](https://schemat.io) library into Minecraft. Browse a build, load it into Litematica or WorldEdit, and upload your own work from the game.
 
-The Fabric mod provides the browser and preview tools. The Paper plugin connects a server to your Schematio community. Install both to use the mod's interface with the server's WorldEdit clipboard.
+Choose what you want to use:
+
+| Where you build | Install | What it connects |
+| --- | --- | --- |
+| On your own client | [Fabric mod](#the-mod-local-litematica-and-worldedit) | Your library, Litematica, local WorldEdit |
+| On a community server | [Paper plugin](#the-plugin-schematio-and-server-worldedit) | Your community and server WorldEdit |
+| With the mod on that server | [Both, with the bridge](#the-bridge-your-mod-detects-the-server) | The mod's interface and the server's clipboard |
 
 <figure markdown="span">
 ![Copperlight Observatory, a copper-domed workshop on a floating garden island with a waterfall, pasted into Minecraft with WorldEdit.](media/copperlight-observatory.png)
@@ -17,7 +23,7 @@ The files below are the **1.3.3 release candidate**, hosted by Schematio. The [l
 
 <div data-article-downloads></div>
 
-Choose the Fabric jar for your Minecraft version. A single Paper jar covers Minecraft 1.21.8–1.21.11, 26.1.2, and 26.2. See the [source code and issue tracker on GitHub](https://github.com/Schem-at/SchematioConnector).
+Expand a version row for requirements and its checksum. A single Paper jar covers all the listed server versions. See the [source code and issue tracker on GitHub](https://github.com/Schem-at/SchematioConnector).
 
 ## The plugin: Schematio and server WorldEdit
 
@@ -25,35 +31,31 @@ Install the Paper plugin on your server with WorldEdit. Players can download a s
 
 Put the Connector Paper jar and a compatible WorldEdit plugin jar in `plugins/`, then restart the server. For the tested Minecraft 1.21.x servers running Java 21, use WorldEdit 7.3.19. WorldEdit 7.4.x requires Java 25. Link your community using the setup below.
 
-<figure class="kg" data-static="media/server-workflow-960.svg">
+<figure class="kg" data-static="media/server-workflow-720.svg">
 <picture>
 <source media="(max-width: 399px)" srcset="media/server-workflow-320.svg">
 <source media="(max-width: 599px)" srcset="media/server-workflow-390.svg">
 <source media="(max-width: 899px)" srcset="media/server-workflow-720.svg">
-<img src="media/server-workflow-960.svg" alt="Schematio community library to the server plugin, WorldEdit clipboard and pasted build">
+<img src="media/server-workflow-720.svg" alt="The actual Copperlight build beside two steps: download into WorldEdit, then paste into the world.">
 </picture>
-<figcaption>A download fills your WorldEdit clipboard. Run //paste when you are ready to place the build.</figcaption>
+<figcaption>Copperlight Observatory stays in your WorldEdit clipboard until you paste it.</figcaption>
 </figure>
 
-Copy a schematic's ID from its Schematio page and run:
+1. On Schematio, open a schematic's menu and choose **Copy in-game command**. It copies the complete download command for that build.
+2. Open Minecraft chat, paste the command, and press **Enter**. Wait for the message confirming that WorldEdit's clipboard is ready.
+3. Stand where you want the build, then run this command in chat:
 
 ```text
-/schematio download <schematic-id>
 //paste
 ```
 
 <figure class="minecraft-command-demo">
-<video autoplay muted loop playsinline controls preload="metadata" poster="/articles/schematio-connector/media/minecraft-command-720.svg" aria-label="Illustrated Minecraft command typing. Use the controls to pause or replay.">
-<source media="(max-width: 599px) and (prefers-reduced-motion: no-preference)" src="media/minecraft-command-320.mp4" type="video/mp4">
-<source media="(prefers-reduced-motion: no-preference)" src="media/minecraft-command-720.mp4" type="video/mp4">
-</video>
-<picture class="minecraft-command-demo__still">
-<source media="(prefers-reduced-motion: reduce) and (max-width: 599px)" srcset="media/minecraft-command-320.svg">
-<source media="(prefers-reduced-motion: reduce)" srcset="media/minecraft-command-720.svg">
-<source media="(max-width: 599px)" srcset="media/minecraft-command-320.svg">
-<img src="media/minecraft-command-720.svg" alt="Illustrated Minecraft chat: the WorldEdit clipboard is ready and the player types //paste.">
+<picture>
+<source media="(max-width: 399px)" srcset="media/minecraft-command-320.svg">
+<source media="(max-width: 599px)" srcset="media/minecraft-command-390.svg">
+<source media="(max-width: 899px)" srcset="media/minecraft-command-720.svg">
+<img src="media/minecraft-command-720.svg" alt="Minecraft chat illustration: after the clipboard is ready, type //paste." loading="lazy">
 </picture>
-<figcaption>An illustrated command example. The commands above are copyable; the in-game screenshots below show the working tools.</figcaption>
 </figure>
 
 To upload a build, mark its corners with WorldEdit's selection tool, run `//copy`, then `/schematio upload`. Follow the prompts to name the schematic and finish the upload. The community token gives the plugin access to the community; the player remains credited as the author.
@@ -64,23 +66,9 @@ The server's usual WorldEdit permissions still apply. `schematio.upload` default
 
 Open **Plugin API Tokens** in your community's settings on Schematio. You need to be a community administrator. Choose **Create Plugin Token**, give it a name that identifies the server, and select **Full Access** for uploads and downloads. Use a narrower scope if the server only needs one direction.
 
-<figure class="kg" data-static="media/community-link-960.svg">
-<picture>
-<source media="(max-width: 399px)" srcset="media/community-link-320.svg">
-<source media="(max-width: 599px)" srcset="media/community-link-390.svg">
-<source media="(max-width: 899px)" srcset="media/community-link-720.svg">
-<img src="media/community-link-960.svg" alt="Community administrator creates a plugin token, configures it in the console and links the server">
-</picture>
-<figcaption>Create the token in community settings and configure it once on the server.</figcaption>
-</figure>
+In the **server console**, type `schematio settoken `, paste the generated token after the space, and press **Enter**. The console command has no leading slash. The token stays on the server; players do not enter it in chat.
 
-Copy the generated token and enter this in the server console:
-
-```text
-schematio settoken <your-community-token>
-```
-
-Keep the token in the server configuration. Players do not need a copy. Give each server its own token so you can revoke one from community settings without disconnecting the others.
+Give each server its own token so you can revoke one from community settings without disconnecting the others.
 
 Run `/schematio info` to check the plugin's setup. Ask players using the bridge to link their Minecraft account to their Schematio profile. Rejoin after configuring or replacing the token so the mod can check the server's identity again.
 
@@ -89,16 +77,6 @@ Run `/schematio info` to check the plugin's setup. Ask players using the bridge 
 Install [Fabric Loader](https://fabricmc.net/use/installer/), then put the Connector jar for your Minecraft version in `mods/` with [Fabric API](https://modrinth.com/mod/fabric-api) and [Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin). Connector 1.3.3 requires Fabric Language Kotlin 1.13.12 or later. The panel interface is included.
 
 Join a world and press **K** to open the overlay. Choose **Schematio → Browse**, or run `/schematio`. Your Minecraft session is used to sign in to Schematio. Open a schematic to see its preview, description, authors, and download actions. **Save to disk** works without either building tool installed.
-
-<figure class="kg" data-static="media/local-tools-960.svg">
-<picture>
-<source media="(max-width: 399px)" srcset="media/local-tools-320.svg">
-<source media="(max-width: 599px)" srcset="media/local-tools-390.svg">
-<source media="(max-width: 899px)" srcset="media/local-tools-720.svg">
-<img src="media/local-tools-960.svg" alt="The Fabric mod loads Litematica client placements or a local WorldEdit clipboard">
-</picture>
-<figcaption>Litematica creates a client placement. Local WorldEdit operates in your singleplayer world or the world you host over LAN.</figcaption>
-</figure>
 
 For Litematica, install [Litematica](https://modrinth.com/mod/litematica) and [MaLiLib](https://modrinth.com/mod/malilib) for your Minecraft version. Click **Load into Litematica** on a schematic. Connector downloads the Litematica format and creates a placement at your position. Use Litematica's placement controls to move or rotate it, then build against the hologram. This works in singleplayer and multiplayer.
 
@@ -125,12 +103,12 @@ The upload wizard also accepts local files and Litematica selections or placemen
 
 When you join a Paper server running Connector, the mod and plugin detect one another automatically. The plugin supplies the linked community's signed identity. The mod verifies it through Schematio before enabling the advertised server actions. Your client never needs the community's token.
 
-<figure class="kg" data-static="media/bridge-detection-960.svg">
+<figure class="kg" data-static="media/bridge-detection-720.svg">
 <picture>
 <source media="(max-width: 399px)" srcset="media/bridge-detection-320.svg">
 <source media="(max-width: 599px)" srcset="media/bridge-detection-390.svg">
 <source media="(max-width: 899px)" srcset="media/bridge-detection-720.svg">
-<img src="media/bridge-detection-960.svg" alt="Joining detects the plugin, receives its community identity, verifies it and enables server tools">
+<img src="media/bridge-detection-720.svg" alt="Joining detects the plugin, receives its community identity, verifies it and enables server tools">
 </picture>
 <figcaption>Joining triggers detection and identity verification. A verified connection enables the server clipboard tools.</figcaption>
 </figure>

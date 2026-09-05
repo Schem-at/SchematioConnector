@@ -28,62 +28,75 @@ and server draft creation used the real local Schematio application. This does
 not validate Mojang sign-in or a production account session. Earlier six-version
 runtime checks are recorded separately in [release-readiness.md](release-readiness.md).
 
-## Kineglyph and article delivery
+## Kineglyph, Nucleation, and article delivery
 
-The four diagrams use original isometric block illustrations, a library view, a
-community key, and a server view. They were authored with the local Kineglyph
-project, including its new `minecraftCommand()` recipe and terminal wrapping fix.
+The plugin illustration uses a Nucleation render of the actual Copperlight `.schem`,
+composited with Kineglyph's labels and grid on a transparent background. The bridge
+has a compact detection sequence. The local-tool and community poster diagrams were
+removed; the article uses the real game captures and setup instructions there.
+
+The Minecraft chat demonstration is an animated SVG. Kineglyph's new
+`exportAnimatedSvg()` samples its timeline into vector frames with CSS keyframes.
+It plays once, holds `//paste`, and shows the completed command immediately for
+reduced motion. No video or article-authored JavaScript is required. The article
+now directs readers to Schematio's **Copy in-game command** action and keeps
+`//paste` in its own copyable block after the clipboard confirmation.
+
 The library changes are in [Kineglyph PR #3](https://github.com/Nano112/kineglyph/pull/3)
-(`4f521ba`). Shared article files are implemented in
+(`212e7c5`). Shared article files and Pagina's host integration are in
 [Schematio PR #91](https://github.com/Schem-at/schemati/pull/91).
-Regenerate the illustrations with Node 24 or newer and built Kineglyph packages:
+Regenerate with a Nucleation Python environment and built Kineglyph packages:
 
 ```sh
+python scripts/render-article-build.py copperlight-observatory.schem resource-pack.zip
 node scripts/render-article-figures.mjs /path/to/kineglyph
 ```
 
-All 16 final SVG layouts, at 320, 390, 720 and 960 pixels, resolved without layout
-diagnostics. The command example has MP4 exports at 320 and 720 pixels, native
-play/pause controls, and SVG stills for reduced motion. Kineglyph also pads odd
-video dimensions for H.264 export. The illustrations use no Minecraft textures
-or bundled game font. The article uses responsive pictures. Its SVGs work under
-Schematio's existing policy that disables author-supplied JavaScript. Scene source
-is kept in Git and excluded from the published bundle. No host policy was changed.
+All 12 SVG layouts at 320, 390, 720 and 960 pixels resolve without diagnostics.
+The article selects 320, 390 or 720 to keep text readable in its reading column.
+Source scenes and the Nucleation source render remain in Git; the bundle includes
+only the referenced final media. The native render uses an isometric camera, yaw
+35°, pitch 28°, zoom 1.38, a transparent background and ambient light 0.5.
 
-Pagina (`f48a404`) built the article and verified its PGZ bundle. The bundle was
-imported into local Schematio with `status: draft`. The seven 1.3.3 jars are
-registered in Schematio’s shared Downloads system and attached to this article.
-The draft labels them as release candidates. Their `/dl/.../download` links were
-fetched over HTTP and all seven response bodies matched the CI SHA-256 hashes.
-The file names, public slugs, requirements and hashes are recorded in
-[hosted-downloads.json](hosted-downloads.json). GitHub remains linked for source,
-release history and issues. The example ZIP avoids the host's current
-file-route limit of eight extension characters, which rejects `.litematic` paths.
+Schematio explicitly permits reviewed article authors to run live scenes through
+`CSP_AUTHOR_SCENES=true`; this was a host trust setting, not a Pagina limitation.
+The Connector AGENTS instruction now reflects the owner's authorization. Pagina's
+standalone SVG responses allow inline styles and data images while retaining the
+script-disabled sandbox. That permits both SVG animation and embedded build renders.
 
-The article was checked against the project's no-ai-slop skill and evaluation:
-plain instructions, specific commands and button labels, claims limited to code
-and observed behavior, no promotional filler, and a concrete issue-reporting end.
+Pagina (`f48a404`) packed and verified the article, which was imported locally with
+`status: draft`. Seven 1.3.3 jars remain attached through shared Downloads. All seven
+response bodies were previously verified against the CI SHA-256 hashes; catalog
+label updates do not replace their bytes. [hosted-downloads.json](hosted-downloads.json)
+records filenames, public slugs, requirements, group and variant labels, and hashes.
+GitHub stays linked for source, releases and issues. The example ZIP contains both
+`.schem` and `.litematic` files.
+
+The article passes the project's no-ai-slop editing checks: concrete actions and
+button labels, commands copied one at a time, claims bounded by code and observed
+behavior, and no promotional filler.
 
 ## Local article and download verification
 
-The draft and all 27 supporting assets return HTTP 200. The shared download list
-contains seven jars, and reimporting the article preserves those associations.
-The article, download list, and sharing controls were reviewed in Chrome against
-the local PostgreSQL application. At a 390-pixel viewport, the page has no
-horizontal overflow and selects the narrow diagram source. All six game captures,
-four illustrations, and command media loaded. Source scenes remain outside the
-bundle and the page contains no article-authored scene modules.
+The draft and all 16 referenced supporting assets return HTTP 200. The download
+catalog contains seven jars, grouped into Fabric and Paper with versions sorted
+naturally. Expanding a row reveals requirements, file details and SHA-256. Admin
+Downloads searches version, group, title and filename and filters by group.
 
-Download feature tests: 41 passed, 125 assertions, one existing skipped presigner
-test. Checks include reuse across two articles, detaching and deleting articles,
-password gates, inactive/expired/missing files, escaped metadata, both admin forms,
-checksum verification, and idempotent release ingestion. Browser checks also found
-and fixed PostgreSQL UUID/varchar media comparisons and DISTINCT over article JSON.
+Chrome review covered desktop and 390-pixel layouts, expanded download rows,
+version search, the real build composition, and the standalone animated SVG's
+initial and completed frames. The copy button reports **Copied** for `//paste`.
+The phone page has no horizontal overflow. All six game captures and three SVG
+illustrations load. There are no video elements or article-authored scene modules
+on this page, although trusted scene support is enabled for articles that need it.
 
-The Kineglyph branch also passes a clean workspace bootstrap and all 716 tests.
-Its Docs CI still fails Node prerendering of seven pre-existing browser-only
-Nucleation/Minecraft examples (`location` / `customElements`). This does not affect
-the exported Connector figures or videos; Kineglyph PR #3 remains a draft.
+Download and Pagina feature checks cover shared files, access gates, checksums,
+import idempotency, catalog ordering, admin search/filtering, and both SVG and
+scene policies. The Kineglyph export typecheck and all 722 tests pass.
+
+Kineglyph's Docs CI still has a separate Node-prerender failure in seven existing
+browser-only Nucleation/Minecraft examples (`location` / `customElements`). It does
+not affect these exported SVG assets; PR #3 remains a draft.
 
 ## Open publication checks
 

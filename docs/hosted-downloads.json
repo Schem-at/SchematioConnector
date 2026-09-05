@@ -2,50 +2,64 @@
   {
     "file": "SchematioConnector-Fabric-mc1.21.10-1.3.3.jar",
     "slug": "schematioconnector-fabric-mc1.21.10-1.3.3.jar",
-    "title": "Fabric mod for Minecraft 1.21.10 \u00b7 Connector 1.3.3",
-    "description": "Minecraft 1.21.10 \u00b7 Java 21 \u00b7 Requires Fabric API and Fabric Language Kotlin",
-    "sha256": "eb48f0d6a89d7072ac5e2c4d515502205032e2a111a1400acb21903c11c0b3d6"
+    "title": "Fabric mod for Minecraft 1.21.10 · Connector 1.3.3",
+    "description": "Minecraft 1.21.10 · Java 21 · Requires Fabric API and Fabric Language Kotlin",
+    "sha256": "eb48f0d6a89d7072ac5e2c4d515502205032e2a111a1400acb21903c11c0b3d6",
+    "group_label": "Fabric mod",
+    "variant_label": "Minecraft 1.21.10"
   },
   {
     "file": "SchematioConnector-Fabric-mc1.21.11-1.3.3.jar",
     "slug": "schematioconnector-fabric-mc1.21.11-1.3.3.jar",
-    "title": "Fabric mod for Minecraft 1.21.11 \u00b7 Connector 1.3.3",
-    "description": "Minecraft 1.21.11 \u00b7 Java 21 \u00b7 Requires Fabric API and Fabric Language Kotlin",
-    "sha256": "664319ef9a14f96e21c2bcf3fe765a51e1bc167d6bbc7c59db8719ed5d359aee"
+    "title": "Fabric mod for Minecraft 1.21.11 · Connector 1.3.3",
+    "description": "Minecraft 1.21.11 · Java 21 · Requires Fabric API and Fabric Language Kotlin",
+    "sha256": "664319ef9a14f96e21c2bcf3fe765a51e1bc167d6bbc7c59db8719ed5d359aee",
+    "group_label": "Fabric mod",
+    "variant_label": "Minecraft 1.21.11"
   },
   {
     "file": "SchematioConnector-Fabric-mc1.21.8-1.3.3.jar",
     "slug": "schematioconnector-fabric-mc1.21.8-1.3.3.jar",
-    "title": "Fabric mod for Minecraft 1.21.8 \u00b7 Connector 1.3.3",
-    "description": "Minecraft 1.21.8 \u00b7 Java 21 \u00b7 Requires Fabric API and Fabric Language Kotlin",
-    "sha256": "0bd7f75746e31b1fdf23687dad8f915f63ad624d7cebaf3482e6c5d6b414e388"
+    "title": "Fabric mod for Minecraft 1.21.8 · Connector 1.3.3",
+    "description": "Minecraft 1.21.8 · Java 21 · Requires Fabric API and Fabric Language Kotlin",
+    "sha256": "0bd7f75746e31b1fdf23687dad8f915f63ad624d7cebaf3482e6c5d6b414e388",
+    "group_label": "Fabric mod",
+    "variant_label": "Minecraft 1.21.8"
   },
   {
     "file": "SchematioConnector-Fabric-mc1.21.9-1.3.3.jar",
     "slug": "schematioconnector-fabric-mc1.21.9-1.3.3.jar",
-    "title": "Fabric mod for Minecraft 1.21.9 \u00b7 Connector 1.3.3",
-    "description": "Minecraft 1.21.9 \u00b7 Java 21 \u00b7 Requires Fabric API and Fabric Language Kotlin",
-    "sha256": "8b8227b6156849bf4a4e539dc3f3917fd7aba046390744c38b1f0a6c91003cab"
+    "title": "Fabric mod for Minecraft 1.21.9 · Connector 1.3.3",
+    "description": "Minecraft 1.21.9 · Java 21 · Requires Fabric API and Fabric Language Kotlin",
+    "sha256": "8b8227b6156849bf4a4e539dc3f3917fd7aba046390744c38b1f0a6c91003cab",
+    "group_label": "Fabric mod",
+    "variant_label": "Minecraft 1.21.9"
   },
   {
     "file": "SchematioConnector-Fabric-mc26.1-1.3.3.jar",
     "slug": "schematioconnector-fabric-mc26.1-1.3.3.jar",
-    "title": "Fabric mod for Minecraft 26.1 \u00b7 Connector 1.3.3",
-    "description": "Minecraft 26.1 series \u00b7 Java 25 \u00b7 Requires Fabric API and Fabric Language Kotlin",
-    "sha256": "2a1be5429c975c2396650db04575527bdef62f1c232458f052a4019aa1c91721"
+    "title": "Fabric mod for Minecraft 26.1 · Connector 1.3.3",
+    "description": "Minecraft 26.1 series · Java 25 · Requires Fabric API and Fabric Language Kotlin",
+    "sha256": "2a1be5429c975c2396650db04575527bdef62f1c232458f052a4019aa1c91721",
+    "group_label": "Fabric mod",
+    "variant_label": "Minecraft 26.1"
   },
   {
     "file": "SchematioConnector-Fabric-mc26.2-1.3.3.jar",
     "slug": "schematioconnector-fabric-mc26.2-1.3.3.jar",
-    "title": "Fabric mod for Minecraft 26.2 \u00b7 Connector 1.3.3",
-    "description": "Minecraft 26.2 series \u00b7 Java 25 \u00b7 Requires Fabric API and Fabric Language Kotlin",
-    "sha256": "2a923a7265764067af6bcb23497e42a15ecdb4f8ab17affe9d31cb7814504905"
+    "title": "Fabric mod for Minecraft 26.2 · Connector 1.3.3",
+    "description": "Minecraft 26.2 series · Java 25 · Requires Fabric API and Fabric Language Kotlin",
+    "sha256": "2a923a7265764067af6bcb23497e42a15ecdb4f8ab17affe9d31cb7814504905",
+    "group_label": "Fabric mod",
+    "variant_label": "Minecraft 26.2"
   },
   {
     "file": "SchematioConnector-Paper-1.3.3.jar",
     "slug": "schematioconnector-paper-1.3.3.jar",
-    "title": "Paper plugin \u00b7 Connector 1.3.3",
-    "description": "Minecraft 1.21.8\u20131.21.11, 26.1.2, 26.2 \u00b7 Java 21 for 1.21; Java 25 for 26.x \u00b7 Requires WorldEdit",
-    "sha256": "7cae3140798255510c058104b0b91fc2f1969c3ad2d6248111d36d05077843be"
+    "title": "Paper plugin · Connector 1.3.3",
+    "description": "Minecraft 1.21.8–1.21.11, 26.1.2, 26.2 · Java 21 for 1.21; Java 25 for 26.x · Requires WorldEdit",
+    "sha256": "7cae3140798255510c058104b0b91fc2f1969c3ad2d6248111d36d05077843be",
+    "group_label": "Paper plugin",
+    "variant_label": "Minecraft 1.21.8–1.21.11 · 26.1.2 · 26.2"
   }
 ]

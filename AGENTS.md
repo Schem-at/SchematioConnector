@@ -10,5 +10,6 @@ Record build, unit test, packaged startup, and in-game results separately. A
 successful build does not establish runtime compatibility. Host release files through Schematio’s shared Downloads system when available.
 Keep `https://github.com/Schem-at/SchematioConnector` linked for source code,
 release history, and issue reports. Name the Minecraft version in every Fabric
-download label. Article-authored JavaScript stays disabled; export Kineglyph
-scenes to static or animated media with a reduced-motion still.
+download label. Schematio trusts its reviewed article authors and permits live scene JavaScript.
+Prefer portable animated SVG for command demonstrations, with a completed frame
+for reduced motion. Illustrate builds using Nucleation renders of the real schematic.
