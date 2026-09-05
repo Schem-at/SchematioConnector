@@ -125,3 +125,9 @@ the combined result in `build/release-readiness/final-bridge-matrix.log`.
 The article source is [article/index.md](article/index.md). Its Pagina bundle was
 built, verified, and imported as a local Schematio draft. No public release or
 article has been published. The browser runtime was unavailable in this session.
+
+The illustrated draft now includes six real game captures, four responsive
+Kineglyph diagrams, and the example build. See
+[article-capture-notes.md](article-capture-notes.md) for the additional 26.2
+singleplayer and local-backend checks, capture provenance, and the newly observed
+private-preview authentication issue.
