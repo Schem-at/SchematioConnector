@@ -120,8 +120,17 @@ the combined result in `build/release-readiness/final-bridge-matrix.log`.
 - [ ] Authenticated local-file upload through the UI.
 - [ ] Production signing key and authenticated bridge round trip. See
   [production-bridge-setup.md](production-bridge-setup.md).
-- [ ] Article visual review in Schematio; final download links return all seven jars.
+- [x] Local article visual review in Schematio, including mobile layout; all seven
+  hosted candidate downloads return the CI-verified bytes.
+- [ ] Deploy shared article downloads and ingest the seven jars on production.
 
 The article source is [article/index.md](article/index.md). Its Pagina bundle was
 built, verified, and imported as a local Schematio draft. No public release or
-article has been published. The browser runtime was unavailable in this session.
+article has been published. The revised article has been reviewed in Chrome on the local instance.
+
+The illustrated draft includes six real game captures, the actual build rendered
+with Nucleation on a transparent Kineglyph drawing, a compact bridge sequence,
+an animated SVG command example, grouped hosted downloads, and the example build. See
+[article-capture-notes.md](article-capture-notes.md) for the additional 26.2
+singleplayer and local-backend checks, capture provenance, and the newly observed
+private-preview authentication issue.

@@ -6,3 +6,7 @@ status: draft
 nav:
   - title: Install and use
     page: index.md
+cover: media/copperlight-observatory.png
+cover_on: none
+exclude:
+  - scenes/**
