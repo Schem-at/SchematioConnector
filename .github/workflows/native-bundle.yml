@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/native-bundle.yml
       - scripts/NativeSmoke.java
+      - scripts/fixtures/clipboard-v7.litematic
+      - patches/nucleation-region-merge-bounds.patch
 
 permissions:
   contents: read
@@ -40,6 +42,8 @@ jobs:
           java-version: '21'
       - name: Select Rust
         run: rustup default stable
+      - name: Apply the region compaction fix to the compatible JNI source
+        run: git -C native-source apply ../patches/nucleation-region-merge-bounds.patch
       - name: Build native library
         # Connector uses parsing/diff; its renderer uses Minecraft's own models.
         run: cargo build --locked --release --no-default-features --manifest-path native-source/nucleation-jvm/Cargo.toml
@@ -87,7 +91,7 @@ jobs:
                       dest.writestr(name, source.read(name))
               for path in sorted(files):
                   dest.writestr('native/' + path.relative_to('native-bundle').as_posix(), path.read_bytes())
-              dest.writestr('META-INF/NATIVE-SOURCE', 'Schem-at/Nucleation@6d0bdd58941925fc4d6d34c388c31c8b59854518\nJNI 0.2.18; Java wrapper 0.2.19; --no-default-features\n')
+              dest.writestr('META-INF/NATIVE-SOURCE', 'Schem-at/Nucleation@6d0bdd58941925fc4d6d34c388c31c8b59854518\nPatch: patches/nucleation-region-merge-bounds.patch\nJNI 0.2.18; Java wrapper 0.2.19; --no-default-features\n')
           PY
       - uses: actions/upload-artifact@v4
         with:

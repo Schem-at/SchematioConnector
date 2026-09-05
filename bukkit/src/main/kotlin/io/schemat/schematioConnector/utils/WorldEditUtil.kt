@@ -6,13 +6,11 @@ import com.sk89q.worldedit.WorldEdit
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.Clipboard
 import com.sk89q.worldedit.extent.clipboard.io.BuiltInClipboardFormat
-import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats
 import com.sk89q.worldedit.session.ClipboardHolder
 import io.schemat.schematioConnector.SchematioConnector
 import org.bukkit.entity.Player
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.io.IOException
 
 /**
  * Utility functions for interacting with WorldEdit clipboards.
@@ -20,14 +18,8 @@ import java.io.IOException
  * Provides methods to get and set player clipboards, and convert between
  * clipboard objects and byte arrays in various schematic formats.
  *
- * ## Supported Formats
- *
- * When reading schematics, formats are tried in order:
- * 1. SPONGE_V3_SCHEMATIC (.schem) - Modern format, preferred
- * 2. SPONGE_SCHEMATIC - Older sponge format
- * 3. MCEDIT_SCHEMATIC (.schematic) - Legacy MCEdit format
- *
- * When writing schematics, SPONGE_SCHEMATIC format is used by default.
+ * Reads WorldEdit formats directly and converts other supported formats, including
+ * Litematica, with the bundled Nucleation library. Writes Sponge v3 `.schem` files.
  *
  * ## Usage
  *
@@ -97,52 +89,9 @@ object WorldEditUtil {
     }
 
 
-    /**
-     * Convert a byte array to a Clipboard, trying multiple formats for compatibility.
-     * First tries WorldEdit's auto-detection, then falls back to explicit formats.
-     */
-    @Suppress("DEPRECATION") // SPONGE_SCHEMATIC is deprecated but needed for legacy file support
-    fun byteArrayToClipboard(data: ByteArray): Clipboard? {
-        // First, try WorldEdit's built-in format detection which handles all sponge versions (1, 2, 3)
-        try {
-            val detectedFormat = ClipboardFormats.findByInputStream { ByteArrayInputStream(data) }
-            if (detectedFormat != null) {
-                detectedFormat.getReader(ByteArrayInputStream(data)).use { reader ->
-                    val clipboard = reader.read()
-                    SchematioConnector.instance.logger.info("Successfully loaded schematic using auto-detected format: ${detectedFormat.name}")
-                    return clipboard
-                }
-            }
-        } catch (e: LinkageError) {
-            // FastAsyncWorldEdit (and older WorldEdit builds) ship a ClipboardFormats
-            // without findByInputStream(Supplier), so the call fails to link at runtime.
-            // LinkageError is an Error, not an Exception - without this catch it escapes
-            // the method entirely and the explicit-format fallback below never runs.
-            SchematioConnector.instance.logger.warning(
-                "Auto-detection unavailable (${e.javaClass.simpleName}), falling back to explicit formats"
-            )
-        } catch (e: Exception) {
-            SchematioConnector.instance.logger.warning("Auto-detection failed: ${e.javaClass.simpleName}: ${e.message}")
-        }
-
-        // Fallback: try formats explicitly in order
-        val formatsToTry = listOf(
-            BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC,
-            BuiltInClipboardFormat.SPONGE_SCHEMATIC,
-            BuiltInClipboardFormat.MCEDIT_SCHEMATIC
-        )
-
-        for (format in formatsToTry) {
-            val clipboard = byteArrayToClipboard(data, format)
-            if (clipboard != null) {
-                SchematioConnector.instance.logger.info("Successfully loaded schematic using format: ${format.name}")
-                return clipboard
-            }
-        }
-
-        SchematioConnector.instance.logger.warning("Failed to load schematic - no compatible format found")
-        return null
-    }
+    /** Read original download or bridge bytes into a WorldEdit clipboard. */
+    fun byteArrayToClipboard(data: ByteArray): Clipboard? =
+        ClipboardDecoder.decode(data, SchematioConnector.instance.logger)
 
     /**
      * Attempt to read clipboard data using a specific format.
