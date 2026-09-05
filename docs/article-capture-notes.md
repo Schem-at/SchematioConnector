@@ -80,6 +80,11 @@ password gates, inactive/expired/missing files, escaped metadata, both admin for
 checksum verification, and idempotent release ingestion. Browser checks also found
 and fixed PostgreSQL UUID/varchar media comparisons and DISTINCT over article JSON.
 
+The Kineglyph branch also passes a clean workspace bootstrap and all 716 tests.
+Its Docs CI still fails Node prerendering of seven pre-existing browser-only
+Nucleation/Minecraft examples (`location` / `customElements`). This does not affect
+the exported Connector figures or videos; Kineglyph PR #3 remains a draft.
+
 ## Open publication checks
 
 - The current local backend protects private preview images through its web
