@@ -4,7 +4,7 @@ export const theme = createTheme(themeOptions);
 export default figure('server-workflow', {
   title: 'A clipboard is not a pasted build',
   description: 'WorldEdit holds the downloaded Copperlight schematic in your clipboard. You choose a position, then run //paste to put its blocks in the world.',
-  background: 'transparent', padding: 0,
+  background: 'transparent', padding: 0, breakpoints: { wide: 600, compact: 440 },
 }, f => {
   const notes = f.stack([
     f.eyebrow('01 / DOWNLOAD', { tone: 'info' }),

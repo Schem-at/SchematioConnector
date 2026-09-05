@@ -1,7 +1,7 @@
 import { figure, createTheme } from 'kineglyph';
 import themeOptions from './theme.mjs';
 export const theme = createTheme(themeOptions);
-export default figure('bridge-detection', { title: 'Server actions appear after verification', description: 'Joining detects the Paper plugin. Schematio verifies the community identity. WorldEdit and your permissions determine which server actions become available.', background: 'transparent', padding: 0 }, f => {
+export default figure('bridge-detection', { title: 'Server actions appear after verification', description: 'Joining detects the Paper plugin. Schematio verifies the community identity. WorldEdit and your permissions determine which server actions become available.', background: 'transparent', padding: 0, breakpoints: { wide: 600, compact: 440 } }, f => {
   const step = (n, title, detail, tone) => f.stack([
     f.eyebrow(n, { tone }), f.heading(title), f.caption(detail),
   ], { width: 'fill', gap: 7 });
