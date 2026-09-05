@@ -7,6 +7,8 @@ server owners. Draft from the code and verified behavior, then run the editing
 checks; do not ask for a draft when the task already asks you to write one.
 
 Record build, unit test, packaged startup, and in-game results separately. A
-successful build does not establish runtime compatibility. Keep download links on
-`https://github.com/Schem-at/SchematioConnector` and name the Minecraft version in
-every Fabric download label.
+successful build does not establish runtime compatibility. Host release files through Schematio’s shared Downloads system when available.
+Keep `https://github.com/Schem-at/SchematioConnector` linked for source code,
+release history, and issue reports. Name the Minecraft version in every Fabric
+download label. Article-authored JavaScript stays disabled; export Kineglyph
+scenes to static or animated media with a reduced-motion still.

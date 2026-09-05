@@ -1,10 +1,12 @@
-import { figure, createTheme } from "kineglyph";
-import themeOptions from "./theme.mjs";
+import { figure, createTheme } from 'kineglyph';
+import themeOptions from './theme.mjs';
+import { artwork, workshop } from './workshop.mjs';
 export const theme = createTheme(themeOptions);
-export default figure("community-link",{title:"Link a server to your community",description:"A community administrator creates a plugin token and installs it on the Paper server. Players retain their own identities and permissions."},f=>{
- const owner=f.card({id:"owner",eyebrow:"COMMUNITY ADMIN",title:"Create a plugin token",body:"Community settings → Plugin API Tokens",motif:"key",tone:"accent"});
- const server=f.card({id:"server",eyebrow:"SERVER CONSOLE",title:"Set the token",body:"schematio settoken <token>",motif:"code",tone:"info"});
- const result=f.card({id:"result",eyebrow:"LINKED COMMUNITY",title:"Share the workshop",body:"Uploads belong to the community and credit the player",motif:"layers",tone:"success"});
- f.root(f.stack([f.flow([owner,server,result],{gap:{wide:48,compact:24,narrow:22},width:"fill"}),f.caption("The token stays on the server. Players do not need a copy of it.",{tone:"textMuted"})],{gap:24,padding:24,width:"fill"}));
- const a=f.connect(owner,server,{head:"arrow",tone:"accent"});const b=f.connect(server,result,{head:"arrow",tone:"info"});
+export default figure('community-link', { title: 'Give your server its community key' }, f => {
+  const token = f.stack([f.eyebrow('COMMUNITY SETTINGS'), artwork(f, 'key'), f.heading('Create a plugin token'),
+    f.caption('Plugin API Tokens → Create Plugin Token')], { width: 'fill', gap: 8 });
+  const server = f.stack([f.eyebrow('YOUR PAPER SERVER'), artwork(f, 'server'), f.heading('Configure the server'),
+    f.caption('Run schematio settoken <token> in its console.')], { width: 'fill', gap: 8 });
+  workshop(f, 'Give your server its community key', 'FOR COMMUNITY OWNERS', [token, server],
+    'The token stays on the server. Each player keeps their own identity and permissions.');
 });

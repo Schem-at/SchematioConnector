@@ -30,31 +30,58 @@ runtime checks are recorded separately in [release-readiness.md](release-readine
 
 ## Kineglyph and article delivery
 
-The four diagrams were authored with the local Kineglyph project (`4887eb6`).
-Regenerate them with Node 24 and built Kineglyph packages:
+The four diagrams use original isometric block illustrations, a library view, a
+community key, and a server view. They were authored with the local Kineglyph
+project, including its new `minecraftCommand()` recipe and terminal wrapping fix.
+The library changes are in [Kineglyph PR #3](https://github.com/Nano112/kineglyph/pull/3)
+(`4f521ba`). Shared article files are implemented in
+[Schematio PR #91](https://github.com/Schem-at/schemati/pull/91).
+Regenerate the illustrations with Node 24 or newer and built Kineglyph packages:
 
 ```sh
 node scripts/render-article-figures.mjs /path/to/kineglyph
 ```
 
 All 16 final SVG layouts, at 320, 390, 720 and 960 pixels, resolved without layout
-diagnostics. The article uses responsive pictures. Its SVGs work under
+diagnostics. The command example has MP4 exports at 320 and 720 pixels, native
+play/pause controls, and SVG stills for reduced motion. Kineglyph also pads odd
+video dimensions for H.264 export. The illustrations use no Minecraft textures
+or bundled game font. The article uses responsive pictures. Its SVGs work under
 Schematio's existing policy that disables author-supplied JavaScript. Scene source
 is kept in Git and excluded from the published bundle. No host policy was changed.
 
 Pagina (`f48a404`) built the article and verified its PGZ bundle. The bundle was
-imported into local Schematio with `status: draft`. The seven 1.3.3 jar links are
-explicitly labeled as pending release. The example ZIP avoids the host's current
+imported into local Schematio with `status: draft`. The seven 1.3.3 jars are
+registered in Schematio’s shared Downloads system and attached to this article.
+The draft labels them as release candidates. Their `/dl/.../download` links were
+fetched over HTTP and all seven response bodies matched the CI SHA-256 hashes.
+The file names, public slugs, requirements and hashes are recorded in
+[hosted-downloads.json](hosted-downloads.json). GitHub remains linked for source,
+release history and issues. The example ZIP avoids the host's current
 file-route limit of eight extension characters, which rejects `.litematic` paths.
 
 The article was checked against the project's no-ai-slop skill and evaluation:
 plain instructions, specific commands and button labels, claims limited to code
 and observed behavior, no promotional filler, and a concrete issue-reporting end.
 
+## Local article and download verification
+
+The draft and all 27 supporting assets return HTTP 200. The shared download list
+contains seven jars, and reimporting the article preserves those associations.
+The article, download list, and sharing controls were reviewed in Chrome against
+the local PostgreSQL application. At a 390-pixel viewport, the page has no
+horizontal overflow and selects the narrow diagram source. All six game captures,
+four illustrations, and command media loaded. Source scenes remain outside the
+bundle and the page contains no article-authored scene modules.
+
+Download feature tests: 41 passed, 125 assertions, one existing skipped presigner
+test. Checks include reuse across two articles, detaching and deleting articles,
+password gates, inactive/expired/missing files, escaped metadata, both admin forms,
+checksum verification, and idempotent release ingestion. Browser checks also found
+and fixed PostgreSQL UUID/varchar media comparisons and DISTINCT over article JSON.
+
 ## Open publication checks
 
-- The in-app browser was unavailable. Individual captures and diagram exports
-  were visually inspected; an integrated browser review of the article remains.
 - The current local backend protects private preview images through its web
   session policy, while Connector fetches preview URLs without authentication.
   A fresh private-preview request returned 404 even though metadata and the

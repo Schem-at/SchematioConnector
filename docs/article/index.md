@@ -13,19 +13,11 @@ The Fabric mod provides the browser and preview tools. The Paper plugin connects
 
 ## Downloads
 
-The next release candidate is **1.3.3**. These download links become available when that release is published. The [latest published release](https://github.com/Schem-at/SchematioConnector/releases/latest) is available now.
+The files below are the **1.3.3 release candidate**, hosted by Schematio. The [latest published release on GitHub](https://github.com/Schem-at/SchematioConnector/releases/latest) remains available while this candidate is reviewed.
 
-| Download | Minecraft | Java |
-| --- | --- | --- |
-| [Fabric mod for 1.21.8](https://github.com/Schem-at/SchematioConnector/releases/download/v1.3.3/SchematioConnector-Fabric-mc1.21.8-1.3.3.jar) | 1.21.8 | 21 |
-| [Fabric mod for 1.21.9](https://github.com/Schem-at/SchematioConnector/releases/download/v1.3.3/SchematioConnector-Fabric-mc1.21.9-1.3.3.jar) | 1.21.9 | 21 |
-| [Fabric mod for 1.21.10](https://github.com/Schem-at/SchematioConnector/releases/download/v1.3.3/SchematioConnector-Fabric-mc1.21.10-1.3.3.jar) | 1.21.10 | 21 |
-| [Fabric mod for 1.21.11](https://github.com/Schem-at/SchematioConnector/releases/download/v1.3.3/SchematioConnector-Fabric-mc1.21.11-1.3.3.jar) | 1.21.11 | 21 |
-| [Fabric mod for 26.1](https://github.com/Schem-at/SchematioConnector/releases/download/v1.3.3/SchematioConnector-Fabric-mc26.1-1.3.3.jar) | 26.1 series | 25 |
-| [Fabric mod for 26.2](https://github.com/Schem-at/SchematioConnector/releases/download/v1.3.3/SchematioConnector-Fabric-mc26.2-1.3.3.jar) | 26.2 series | 25 |
-| [Paper plugin](https://github.com/Schem-at/SchematioConnector/releases/download/v1.3.3/SchematioConnector-Paper-1.3.3.jar) | 1.21.8–1.21.11, 26.1.2, 26.2 | 21 for 1.21; 25 for 26.x |
+<div data-article-downloads></div>
 
-Choose the Fabric jar for your Minecraft version. A single Paper jar covers the server versions listed above. See the [source code and issue tracker on GitHub](https://github.com/Schem-at/SchematioConnector).
+Choose the Fabric jar for your Minecraft version. A single Paper jar covers Minecraft 1.21.8–1.21.11, 26.1.2, and 26.2. See the [source code and issue tracker on GitHub](https://github.com/Schem-at/SchematioConnector).
 
 ## The plugin: Schematio and server WorldEdit
 
@@ -49,6 +41,20 @@ Copy a schematic's ID from its Schematio page and run:
 /schematio download <schematic-id>
 //paste
 ```
+
+<figure class="minecraft-command-demo">
+<video autoplay muted loop playsinline controls preload="metadata" poster="/articles/schematio-connector/media/minecraft-command-720.svg" aria-label="Illustrated Minecraft command typing. Use the controls to pause or replay.">
+<source media="(max-width: 599px) and (prefers-reduced-motion: no-preference)" src="media/minecraft-command-320.mp4" type="video/mp4">
+<source media="(prefers-reduced-motion: no-preference)" src="media/minecraft-command-720.mp4" type="video/mp4">
+</video>
+<picture class="minecraft-command-demo__still">
+<source media="(prefers-reduced-motion: reduce) and (max-width: 599px)" srcset="media/minecraft-command-320.svg">
+<source media="(prefers-reduced-motion: reduce)" srcset="media/minecraft-command-720.svg">
+<source media="(max-width: 599px)" srcset="media/minecraft-command-320.svg">
+<img src="media/minecraft-command-720.svg" alt="Illustrated Minecraft chat: the WorldEdit clipboard is ready and the player types //paste.">
+</picture>
+<figcaption>An illustrated command example. The commands above are copyable; the in-game screenshots below show the working tools.</figcaption>
+</figure>
 
 To upload a build, mark its corners with WorldEdit's selection tool, run `//copy`, then `/schematio upload`. Follow the prompts to name the schematic and finish the upload. The community token gives the plugin access to the community; the player remains credited as the author.
 
