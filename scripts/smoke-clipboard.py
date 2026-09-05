@@ -66,6 +66,7 @@ def main():
     parser.add_argument('--worldedit', type=Path, required=True)
     parser.add_argument('--java-home', type=Path, required=True)
     parser.add_argument('--name', required=True)
+    parser.add_argument('--native-library', type=Path, help='Optional local JNI build; omit when testing the packaged natives')
     parser.add_argument('--expect-litematic-failure', action='store_true')
     args = parser.parse_args()
     if not args.name.replace('-', '').replace('.', '').isalnum(): parser.error('name must be a single directory name')
@@ -84,7 +85,9 @@ def main():
     config = plugins / 'SchematioConnector/config.yml'
     config.parent.mkdir(exist_ok=True)
     config.write_text('api-endpoint: http://127.0.0.1:1/api/v1\ncommunity-token: ""\n')
-    (run / 'fixture.litematic').write_bytes(fixture())
+    data = fixture()
+    assert data == (ROOT / 'scripts/fixtures/clipboard-v7.litematic').read_bytes(), 'Regenerate the tracked native fixture after changing fixture()'
+    (run / 'fixture.litematic').write_bytes(data)
     classes = run / 'probe-classes'
     classes.mkdir(exist_ok=True)
     classpath = [args.plugin.resolve(), args.worldedit.resolve(), *sorted((run / 'libraries').rglob('*.jar'))]
@@ -94,7 +97,9 @@ def main():
         jar.writestr('plugin.yml', 'name: ClipboardProbe\nversion: 1\nmain: ClipboardProbe\napi-version: "1.21"\ndepend: [SchematioConnector, WorldEdit]\n')
     log = run / 'console.log'
     with log.open('w') as output:
+        native = [f'-Dnucleation.native.path={args.native_library.resolve()}'] if args.native_library else []
         subprocess.run([str(args.java_home / 'bin/java'), '-XX:ActiveProcessorCount=2', '-Xms256M', '-Xmx1536M',
+            '-Dterminal.jline=false', '-Dterminal.ansi=false', *native,
             f'-Dclipboard.expectFailure={str(args.expect_litematic_failure).lower()}', '-jar', 'server.jar', 'nogui'], cwd=run, stdout=output, stderr=subprocess.STDOUT, timeout=180, check=True)
     content = log.read_text()
     for line in content.splitlines():
