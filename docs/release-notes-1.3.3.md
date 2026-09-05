@@ -5,6 +5,8 @@ perspective and transparent backgrounds. The parser bundle adds Windows x64,
 Linux x64/arm64, and macOS x64 support alongside macOS arm64.
 File previews now create default block entities so chests and similar blocks appear.
 Custom block-entity NBT, such as sign text, is not available through the file reader.
+The composer keeps the FOV control visible in narrow panels, and its Top preset
+preserves the selected projection.
 
 Fixed client shutdown crashes in the bundled panel-lib interface. Updated the
 Litematica/MaLiLib dependency pairs for development clients on 1.21.11 and 26.1.

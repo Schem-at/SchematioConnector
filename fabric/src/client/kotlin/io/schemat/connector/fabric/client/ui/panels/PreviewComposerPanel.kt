@@ -202,8 +202,7 @@ object PreviewComposerPanel : Panel {
 
         // FOV (perspective only).
         if (pose.projection == Projection.PERSPECTIVE) {
-            ImGui.sameLine()
-            ImGui.setNextItemWidth(180f)
+            ImGui.setNextItemWidth((ImGui.getContentRegionAvailX() - 40f).coerceIn(60f, 180f))
             val ref = floatArrayOf(pose.fovDeg)
             if (ImGui.sliderFloat("FOV", ref, FOV_MIN, FOV_MAX)) {
                 pose = pose.copy(fovDeg = ref[0]).fit()
@@ -268,11 +267,10 @@ object PreviewComposerPanel : Panel {
     /** A preset button: accented when the current pose already matches [presetPose]. */
     private fun preset(label: String, presetPose: CameraPose) {
         val active = pose.yaw == presetPose.yaw &&
-            pose.pitch == presetPose.pitch &&
-            pose.projection == presetPose.projection
+            pose.pitch == presetPose.pitch
         if (Widgets.button(label, accent = active)) {
-            // Preserve the user's chosen FOV across preset switches, then refit.
-            pose = presetPose.copy(fovDeg = pose.fovDeg).fit()
+            // A view preset changes direction while preserving projection and FOV.
+            pose = presetPose.copy(projection = pose.projection, fovDeg = pose.fovDeg).fit()
         }
     }
 

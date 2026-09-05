@@ -59,8 +59,15 @@ It validates the uploaded schematic's block contents. It does **not** establish
 Mojang authentication or production Schematio permissions; the backend's separate
 43-test suite covers its attestation and clipboard endpoints.
 
-The 26.2 preview composer's Capture button also produced a valid 1280×720 PNG in
-a joined world. File previews instantiate default block entities; the current
+The 26.2 preview composer passed projection and view presets, FOV adjustment,
+scroll zoom, orbit, pan, reframe, and transparent capture through its UI in a
+joined world. Capture produced a valid 1280×720 PNG. The controls check fixed a
+clipped FOV label and made Top preserve the selected projection.
+The [in-game results](evidence/1.3.3/in-game.json),
+[26.2 composer PNG](evidence/1.3.3/composer-26.2.png), and
+[1.21.8 chest PNG](evidence/1.3.3/chest-1.21.8.png) are saved with this report.
+
+File previews instantiate default block entities; the current
 Nucleation wrapper does not expose their custom NBT, so sign text and other custom
 block-entity data are not represented in these previews.
 
@@ -109,8 +116,8 @@ the combined result in `build/release-readiness/final-bridge-matrix.log`.
   load into WorldEdit, explicit paste, clipboard upload, reconnect.
 - [ ] Mojang sign-in and authenticated browsing against Schematio.
 - [x] Litematica load/placement/export on all six versions.
-- [x] Block-entity previews on all six versions; composer Capture button on 26.2.
-- [ ] Remaining composer controls and authenticated local-file upload through the UI.
+- [x] Block-entity previews on all six versions; composer controls and capture on 26.2.
+- [ ] Authenticated local-file upload through the UI.
 - [ ] Production signing key and authenticated bridge round trip. See
   [production-bridge-setup.md](production-bridge-setup.md).
 - [ ] Article visual review in Schematio; final download links return all seven jars.
