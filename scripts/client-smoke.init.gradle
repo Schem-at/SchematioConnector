@@ -25,7 +25,7 @@ gradle.projectsEvaluated {
                 output.mkdirs()
                 def cfg = new File(output, 'config/schematioconnector/config.properties')
                 cfg.parentFile.mkdirs()
-                cfg.text = "api_endpoint=${System.getProperty('schematio.smoke.endpoint', 'http://127.0.0.1:9/api/v1')}\n"
+                cfg.text = "api_endpoint=${System.getProperty('schematio.smoke.endpoint', 'http://127.0.0.1:9/api/v1')}\ntrust_all_certificates=${System.getProperty('schematio.smoke.trust-local', 'false')}\n"
                 if (System.getProperty('schematio.inspector.root')) {
                     new File(output, 'config/mcinspector.json').text = '{"port":38271,"enabled":true,"packet_capture":false}'
                 }
@@ -34,7 +34,7 @@ gradle.projectsEvaluated {
                 jvmArgs '-XX:ActiveProcessorCount=4'
                 systemProperty 'schematio.smoke.output', output.absolutePath
                 jvmArgs = jvmArgs.findAll { !it.startsWith('-Ddevauth.enabled=') }
-                systemProperty 'devauth.enabled', 'false'
+                systemProperty 'devauth.enabled', System.getProperty('schematio.smoke.authenticated', 'false')
             }
         }
     }

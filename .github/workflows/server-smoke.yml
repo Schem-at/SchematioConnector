@@ -52,11 +52,14 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           MINECRAFT: ${{ matrix.minecraft }}
         run: |
+          shopt -s globstar nullglob
           if [ "$PLATFORM" = fabric ]; then
-            JARS=(staging/SchematioConnector-Fabric-mc"$MINECRAFT"-*.jar)
+            JARS=(staging/**/SchematioConnector-Fabric-mc"$MINECRAFT"-*.jar)
+            [ "${#JARS[@]}" -eq 1 ] || { echo "Expected one candidate jar, found ${#JARS[@]}"; exit 1; }
             python3 scripts/smoke-server.py "$PLATFORM" "$MINECRAFT" --jar "${JARS[0]}"
           else
-            JARS=(staging/SchematioConnector-Paper-*.jar)
+            JARS=(staging/**/SchematioConnector-Paper-*.jar)
+            [ "${#JARS[@]}" -eq 1 ] || { echo "Expected one candidate jar, found ${#JARS[@]}"; exit 1; }
             python3 scripts/smoke-server.py "$PLATFORM" "$MINECRAFT" --jar "${JARS[0]}" --worldedit
           fi
       - uses: actions/upload-artifact@v4
