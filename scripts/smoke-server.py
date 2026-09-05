@@ -92,7 +92,11 @@ def main():
             "loaders": json.dumps([loader]), "game_versions": json.dumps([args.minecraft])}))
         if not versions:
             raise ValueError(f"No WorldEdit release for {loader} {args.minecraft}")
-        release = next((v for v in versions if v["version_type"] == "release"), versions[0])
+        # WorldEdit 7.4.x requires Java 25 even on Minecraft 1.21.x.
+        pin = "7.3.19" if args.minecraft.startswith("1.21.") else "7.4.5"
+        release = next(v for v in versions if v["version_number"] == pin)
+        for stale in mods.glob("worldedit-*.jar"):
+            stale.unlink()
         asset = next(f for f in release["files"] if f["primary"])
         download(asset["url"], mods / asset["filename"])
         inputs["worldedit_version"] = release["version_number"]
@@ -152,7 +156,10 @@ def main():
     failures = [line.strip() for line in all_lines if any(marker in line for marker in (
         "Error occurred while enabling Schematio", "Could not load 'plugins/",
         "Incompatible mods found", "NoClassDefFoundError", "NoSuchMethodError",
+        "UnsupportedClassVersionError", "Could not load plugin",
         "Mixin apply for mod schematioconnector failed", "Exception in server tick loop"))]
+    if args.worldedit and not any("WorldEdit integration enabled" in line for line in all_lines):
+        failures.append("Connector did not enable its WorldEdit integration")
     result = dict(inputs, started=ready, initialized=initialized, exit_code=code,
                   failures=failures, passed=ready and initialized and code == 0 and not failures)
     (run / "result.json").write_text(json.dumps(result, indent=2) + "\n")

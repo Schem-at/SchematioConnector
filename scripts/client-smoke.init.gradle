@@ -6,6 +6,8 @@ gradle.beforeProject { project ->
             def jar = new File(inspectorRoot, "build/libs/0.1.0/MC-Inspector-mc${project.name}-0.1.0.jar")
             if (!jar.isFile()) throw new GradleException("Missing MC-Inspector jar: $jar")
             project.dependencies.add(project.name.startsWith('26.') ? 'runtimeOnly' : 'modRuntimeOnly', project.files(jar))
+            // Loom's development classpath does not unpack this optional mod's nested jars.
+            project.dependencies.add('runtimeOnly', 'org.mozilla:rhino:1.7.15')
         }
     }
 }
