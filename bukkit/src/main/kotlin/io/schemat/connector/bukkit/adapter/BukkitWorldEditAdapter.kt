@@ -5,11 +5,10 @@ import com.sk89q.worldedit.WorldEdit
 import com.sk89q.worldedit.bukkit.BukkitAdapter
 import com.sk89q.worldedit.extent.clipboard.Clipboard
 import com.sk89q.worldedit.extent.clipboard.io.BuiltInClipboardFormat
-import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats
 import com.sk89q.worldedit.session.ClipboardHolder
+import io.schemat.schematioConnector.utils.ClipboardDecoder
 import io.schemat.connector.core.api.WorldEditAdapter
 import org.bukkit.Bukkit
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.logging.Logger
@@ -103,50 +102,8 @@ class BukkitWorldEditAdapter(private val logger: Logger) : WorldEditAdapter {
         return outputStream.toByteArray()
     }
 
-    @Suppress("DEPRECATION") // SPONGE_SCHEMATIC is deprecated but needed for legacy file support
-    private fun byteArrayToClipboard(data: ByteArray): Clipboard? {
-        // First, try WorldEdit's built-in format detection
-        try {
-            val detectedFormat = ClipboardFormats.findByInputStream { ByteArrayInputStream(data) }
-            if (detectedFormat != null) {
-                detectedFormat.getReader(ByteArrayInputStream(data)).use { reader ->
-                    val clipboard = reader.read()
-                    logger.info("Successfully loaded schematic using auto-detected format: ${detectedFormat.name}")
-                    return clipboard
-                }
-            }
-        } catch (e: LinkageError) {
-            // FastAsyncWorldEdit (and older WorldEdit builds) ship a ClipboardFormats
-            // without findByInputStream(Supplier), so the call fails to link at runtime.
-            // LinkageError is an Error, not an Exception - without this catch it escapes
-            // the method entirely and the explicit-format fallback below never runs.
-            logger.warning("Auto-detection unavailable (${e.javaClass.simpleName}), falling back to explicit formats")
-        } catch (e: Exception) {
-            logger.warning("Auto-detection failed: ${e.javaClass.simpleName}: ${e.message}")
-        }
-
-        // Fallback: try formats explicitly in order
-        val formatsToTry = listOf(
-            BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC,
-            BuiltInClipboardFormat.SPONGE_SCHEMATIC,
-            BuiltInClipboardFormat.MCEDIT_SCHEMATIC
-        )
-
-        for (format in formatsToTry) {
-            try {
-                format.getReader(ByteArrayInputStream(data)).use { reader ->
-                    val clipboard = reader.read()
-                    logger.info("Successfully loaded schematic using format: ${format.name}")
-                    return clipboard
-                }
-            } catch (e: Exception) {
-                logger.warning("Format ${format.name} failed: ${e.javaClass.simpleName}: ${e.message}")
-            }
-        }
-
-        logger.warning("Failed to load schematic - no compatible format found")
-        return null
-    }
+    private fun byteArrayToClipboard(data: ByteArray): Clipboard? =
+        ClipboardDecoder.decode(data, logger)
 
     private fun setClipboard(player: org.bukkit.entity.Player, clipboard: Clipboard) {
         getLocalSession(player)?.let { session ->
