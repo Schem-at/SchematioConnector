@@ -70,6 +70,7 @@ dependencies {
 }
 
 tasks.shadowJar {
+    from(rootProject.file("LICENSE"))
     archiveClassifier.set("")
     mergeServiceFiles()
     configurations = listOf(project.configurations.runtimeClasspath.get())

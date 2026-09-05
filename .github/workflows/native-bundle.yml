@@ -1,0 +1,96 @@
+name: Nucleation native bundle
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/native-bundle.yml
+      - scripts/NativeSmoke.java
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-22.04, platform: linux-x64, library: libnucleation_jvm.so}
+          - {os: ubuntu-24.04-arm, platform: linux-arm64, library: libnucleation_jvm.so}
+          - {os: macos-15-intel, platform: macos-x64, library: libnucleation_jvm.dylib}
+          - {os: macos-latest, platform: macos-arm64, library: libnucleation_jvm.dylib}
+          - {os: windows-latest, platform: windows-x64, library: nucleation_jvm.dll}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout the compatible JNI source
+        uses: actions/checkout@v4
+        with:
+          repository: Schem-at/Nucleation
+          ref: 6d0bdd58941925fc4d6d34c388c31c8b59854518
+          path: native-source
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Select Rust
+        run: rustup default stable
+      - name: Build native library
+        # Connector uses parsing/diff; its renderer uses Minecraft's own models.
+        run: cargo build --locked --release --no-default-features --manifest-path native-source/nucleation-jvm/Cargo.toml
+      - name: Exercise the native with the shipped Java wrapper
+        env:
+          NATIVE_LIBRARY: ${{ matrix.library }}
+        run: |
+          java -Dnucleation.native.path="$(pwd)/native-source/nucleation-jvm/target/release/$NATIVE_LIBRARY" \
+            --class-path fabric/libs/nucleation-0.2.19.jar scripts/NativeSmoke.java
+      - name: Stage native library
+        env:
+          NATIVE_PLATFORM: ${{ matrix.platform }}
+          NATIVE_LIBRARY: ${{ matrix.library }}
+        run: |
+          mkdir -p "staging/native/$NATIVE_PLATFORM"
+          cp "native-source/nucleation-jvm/target/release/$NATIVE_LIBRARY" "staging/native/$NATIVE_PLATFORM/"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nucleation-${{ matrix.platform }}
+          path: staging/native
+          if-no-files-found: error
+
+  bundle:
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nucleation-*
+          path: native-bundle
+          merge-multiple: true
+      - name: Bundle natives with the existing Java wrapper
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          platforms = {'linux-x64', 'linux-arm64', 'macos-x64', 'macos-arm64', 'windows-x64'}
+          files = list(Path('native-bundle').glob('*/*'))
+          assert {p.parent.name for p in files} == platforms
+          Path('staging').mkdir(exist_ok=True)
+          with ZipFile('fabric/libs/nucleation-0.2.19.jar') as source, ZipFile('staging/nucleation-0.2.19.jar', 'w', ZIP_DEFLATED) as dest:
+              for name in source.namelist():
+                  if not name.startswith('native/'):
+                      dest.writestr(name, source.read(name))
+              for path in sorted(files):
+                  dest.writestr('native/' + path.relative_to('native-bundle').as_posix(), path.read_bytes())
+              dest.writestr('META-INF/NATIVE-SOURCE', 'Schem-at/Nucleation@6d0bdd58941925fc4d6d34c388c31c8b59854518\nJNI 0.2.18; Java wrapper 0.2.19; --no-default-features\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nucleation-multiplatform-jar
+          path: staging/nucleation-0.2.19.jar
+          if-no-files-found: error

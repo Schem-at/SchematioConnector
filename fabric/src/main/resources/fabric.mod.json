@@ -9,7 +9,8 @@
   ],
   "contact": {
     "homepage": "https://schemat.io",
-    "sources": "https://github.com/schemat-io/SchematioConnector"
+    "sources": "https://github.com/Schem-at/SchematioConnector",
+    "issues": "https://github.com/Schem-at/SchematioConnector/issues"
   },
   "license": "MIT",
   "environment": "*",
