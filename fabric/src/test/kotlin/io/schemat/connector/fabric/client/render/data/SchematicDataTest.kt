@@ -1,17 +1,12 @@
 package io.schemat.connector.fabric.client.render.data
 
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.condition.EnabledOnOs
-import org.junit.jupiter.api.condition.OS
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Gated to macOS: only the macOS-arm64 Nucleation native ships in the test
- * classpath today (see docs/nucleation-build.md). On other OSes these tests are
- * skipped rather than failing on UnsatisfiedLinkError.
+ * Exercises the bundled parser on every CI platform.
  */
-@EnabledOnOs(OS.MAC)
 class SchematicDataTest {
     @Test
     fun parsesDimensionsAndBlocks() {

@@ -1,0 +1,136 @@
+{
+  "date": "2026-09-05",
+  "platform": "macOS arm64",
+  "backend": "localhost signed HTTP fixture; production authentication is separate",
+  "bridge_and_litematica": [
+    {
+      "minecraft": "1.21.8",
+      "paper": "1.21.8",
+      "worldedit": "7.3.19",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "1.21.9",
+      "paper": "1.21.9",
+      "worldedit": "7.3.19",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "1.21.10",
+      "paper": "1.21.10",
+      "worldedit": "7.3.19",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "1.21.11",
+      "paper": "1.21.11",
+      "worldedit": "7.3.19",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "26.1",
+      "paper": "26.1.2",
+      "worldedit": "7.4.5",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "26.2",
+      "paper": "26.2",
+      "worldedit": "7.4.5",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    }
+  ],
+  "composer": {
+    "passed": true,
+    "minecraft": "26.2",
+    "checks": [
+      "projection toggle",
+      "Top preserves perspective",
+      "Front preset",
+      "FOV slider",
+      "scroll zoom",
+      "drag orbit",
+      "right-drag pan",
+      "Reframe resets pan",
+      "transparent capture button and PNG alpha"
+    ],
+    "image": {
+      "width": 1280,
+      "height": 720,
+      "clear": 686216,
+      "drawn": 235384
+    }
+  }
+}

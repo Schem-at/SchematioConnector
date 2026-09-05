@@ -63,6 +63,29 @@ class AttestationClientTest {
     }
 
     @Test
+    fun `cached attestation cannot outlive token removal or cross platform and token changes`() = runTest {
+        val transport = FakeTransport { ok(okBody) }
+        var token: String? = "first"
+        val client = AttestationClient(transport, { token })
+        client.requestAttestation("aa", IpcPlatform.PAPER_PLUGIN)
+        token = null
+        assertNull(client.requestAttestation("aa", IpcPlatform.PAPER_PLUGIN))
+        token = "second"
+        client.requestAttestation("aa", IpcPlatform.PAPER_PLUGIN)
+        client.requestAttestation("aa", IpcPlatform.FABRIC_SERVER)
+        assertEquals(3, transport.requests.size)
+    }
+
+    @Test
+    fun `attestation cache evicts old connections`() = runTest {
+        val transport = FakeTransport { ok(okBody) }
+        val client = AttestationClient(transport, { "jwt" })
+        repeat(1025) { client.requestAttestation(it.toString(), IpcPlatform.PAPER_PLUGIN) }
+        client.requestAttestation("0", IpcPlatform.PAPER_PLUGIN)
+        assertEquals(1026, transport.requests.size)
+    }
+
+    @Test
     fun `returns null without a token, on http error, transport failure, or bad body`() = runTest {
         assertNull(AttestationClient(FakeTransport { ok(okBody) }, { null })
             .requestAttestation("00", IpcPlatform.PAPER_PLUGIN))

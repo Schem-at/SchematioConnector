@@ -1,0 +1,8 @@
+slug: schematio-connector
+title: Schematio Connector
+description: Browse, download, and upload Minecraft schematics in-game with the Fabric mod and Paper plugin.
+author: Schematio
+status: draft
+nav:
+  - title: Install and use
+    page: index.md

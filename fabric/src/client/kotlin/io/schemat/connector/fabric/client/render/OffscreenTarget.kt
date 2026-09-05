@@ -62,7 +62,7 @@ class OffscreenTarget(
         /*// 26.2 replaced the packed ARGB int with a Vector4fc (RGBA, 0..1).
         RenderSystem.getDevice().createCommandEncoder().clearColorAndDepthTextures(
             framebuffer.colorTexture!!, Vector4f(r, g, b, a),
-            framebuffer.depthTexture!!, 1.0,
+            framebuffer.depthTexture!!, RenderSystem.DEFAULT_DEPTH_CLEAR_VALUE,
         )
         *///?} else {
         // UNCERTAIN (runtime-unverified): the int color is assumed to be packed ARGB,
@@ -146,19 +146,15 @@ class OffscreenTarget(
      * (0 where only the alpha-0 clear is visible) survives into the PNG.
      */
     private fun readPngWithAlpha(onResult: (ByteArray?) -> Unit) {
-        //? if >=26.2 {
-        /*// 26.2 removed CommandEncoder.mapBuffer (the buffer readback API was
-        // reworked); the alpha-preserving readback has not been ported. Not
-        // reachable in practice: SchematicRenderEngine gates every 26.2 capture
-        // entry point with a CaptureResult.Failure before rendering starts.
-        LOGGER.error("SCHEMAT-CAPTURE: alpha-preserving readback is not supported on MC 26.2")
-        onResult(null)
-        *///?} else {
         try {
             val device = RenderSystem.getDevice()
             val texture = framebuffer.colorTexture
                 ?: throw IllegalStateException("capture framebuffer has no color attachment")
+            //? if >=26.2 {
+            /*val pixelSize = texture.format.blockSize()
+            *///?} else {
             val pixelSize = texture.format.pixelSize()
+            //?}
             // 1.21.11 widened GpuDevice.createBuffer's size and the
             // copyTextureToBuffer offset parameters from int to long.
             //? if >=1.21.11 {
@@ -178,8 +174,11 @@ class OffscreenTarget(
                 {
                     var bytes: ByteArray? = null
                     try {
-                        RenderSystem.getDevice().createCommandEncoder()
-                            .mapBuffer(gpuBuffer, /* read = */ true, /* write = */ false).use { view ->
+                        //? if >=26.2 {
+                        /*gpuBuffer.map(true, false).use { view ->
+                        *///?} else {
+                        RenderSystem.getDevice().createCommandEncoder().mapBuffer(gpuBuffer, true, false).use { view ->
+                        //?}
                                 val data = view.data()
                                 NativeImage(width, height, false).use { image ->
                                     for (y in 0 until height) {
@@ -205,7 +204,6 @@ class OffscreenTarget(
             LOGGER.error("SCHEMAT-CAPTURE: alpha readback setup failed", e)
             onResult(null)
         }
-        //?}
     }
 
     /** PNG-encode via the temp-file round-trip (NativeImage has no byte[] encoder). */

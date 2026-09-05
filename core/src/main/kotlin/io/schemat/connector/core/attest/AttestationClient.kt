@@ -10,7 +10,6 @@ import io.schemat.connector.core.modapi.transport.HttpMethod
 import io.schemat.connector.core.modapi.transport.TransportException
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Base64
-import java.util.concurrent.ConcurrentHashMap
 
 /** A backend-signed attestation, relayed verbatim to the client in an ATTEST message. */
 class Attestation(
@@ -32,11 +31,20 @@ class AttestationClient(
     private val timeoutMs: Long = 5_000,
 ) {
 
-    private val cache = ConcurrentHashMap<String, Attestation>()
+    private data class CacheKey(val nonce: String, val platform: IpcPlatform, val token: String)
+    private data class Cached(val attestation: Attestation, val expiresAt: Long)
+    private val cache = object : LinkedHashMap<CacheKey, Cached>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, Cached>?): Boolean =
+            size > 1024
+    }
 
     suspend fun requestAttestation(nonceHex: String, platform: IpcPlatform): Attestation? {
-        cache[nonceHex]?.let { return it }
         val token = tokenProvider() ?: return null
+        val cacheKey = CacheKey(nonceHex, platform, token)
+        synchronized(cache) {
+            cache[cacheKey]?.takeIf { it.expiresAt > System.currentTimeMillis() }
+                ?.let { return it.attestation }
+        }
 
         val body = JsonObject().apply {
             addProperty("nonce_hex", nonceHex)
@@ -66,7 +74,9 @@ class AttestationClient(
         if (signature.size != 64) return null
 
         val attestation = Attestation(payload, signature, keyId)
-        cache[nonceHex] = attestation
+        synchronized(cache) {
+            cache[cacheKey] = Cached(attestation, System.currentTimeMillis() + 300_000)
+        }
         return attestation
     }
 }

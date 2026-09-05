@@ -5,16 +5,16 @@ import net.minecraft.world.level.block.Blocks
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.junit.jupiter.api.condition.EnabledOnOs
-import org.junit.jupiter.api.condition.OS
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import com.github.schemat.nucleation.Schematic
+import net.minecraft.world.level.block.entity.ChestBlockEntity
 
 /**
  * Integration test: schematic bytes -> Nucleation iterate -> BlockStateMapper ->
- * frozen snapshot render source. Needs the Nucleation native (macOS-gated) AND MC
+ * frozen snapshot render source. Needs the bundled Nucleation native and MC
  * registries (bootstrapped) for the block parse.
  */
-@EnabledOnOs(OS.MAC)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class NucleationSnapshotSourceTest {
     @BeforeAll
@@ -36,5 +36,17 @@ class NucleationSnapshotSourceTest {
             Blocks.STONE.defaultBlockState(),
             source.view.getBlockState(BlockPos(0, 0, 0)),
         )
+    }
+
+    @Test
+    fun includesDefaultBlockEntitiesForFilePreviews() {
+        val bytes = Schematic("chest-preview").use {
+            it.setBlock(0, 0, 0, "minecraft:chest[facing=north,type=single,waterlogged=false]")
+            it.toSchematic()
+        }
+        val source = NucleationSnapshotSource.snapshotFromBytes(bytes)
+        val chest = assertIs<ChestBlockEntity>(source.view.getBlockEntity(BlockPos.ZERO))
+        assertEquals(source.view.getBlockState(BlockPos.ZERO), chest.blockState)
+        assertEquals(listOf(chest), source.blockEntities())
     }
 }

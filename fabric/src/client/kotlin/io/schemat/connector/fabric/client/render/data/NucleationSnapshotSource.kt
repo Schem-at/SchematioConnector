@@ -37,7 +37,11 @@ object NucleationSnapshotSource {
                     z in captureMin.z..captureMax.z
                 ) {
                     // setBlockState skips air; BlockStateMapper returns null for unknown blocks.
-                    BlockStateMapper.parse(stateString)?.let { builder.setBlockState(BlockPos(x, y, z), it) }
+                    BlockStateMapper.parse(stateString)?.let { state ->
+                        val pos = BlockPos(x, y, z)
+                        builder.setBlockState(pos, state)
+                        if (state.hasBlockEntity()) builder.setDefaultBlockEntity(pos)
+                    }
                 }
             }
             SchematicRenderSource(SnapshotBlockRenderView(builder.build()), minPos, maxPos)

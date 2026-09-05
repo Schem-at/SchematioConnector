@@ -1,7 +1,7 @@
 # SchematioConnector
 
 ![Minecraft](https://img.shields.io/badge/Minecraft-1.21.8%20%E2%80%93%201.21.11%2C%2026.1%2C%2026.2-62b47a)
-![Paper](https://img.shields.io/badge/Paper-1.21.x-blue)
+![Paper](https://img.shields.io/badge/Paper-1.21.8%2B-blue)
 ![Fabric](https://img.shields.io/badge/Fabric-client%20%2B%20server-dbd0b4)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -11,35 +11,29 @@ SchematioConnector ships as two things:
 
 | Component | What it is | Where it runs |
 |---|---|---|
-| **Paper plugin** | Server-side `/schematio` commands with chat and native-dialog UIs | Paper 1.21.x servers (and forks) |
+| **Paper plugin** | Server-side `/schematio` commands with chat and native-dialog UIs | Paper servers listed below |
 | **Fabric mod** | A full client-side UI (browser, upload wizard, thumbnail composer, communities) plus the same server commands when installed on a Fabric server | Fabric 1.21.8 - 1.21.11, 26.1 and 26.2 |
 
 ## Supported versions
 
 | Platform | Versions | Notes |
 |---|---|---|
-| Paper | 1.21.x | One version-agnostic jar (`api-version: 1.21`) |
+| Paper | 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.2, 26.2 | One jar (`api-version: 1.21`) |
 | Fabric | **1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, 26.2** | One jar per Minecraft version |
 | Fabric (1.20.x) | *Planned* | A future backport target, deliberately deferred until the multi-version pipeline is settled. |
 
-26.1 is newly supported: MC 26.x rewrote the GUI framework (`GuiGraphics` is gone) and the block/fluid render pipeline, and the client UI - including the thumbnail renderer - is a fresh port. It builds and is validated, but please report any rendering issues you hit.
+Download the [latest published release](https://github.com/Schem-at/SchematioConnector/releases/latest).
+The next release candidate is **1.3.3**. Its validation results and remaining checks
+are recorded in [docs/release-readiness.md](docs/release-readiness.md).
 
-26.2 is supported with one caveat: MC 26.2 removed the immediate-mode draw path
-(`RenderType.draw` / `MultiBufferSource`) that the in-client schematic
-preview/thumbnail renderer is built on, and that pipeline has not been ported yet.
-On 26.2 the preview composer shows a "not yet supported" placeholder and captures
-report a clear error; everything else (browser, upload wizard, communities,
-Litematica integration, server commands) works as on 26.1.
-
-The Paper plugin also runs on 26.x Paper servers (the jar is version-agnostic); for
-a 26.x dev server use the run-paper version flag, e.g.
-`./gradlew :bukkit:runServer -PpaperRunVersion=26.1.2` (defaults to 1.21.8).
+The 1.3.3 preview renderer includes the Minecraft 26.2 port. The bundled schematic
+parser supports Windows x64, Linux x64/arm64, and macOS x64/arm64.
 
 Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 
 ## Features
 
-### Fabric client (the full experience)
+### Fabric client
 
 - **Shared overlay** - the client UI lives in the [panel-lib](https://github.com/Nano112/panel-lib) overlay (**K**): one toolbar and dockspace shared with other panel-lib mods, the game embedded beside the panels, and a common theme. Schematio adds a **Schematio ▾** menu with Browse / Upload / Quick Shares / Settings.
 - **Schematic browser** - search, tag filtering (including tag *filter values*), thumbnails, detail view, save to disk. Open it with the **K** key (rebindable, *Controls → Misc*) or `/schematio`.
@@ -69,29 +63,29 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 1. Install [Fabric Loader](https://fabricmc.net/use/).
 2. Install the required dependencies into `mods/`:
    - **[Fabric API](https://modrinth.com/mod/fabric-api)**
-   - **[Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin)**
+   - **[Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin)** 1.13.12 or newer
 3. *(Optional, client)* Install **[Litematica](https://modrinth.com/mod/litematica)** + **[MaLiLib](https://modrinth.com/mod/malilib)** to enable load-to-placement, export, and snapshot thumbnails, and **WorldEdit** for clipboard upload/download. Without them the mod runs in a limited mode (browsing and file-based upload still work).
 4. Download the jar **matching your Minecraft version** - the naming is:
 
    ```
    SchematioConnector-Fabric-mc<minecraft version>-<mod version>.jar
-   e.g. SchematioConnector-Fabric-mc1.21.11-1.1.1.jar  →  for Minecraft 1.21.11
-        SchematioConnector-Fabric-mc26.1-1.1.1.jar     →  for Minecraft 26.1
+   e.g. SchematioConnector-Fabric-mc1.21.11-1.3.3.jar  →  for Minecraft 1.21.11
+        SchematioConnector-Fabric-mc26.1-1.3.3.jar     →  for Minecraft 26.1
    ```
 
 5. Drop it in `mods/` and start the game. On a client, press **K** or run `/schematio` - you'll be signed in automatically via your Mojang session.
 
 ### Paper
 
-1. Download `SchematioConnector-Paper-<version>.jar` from [Releases](https://github.com/schemat-io/SchematioConnector/releases) and drop it into `plugins/`.
+1. Download `SchematioConnector-Paper-<version>.jar` from [Releases](https://github.com/Schem-at/SchematioConnector/releases) and drop it into `plugins/`.
 2. Start the server once to generate `plugins/SchematioConnector/config.yml`.
-3. Set your community token (from *Community Settings → Plugin Tokens* on schemat.io):
+3. In the server console, set your community token (from *Community Settings → Plugin Tokens* on schemat.io):
 
    ```
-   /schematio settoken <token>
+   schematio settoken <token>
    ```
 
-4. *(Optional)* Install **WorldEdit** to enable clipboard upload/download, and **ProtocolLib** / **MapEngine** for preview rendering.
+4. *(Optional)* Install **WorldEdit** (7.3.19 for Java 21; 7.4.x requires Java 25) to enable clipboard upload/download, and **ProtocolLib** / **MapEngine** for preview rendering.
 
 ## Commands
 
@@ -175,7 +169,7 @@ UI mode resolution: command flag → player preference (`/schematio settings`) �
 Requirements: **JDK 25** for the Gradle daemon (`gradle/gradle-daemon-jvm.properties` pins it - Loom requires the Gradle JVM to be at least the newest MC target's Java version, and 26.1 targets Java 25) **and JDK 21** for the 1.21.x compile toolchains (auto-provisioned/detected by Gradle if installed), Git. Gradle comes via the wrapper (9.4.1).
 
 ```bash
-git clone https://github.com/schemat-io/SchematioConnector.git
+git clone https://github.com/Schem-at/SchematioConnector.git
 cd SchematioConnector
 
 # Paper plugin → bukkit/build/libs/SchematioConnector-Paper-<version>.jar
@@ -242,7 +236,9 @@ The Fabric module builds one jar per Minecraft version from a single source tree
 3. Add it to `buildableVersions` in `fabric/stonecutter.gradle.kts` once it compiles.
 4. Fix any API differences with Stonecutter version comments (`//? if >=<version>`).
 
-**26.1** went through exactly this process and is now a full release target (mapping-less loom via `fabric.loom.disableObfuscation=true`, Java 25 toolchain, client UI ported to the post-`GuiGraphics` framework). **26.2** followed the same path (Gui-based screen/chat accessors, GpuSurface present hook), with the offscreen preview renderer feature-gated off until the post-immediate-mode draw pipeline (`PreparedRenderType`/`StagedVertexBuffer` + submit nodes) is ported. **1.20.x** is a planned future target via the same per-version mechanism.
+For 26.x, Loom runs without remapping and uses Java 25. Minecraft 26.2 also
+requires the GPU draw path in `CachedSchematicMesh` and reversed depth in the
+offscreen renderer.
 
 ## Releasing
 
@@ -259,5 +255,5 @@ See [RELEASING.md](RELEASING.md) for the release pipeline (GitHub Releases for e
 ## Links
 
 - [schemat.io](https://schemat.io) - the schematic platform this connects to
-- [GitHub](https://github.com/schemat-io/SchematioConnector) - source code and [issues](https://github.com/schemat-io/SchematioConnector/issues)
+- [GitHub](https://github.com/Schem-at/SchematioConnector) - source code and [issues](https://github.com/Schem-at/SchematioConnector/issues)
 - Modrinth - *coming soon*

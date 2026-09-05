@@ -290,12 +290,11 @@ tasks.register("checkThemeDiscipline") {
             if (rawFile.isAbsolute) rawFile else File(rootProject.projectDir, customPath)
         } else {
             // Default: real panels dir, relative to fabric module dir.
-            File(fabricModuleDir, "src/client/kotlin/io/schemat/connector/fabric/client/ui/imgui/panels")
+            File(fabricModuleDir, "src/client/kotlin/io/schemat/connector/fabric/client/ui/panels")
         }
 
         if (!scanDir.exists()) {
-            logger.lifecycle("checkThemeDiscipline: panels dir not found (${scanDir.path}) — skipping (no-op)")
-            return@doLast
+            throw GradleException("Theme check directory does not exist: ${scanDir.path}")
         }
 
         val hexColorRegex = Regex("""0x[0-9A-Fa-f]{8}""")

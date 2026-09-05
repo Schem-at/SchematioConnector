@@ -1,6 +1,7 @@
 package io.schemat.connector.fabric.client.render
 
 import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.buffers.GpuBuffer
 import com.mojang.blaze3d.vertex.ByteBufferBuilder
 import com.mojang.blaze3d.vertex.MeshData
 import com.mojang.blaze3d.vertex.PoseStack
@@ -106,7 +107,9 @@ class CachedSchematicMesh : AutoCloseable {
         /** Reusable scratch builder the bytes are re-injected into per frame. */
         val scratch: ByteBufferBuilder,
     ) {
+        var gpuVertices: GpuBuffer? = null
         fun free() {
+            gpuVertices?.close()
             MemoryUtil.nmemFree(vertexAddr)
             scratch.close()
         }
@@ -197,6 +200,15 @@ class CachedSchematicMesh : AutoCloseable {
 
     /** Rebuild a transient MeshData over the cached bytes and hand it to vanilla's draw. */
     private fun drawLayer(renderType: RenderType, layer: CachedLayer) {
+        //? if >=26.2 {
+        /*val vertices = layer.gpuVertices ?: RenderSystem.getDevice().createBuffer(
+            { "schemat-cached-vertices" }, GpuBuffer.USAGE_VERTEX,
+            MemoryUtil.memByteBuffer(layer.vertexAddr, layer.vertexByteCount),
+        ).also { layer.gpuVertices = it }
+        val indices = RenderSystem.getSequentialBuffer(layer.drawState.primitiveTopology())
+        val indexBuffer = indices.getBuffer(layer.drawState.indexCount())
+        renderType.prepare().drawFromBuffer(vertices, indexBuffer, indices.type(), 0, 0, layer.drawState.indexCount())
+        *///?} else {
         val builder = layer.scratch
         // reserve() advances the write head and returns the absolute write
         // address; copy the cached vertex bytes in, then build() yields a Result
@@ -207,15 +219,8 @@ class CachedSchematicMesh : AutoCloseable {
         // MeshData takes ownership of `result`; RenderType.draw closes the MeshData
         // (and thus the Result), freeing the scratch region for next frame.
         val mesh = MeshData(result, layer.drawState)
-        //? if <26.2 {
         renderType.draw(mesh)
-        //?} else {
-        /*// 26.2 removed RenderType.draw(MeshData) (ad-hoc meshes now go through
-        // PreparedRenderType/StagedVertexBuffer). Unreachable on 26.2 - the whole
-        // preview pipeline is gated off in OffscreenSchematicRenderer.render -
-        // but keep the Result freed if it ever runs.
-        mesh.close()
-        *///?}
+        //?}
     }
 
     override fun close() {
@@ -248,10 +253,9 @@ class CachedSchematicMesh : AutoCloseable {
                 byteBuffers += bb
                 com.mojang.blaze3d.vertex.BufferBuilder(bb, renderType.mode(), renderType.format())
                 //?} else {
-                /*// 26.2 removed RenderType.bufferSize()/mode() with the immediate
-                // draw path. Unreachable: tessellation is gated off on 26.2
-                // (OffscreenSchematicRenderer.render bails before buildFrom).
-                error("schematic preview tessellation is not supported on MC 26.2")
+                /*val bb = ByteBufferBuilder(RenderType.SMALL_BUFFER_SIZE)
+                byteBuffers += bb
+                com.mojang.blaze3d.vertex.BufferBuilder(bb, renderType.primitiveTopology(), renderType.format())
                 *///?}
             }
 

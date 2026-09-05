@@ -1,90 +1,77 @@
 # Releasing SchematioConnector
 
-How a release is versioned, built, published to GitHub Releases, and - once enabled - published to Modrinth.
+A release contains one Paper plugin, six Fabric mods, and `SHA256SUMS`. Fabric
+jars target Minecraft 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, and 26.2.
 
-## Versioning
+## Prepare and verify
 
-The project follows [Semantic Versioning](https://semver.org). The version is defined in the root `gradle.properties`:
+1. Update `versionMajor`, `versionMinor`, and `versionPatch` in `gradle.properties`.
+2. With JDK 21 and JDK 25 installed, run:
 
-```properties
-versionMajor=1
-versionMinor=1
-versionPatch=1
+   ```sh
+   ./gradlew :core:test :bukkit:build :fabric:buildAllVersions
+   python3 scripts/verify-release.py
+   ```
+
+3. Run the client checks and remaining player flows in
+   [docs/release-readiness.md](docs/release-readiness.md). Record results against
+   the candidate commit and artifact hashes. Builds, unit tests, and server
+   startup checks do not verify a player's complete upload/download flow.
+4. Open a PR. The Build workflow checks jar metadata, dependencies, licenses, and
+   the exact artifact set. Its twelve runtime jobs start the packaged Fabric mod
+   on each target and the Paper plugin with WorldEdit on each listed Paper version.
+5. Check that the article's download filenames match the candidate. Keep it as a
+   draft until the release exists and every link returns a file.
+6. Run `python3 scripts/check-backend.py` against production and complete an
+   authenticated bridge round trip. If no signing key is configured, follow
+   [docs/production-bridge-setup.md](docs/production-bridge-setup.md). The Release
+   workflow requires a usable public key before publishing.
+
+Fabric outputs go to `build/libs/<version>/`; Paper goes to `bukkit/build/libs/`.
+`build/release-readiness/artifacts.json` records hashes and packaging results.
+
+## Publish to GitHub
+
+After the release checks pass, merge the PR and create an annotated tag. Pushing
+that tag publishes the release once its build and packaged runtime checks pass.
+The tag must match `gradle.properties`; a mismatch fails the workflow.
+
+```sh
+git tag -a v1.3.3 -F docs/release-notes-1.3.3.md
+git push origin v1.3.3
 ```
 
-Bump **MAJOR** for breaking changes, **MINOR** for new features, **PATCH** for bug fixes. The same version is used by every artifact; the Fabric jars additionally encode the Minecraft version in the file name.
+The annotation's first line is its subject; the remaining body becomes the GitHub
+release notes. Verify seven jars and `SHA256SUMS` on the release page. Download
+them into a clean directory and run `sha256sum -c SHA256SUMS` (or
+`shasum -a 256 -c SHA256SUMS` on macOS).
 
-## Release artifacts
+The Release workflow also accepts an existing tag through `workflow_dispatch`.
+It checks out that tag for both the build and the server tests.
 
-One release produces **6 jars** (1 Paper plugin + 5 Fabric mod jars):
+## Article
 
-| Artifact | Built by | Output |
-|---|---|---|
-| Paper plugin (1 jar, version-agnostic) | `./gradlew :bukkit:build` | `bukkit/build/libs/SchematioConnector-Paper-<version>.jar` |
-| Fabric mod (1 jar **per** MC version: 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1) | `./gradlew :fabric:buildAllVersions` | `build/libs/<version>/SchematioConnector-Fabric-mc<mc>-<version>.jar` |
+The Pagina article source is in `docs/article/`. Build and pack it with the Pagina
+CLI, then verify the bundle before importing it into Schematio. The source sets
+`status: draft`. Check the rendered page and release links before publishing it.
+Remove the candidate notice when the release is public.
 
-The Fabric version list lives in `buildableVersions` in `fabric/stonecutter.gradle.kts`; the release workflow's `EXPECTED_JAR_COUNT` (currently 6) must match.
+## Modrinth
 
-## Cutting a release
+Modrinth publication requires two project IDs (`MODRINTH_MOD_PROJECT_ID` and
+`MODRINTH_PLUGIN_PROJECT_ID` repository variables) and a `MODRINTH_TOKEN` secret.
+Set `publish_modrinth=true` on a Release workflow dispatch to publish. Tag pushes
+do not publish to Modrinth. Each Fabric entry lists its Minecraft version, Fabric
+API and Fabric Language Kotlin dependencies; the Paper entry lists WorldEdit as
+optional.
 
-1. Bump `versionMajor` / `versionMinor` / `versionPatch` in `gradle.properties` and commit.
-2. Sanity-check locally:
+## Dependency updates
 
-   ```bash
-   ./gradlew :core:test :bukkit:build :fabric:buildAllVersions
-   ls build/libs/<version>/   # one fabric jar per MC version
-   ```
+Shared pins live in `gradle.properties`. Per-version Fabric API, Litematica,
+MaLiLib, and Minecraft predicates live in `fabric/versions/<version>/gradle.properties`.
+When adding a target, update `settings.gradle.kts`, `buildableVersions`, the
+server smoke matrix, release jar count, and Modrinth entries together.
 
-3. Create an **annotated** tag - the annotation body becomes the release notes:
-
-   ```bash
-   git tag -a v1.2.0 -m "v1.2.0
-
-   - Added X
-   - Fixed Y"
-   git push origin v1.2.0
-   ```
-
-4. The `Release` workflow (`.github/workflows/release.yml`) triggers on `v*` tag pushes and:
-   - builds the Paper plugin jar (`:core:build :bukkit:build`, runs `:core:test`),
-   - builds the Fabric mod jar for every supported Minecraft version,
-   - collects everything and creates a **GitHub Release** named `SchematioConnector v<version>` with the tag annotation as the body and all jars attached.
-
-5. Verify the release page lists the full artifact set: **1 Paper jar + 1 Fabric jar per supported MC version** (6 jars total).
-
-(`.github/workflows/build.yml` is the per-push/PR CI counterpart - it builds but does not release.)
-
-## Modrinth publishing - wired but INACTIVE
-
-The workflow contains Modrinth publish steps for **both** the Fabric mod (one version entry per MC version - 1.21.8 through 1.21.11 and 26.1 - with correct `game_versions`, `loaders`, and dependency metadata) and the Paper plugin (`loaders: paper`). They are fully configured but deliberately **inert**: they are gated on the `MODRINTH_TOKEN` secret being present (`if: ${{ secrets.MODRINTH_TOKEN != '' }}`) and on a `publish_modrinth` flag that defaults to `false`. With no secret set, the steps are no-ops on every release.
-
-### Going live - the exact switches
-
-1. Create the two Modrinth projects (mod + plugin) and note their project IDs.
-2. In the GitHub repo settings:
-
-   | Where | Name | Value |
-   |---|---|---|
-   | **Secrets** → Actions | `MODRINTH_TOKEN` | A Modrinth personal access token with permission to create versions |
-   | **Variables** → Actions | `MODRINTH_MOD_PROJECT_ID` | Modrinth project ID of the **Fabric mod** |
-   | **Variables** → Actions | `MODRINTH_PLUGIN_PROJECT_ID` | Modrinth project ID of the **Paper plugin** |
-
-3. Flip the `publish_modrinth` flag to `true` (the workflow input / release flag whose default is `false` in `release.yml`).
-
-That's the entire activation: add the secret, set the two variables, flip the flag. The changelog is taken from the release body, so no extra metadata work is needed per release.
-
-To take Modrinth publishing back offline, remove the `MODRINTH_TOKEN` secret (or set `publish_modrinth` back to `false`).
-
-## Build toolchain
-
-| Tool | Version | Where it's pinned |
-|---|---|---|
-| Gradle | 9.4.1 | `gradle/wrapper/gradle-wrapper.properties` |
-| Fabric Loom | 1.16-SNAPSHOT | root `build.gradle.kts` |
-| Kotlin | 2.4.0 | root `build.gradle.kts` (matches `fabric-language-kotlin` 1.13.12) |
-| Stonecutter | 0.9.5 | `settings.gradle.kts` |
-| Java | 25 for the Gradle daemon (required since 26.1 targets Java 25); compile toolchains: 21 for 1.21.x, 25 for 26.x (switch automatically) | `gradle/gradle-daemon-jvm.properties`, `fabric/build.gradle.kts` |
-
-Shared dependency pins (Fabric Loader, Fabric Language Kotlin, conditional-mixin, WorldEdit) live in the root `gradle.properties`. **Per-Minecraft-version pins** (Fabric API, Litematica, MaLiLib Modrinth version IDs, the `fabric.mod.json` MC predicate) live in `fabric/versions/<version>/gradle.properties` - update these when bumping a version's dependencies, and add a new directory there when adding a Minecraft version (see the README's *Adding a new Minecraft version* section).
-
-All Fabric versions build on **official Mojang mappings**; 26.x builds run loom in no-remap mode (`fabric.loom.disableObfuscation=true`) because MC 26.x ships unobfuscated.
+See [docs/nucleation-build.md](docs/nucleation-build.md) for the native parser
+bundle. The no-ai-slop skill in `.agents/skills/no-ai-slop/` applies to release
+notes, the article, and installation instructions.

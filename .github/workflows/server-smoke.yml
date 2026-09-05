@@ -1,0 +1,72 @@
+name: Packaged server checks
+
+on:
+  workflow_call:
+    inputs:
+      source-ref:
+        required: false
+        type: string
+        default: ""
+      artifact-pattern:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {platform: fabric, minecraft: '1.21.8', java: '21'}
+          - {platform: fabric, minecraft: '1.21.9', java: '21'}
+          - {platform: fabric, minecraft: '1.21.10', java: '21'}
+          - {platform: fabric, minecraft: '1.21.11', java: '21'}
+          - {platform: fabric, minecraft: '26.1', java: '25'}
+          - {platform: fabric, minecraft: '26.2', java: '25'}
+          - {platform: paper, minecraft: '1.21.8', java: '21'}
+          - {platform: paper, minecraft: '1.21.9', java: '21'}
+          - {platform: paper, minecraft: '1.21.10', java: '21'}
+          - {platform: paper, minecraft: '1.21.11', java: '21'}
+          - {platform: paper, minecraft: '26.1.2', java: '25'}
+          - {platform: paper, minecraft: '26.2', java: '25'}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source-ref || github.ref }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ inputs.artifact-pattern }}
+          merge-multiple: true
+          path: staging
+      - name: Check packaged server
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          MINECRAFT: ${{ matrix.minecraft }}
+        run: |
+          shopt -s globstar nullglob
+          if [ "$PLATFORM" = fabric ]; then
+            JARS=(staging/**/SchematioConnector-Fabric-mc"$MINECRAFT"-*.jar)
+            [ "${#JARS[@]}" -eq 1 ] || { echo "Expected one candidate jar, found ${#JARS[@]}"; exit 1; }
+            python3 scripts/smoke-server.py "$PLATFORM" "$MINECRAFT" --jar "${JARS[0]}"
+          else
+            JARS=(staging/**/SchematioConnector-Paper-*.jar)
+            [ "${#JARS[@]}" -eq 1 ] || { echo "Expected one candidate jar, found ${#JARS[@]}"; exit 1; }
+            python3 scripts/smoke-server.py "$PLATFORM" "$MINECRAFT" --jar "${JARS[0]}" --worldedit
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-${{ matrix.platform }}-${{ matrix.minecraft }}
+          path: |
+            build/release-readiness/servers/**/result.json
+            build/release-readiness/servers/**/inputs.json
+            build/release-readiness/servers/**/console.log

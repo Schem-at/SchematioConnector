@@ -57,6 +57,9 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
      */
     private val clientFlags = ConcurrentHashMap<UUID, Int>()
 
+    /** One hello and backend request per connection, including while the request is in flight. */
+    private val clientHellos = ConcurrentHashMap<UUID, HelloClient>()
+
     /** Per-player LOAD_REQUEST budget (spec: 5/min token bucket). */
     private val loadLimiter = RateLimiter(
         maxRequests = LoadRequestGuards.REQUESTS_PER_MINUTE,
@@ -108,6 +111,7 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
         greeted.remove(event.player.uniqueId)
         attested.remove(event.player.uniqueId)
         clientFlags.remove(event.player.uniqueId)
+        clientHellos.remove(event.player.uniqueId)
         loadLimiter.removePlayer(event.player.uniqueId)
         plugin.clipboardUploadService.removePlayer(event.player.uniqueId)
     }
@@ -145,11 +149,12 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
             when (IpcCodec.peekOpcode(message)) {
                 IpcOpcode.HELLO_CLIENT -> {
                     val hello: HelloClient = IpcCodec.decodeHelloClient(message)
+                    if (clientHellos.putIfAbsent(player.uniqueId, hello) != null) return
                     clientFlags[player.uniqueId] = hello.clientFlags
                     plugin.logger.info("Schematio mod present for ${player.name}: v${hello.modVersion} (proto ${hello.protocolVersion})")
                     greet(player) // fallback path; deduped
                     if (wantsAttestation(hello)) {
-                        requestAndSendAttest(player, hello.nonce)
+                        requestAndSendAttest(player, hello)
                     }
                 }
                 IpcOpcode.LOAD_REQUEST -> handleLoadRequest(player, IpcCodec.decodeLoadRequest(message))
@@ -305,17 +310,17 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
     }
 
     /**
-     * Fetches a backend attestation for [nonce] off-thread and relays it verbatim as an
+     * Fetches a backend attestation for [hello] off-thread and relays it verbatim as an
      * ATTEST message on the main thread. On success the player's connection is marked
      * attested, unlocking LOAD_REQUEST. Failure sends nothing — the client settles at
      * UNVERIFIED and load stays gated off.
      */
-    private fun requestAndSendAttest(player: Player, nonce: ByteArray) {
+    private fun requestAndSendAttest(player: Player, hello: HelloClient) {
         val client = plugin.attestationClient ?: run {
             plugin.logger.info("No attestation client (API unconfigured); ${player.name} will stay UNVERIFIED")
             return
         }
-        val nonceHex = bytesToHexLower(nonce)
+        val nonceHex = bytesToHexLower(hello.nonce)
         plugin.server.scheduler.runTaskAsynchronously(plugin, Runnable {
             val attestation = runBlocking { client.requestAttestation(nonceHex, IpcPlatform.PAPER_PLUGIN) }
             if (attestation == null) {
@@ -323,7 +328,7 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
                 return@Runnable
             }
             plugin.server.scheduler.runTask(plugin, Runnable {
-                if (!player.isOnline) return@Runnable
+                if (!player.isOnline || clientHellos[player.uniqueId] !== hello) return@Runnable
                 val msg = Attest(IpcProtocol.VERSION, attestation.payloadJson, attestation.signature, attestation.keyId)
                 player.sendPluginMessage(plugin, IpcProtocol.CHANNEL, IpcCodec.encodeAttest(msg))
                 attested.add(player.uniqueId)
