@@ -44,6 +44,11 @@ Builds and unit tests, packaged startup and in-game checks are separate checks:
   registration, schematic preparation and preservation of the existing clipboard.
 - Paper clipboard tests: real Litematica v7 import and paste on all six server
   targets, with directional blocks and a chest across two regions.
+- Full mod/plugin bridge flows: all six Fabric clients joined their matching
+  Paper server through MC-Inspector. Signed handshakes, load without a world edit,
+  explicit paste, clipboard draft upload, Litematica export, chest preview and
+  fresh verification after reconnect all passed. These used development clients
+  and a local backend; the packaged-client checks above test the shipped jars.
 - Detailed Axiom placement, cancellation and repeated editor handoffs on 26.2
   are recorded in [the integration evidence](editor-integration.md).
 

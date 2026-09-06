@@ -73,9 +73,6 @@ jobs:
           validate-wrappers: true
           cache-read-only: true
 
-      - name: Prepare pinned panel-lib
-        uses: ./.github/actions/prepare-panel-lib
-
       - name: Determine version
         id: version
         env:
@@ -95,14 +92,14 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Run core tests
-        run: ./gradlew :core:test $GRADLE_TOOLCHAIN_ARGS
+      - name: Build and test every target
+        run: ./gradlew :core:test :bukkit:build :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
 
-      - name: Build Paper plugin
-        run: ./gradlew :bukkit:build $GRADLE_TOOLCHAIN_ARGS
-
-      - name: Build Fabric mod (all supported Minecraft versions)
-        run: ./gradlew :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
+      - name: Check packaged native conversion
+        run: |
+          for connector_jar in bukkit/build/libs/SchematioConnector-Paper-*.jar; do
+            java --class-path "$connector_jar" scripts/NativeSmoke.java
+          done
 
       - name: Check packaged release artifacts
         run: python3 scripts/verify-release.py

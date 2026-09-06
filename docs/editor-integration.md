@@ -31,7 +31,7 @@ These results establish compilation and automated test coverage. Packaged gamepl
 ./gradlew -p axiom-poc build
 ```
 
-Connector's build and release workflows prepare the panel-lib revision pinned in `gradle.properties`. This avoids requiring an unpublished Maven artifact on a clean CI runner. The mod includes panel-lib as a nested jar; players do not need to install the library separately.
+The initial integration built panel-lib from the revision pinned in `gradle.properties`. Release 1.4.0 resolves the published 0.1.3 artifact from the public Maven repository. The mod includes panel-lib as a nested jar; players do not need to install the library separately.
 
 ## Packaged in-game checks
 

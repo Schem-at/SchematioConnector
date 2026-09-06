@@ -91,6 +91,13 @@ def main():
                         errors.append(f"{name}: wrong GitHub source link")
                     if "panellib" not in found:
                         errors.append(f"{name}: missing bundled panel-lib")
+                    elif found["panellib"]["version"] != config["panellib_version"]:
+                        errors.append(f"{name}: wrong bundled panel-lib version")
+                    for optional in ("axiom", "litematica", "malilib", "worldedit"):
+                        if optional in found:
+                            errors.append(f"{name}: must not bundle optional editor {optional}")
+                    if any(entry.startswith("com/moulberry/") for entry in jar.namelist()):
+                        errors.append(f"{name}: must not include Axiom implementation classes")
                     # HTTP and JWT dependencies must be included explicitly; Loom include is non-transitive.
                     required = ("jackson-databind", "jackson-core", "jackson-annotations", "httpclient", "httpcore", "httpmime", "nucleation")
                     nested_names = [e["file"] for e in meta.get("jars", [])]

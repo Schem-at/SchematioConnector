@@ -16,7 +16,17 @@
     Files.write(file, schematic.toLitematic());
     schematic.close();
     var bridge = Packages.io.schemat.connector.fabric.client.integration.Bridges.INSTANCE.getLitematica();
-    bridge.loadSchematic(file.toFile(), "release-placement", new JavaAdapter(Packages.kotlin.jvm.functions.Function2, {
+    // Exercise Litematica's own block-entity representation, including CompoundData
+    // in current 1.21.11 builds, before the separate native-file render check.
+    var fixtureFile = out.resolve("../../../../scripts/fixtures/clipboard-v7.litematic").normalize().toFile();
+    var directory = fixtureFile.getParentFile().toPath();
+    var fixture = Packages.fi.dy.masa.litematica.schematic.LitematicaSchematic.createFromFile(directory, fixtureFile.getName());
+    if (fixture == null) throw new Error("Litematica did not decode the v7 fixture");
+    var capture = bridge.getClass().getDeclaredMethod("renderSourceFromSchematic", fixture.getClass(), java.lang.Class.forName("java.lang.String"));
+    capture.setAccessible(true);
+    var captured = capture.invoke(bridge, fixture, "Block entity regression").getFirst();
+    if (captured == null || captured.getView().blockEntities().size() != 1) throw new Error("Litematica preview lost the chest block entity");
+    bridge.loadSchematic(file.toFile(), "release-placement", new JavaAdapter(Packages.kotlin.jvm.functions.Function0, {invoke: function () { return null; }}), new JavaAdapter(Packages.kotlin.jvm.functions.Function2, {
         invoke: function (ok, error) {
             if (String(ok) != "true") { System.setProperty("schematio.features.placement", "FAIL: " + error); return Packages.kotlin.Unit.INSTANCE; }
             var source = bridge.currentSelectionSource();

@@ -49,25 +49,14 @@ jobs:
           validate-wrappers: true
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Prepare pinned panel-lib
-        uses: ./.github/actions/prepare-panel-lib
+      - name: Build and test every target
+        run: ./gradlew :core:test :bukkit:build :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
 
-      - name: Run core tests
-        run: ./gradlew :core:test $GRADLE_TOOLCHAIN_ARGS
-
-      - name: Build Paper plugin
-        run: ./gradlew :bukkit:build $GRADLE_TOOLCHAIN_ARGS
-
-      - name: Check the packaged native conversion
+      - name: Check packaged native conversion
         run: |
           for connector_jar in bukkit/build/libs/SchematioConnector-Paper-*.jar; do
             java --class-path "$connector_jar" scripts/NativeSmoke.java
           done
-
-      - name: Build Fabric mod (all supported Minecraft versions)
-        # Builds one jar per version in `buildableVersions`
-        # (currently 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, 26.2).
-        run: ./gradlew :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
 
       - name: Check packaged release artifacts
         run: python3 scripts/verify-release.py
