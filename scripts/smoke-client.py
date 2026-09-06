@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start an isolated development client, exercise preview capture, and close cleanly.
+"""Start an isolated packaged client, exercise preview capture, and close cleanly.
 
 Requires a desktop/OpenGL session and JDK 21 + 25. No account is used. The agent
 checks actual Minecraft model tessellation, PNG readback, transparency, and UI
@@ -20,6 +20,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('versions', nargs='+')
     parser.add_argument('--jdk', type=pathlib.Path, required=True, help='JDK 21+ home for compiling the test agent')
+    parser.add_argument('--with-editors', action='store_true', help='Install pinned Axiom, Litematica and MaLiLib')
     args = parser.parse_args()
     output = ROOT / 'build/release-readiness'
     classes = output / 'client-agent'
@@ -31,15 +32,19 @@ def main():
                     '--manifest', str(manifest), '-C', str(classes), '.'], cwd=ROOT, check=True)
     results = []
     for version in args.versions:
-        run = output / 'clients' / version
+        run = output / ('clients-editors' if args.with_editors else 'clients-plain') / version
         run.mkdir(parents=True, exist_ok=True)
         passed = run / 'passed.txt'
         passed.unlink(missing_ok=True)
-        log = output / f'client-{version}.log'
+        log = run / 'gradle.log'
+        config = run / 'config/schematioconnector/config.properties'
+        config.parent.mkdir(parents=True, exist_ok=True)
+        config.write_text('api_endpoint=http://127.0.0.1:9/api/v1\ntrust_all_certificates=false\n')
         started = time.time()
         with log.open('w') as stream:
-            process = subprocess.Popen(['./gradlew', f':fabric:{version}:runClient', '-I',
-                'scripts/client-smoke.init.gradle', '--console=plain'], cwd=ROOT, stdout=stream,
+            process = subprocess.Popen(['./gradlew', f':fabric:{version}:runIntegrationClient',
+                f'-PintegrationRunDir={run}', f'-PsmokeAgent={output / "client-smoke-agent.jar"}',
+                f'-PwithAxiom={str(args.with_editors).lower()}', f'-PwithLitematica={str(args.with_editors).lower()}', '--console=plain'], cwd=ROOT, stdout=stream,
                 stderr=subprocess.STDOUT, start_new_session=True)
             try:
                 code = process.wait(timeout=300)
@@ -50,7 +55,8 @@ def main():
         text = log.read_text()
         checks = [line.split('SCHEMAT-SMOKE PASS ', 1)[1] for line in text.splitlines() if 'SCHEMAT-SMOKE PASS ' in line]
         result = {'minecraft': version, 'exit_code': code, 'passed': code == 0 and passed.exists() and len(checks) == 4,
-                  'checks': checks, 'seconds': round(time.time() - started, 1), 'log': str(log.relative_to(ROOT))}
+                  'checks': checks, 'packaged': True, 'editors': args.with_editors,
+                  'integration': [line for line in text.splitlines() if 'SCHEMAT-INTEGRATION PASS' in line], 'seconds': round(time.time() - started, 1), 'log': str(log.relative_to(ROOT))}
         (run / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
         results.append(result)
         print(json.dumps(result), flush=True)

@@ -134,46 +134,54 @@ class CachedSchematicMesh : AutoCloseable {
      * Vertices bake ONLY the static `(pos - center)` offset; the camera is
      * applied per frame in [drawAll], so an orbit never re-tessellates.
      */
-    fun buildFrom(source: SchematicRenderSource) {
-        if (isBuiltFor(source)) return
-        releaseLayers()
-        builtFor = source
-        built = false
+    private var pending: Iterator<Unit>? = null
+    private var pendingRecorder: LayerRecorder? = null
 
-        val center = source.center()
-        // One BufferBuilder per layer, started lazily on first quad for that
-        // layer (same lazy getBuffer semantics the immediate source had).
-        val recorder = LayerRecorder()
-        try {
-            tessellateBlocks(source, center, recorder)
-            tessellateFluids(source, center, recorder)
-            // Build every started layer and snapshot its vertex bytes off-heap.
-            for ((renderType, builder) in recorder.builders) {
-                val mesh = builder.build() ?: continue
-                try {
-                    val vb = mesh.vertexBuffer()
-                    val count = vb.remaining()
-                    if (count <= 0) continue
-                    val addr = MemoryUtil.nmemAlloc(count.toLong())
-                    if (addr == 0L) {
-                        LOGGER.warn("SCHEMAT-CACHE: nmemAlloc({}) failed for layer {}; skipping", count, renderType)
-                        continue
-                    }
-                    MemoryUtil.memCopy(MemoryUtil.memAddress(vb), addr, count.toLong())
-                    layers[renderType] = CachedLayer(
-                        vertexAddr = addr,
-                        vertexByteCount = count,
-                        drawState = mesh.drawState(),
-                        scratch = ByteBufferBuilder(count.coerceAtLeast(2048)),
-                    )
-                } finally {
-                    mesh.close()
+    /** The budget is cooperative: a single block or layer finalization can exceed it. */
+    fun buildFrom(source: SchematicRenderSource, budgetNanos: Long = Long.MAX_VALUE): Boolean {
+        if (isBuiltFor(source)) return true
+        if (builtFor !== source || pending == null) {
+            close()
+            builtFor = source
+            val recorder = LayerRecorder()
+            pendingRecorder = recorder
+            val center = source.center()
+            pending = sequence {
+                yieldAll(tessellateBlocks(source, center, recorder))
+                yieldAll(tessellateFluids(source, center, recorder))
+                for ((renderType, builder) in recorder.builders) {
+                    val mesh = builder.build() ?: continue
+                    try {
+                        val vb = mesh.vertexBuffer()
+                        val count = vb.remaining()
+                        if (count <= 0) continue
+                        val addr = MemoryUtil.nmemAlloc(count.toLong())
+                        check(addr != 0L) { "Could not allocate schematic geometry" }
+                        try {
+                            MemoryUtil.memCopy(MemoryUtil.memAddress(vb), addr, count.toLong())
+                            layers[renderType] = CachedLayer(addr, count, mesh.drawState(), ByteBufferBuilder(count.coerceAtLeast(2048)))
+                        } catch (t: Throwable) {
+                            MemoryUtil.nmemFree(addr)
+                            throw t
+                        }
+                    } finally { mesh.close() }
+                    yield(Unit)
                 }
-            }
-            built = true
-        } finally {
-            recorder.close()
+            }.iterator()
         }
+        val started = System.nanoTime()
+        try {
+            val work = pending!!
+            do {
+                if (!work.hasNext()) {
+                    pendingRecorder?.close(); pendingRecorder = null; pending = null
+                    built = true
+                    return true
+                }
+                work.next()
+            } while (System.nanoTime() - started < budgetNanos)
+            return false
+        } catch (t: Throwable) { close(); throw t }
     }
 
     /**
@@ -224,6 +232,9 @@ class CachedSchematicMesh : AutoCloseable {
     }
 
     override fun close() {
+        pending = null
+        pendingRecorder?.close()
+        pendingRecorder = null
         releaseLayers()
         builtFor = null
         built = false
@@ -267,7 +278,7 @@ class CachedSchematicMesh : AutoCloseable {
         }
     }
 
-    private fun tessellateBlocks(source: SchematicRenderSource, center: Vec3, recorder: LayerRecorder) {
+    private fun tessellateBlocks(source: SchematicRenderSource, center: Vec3, recorder: LayerRecorder): Sequence<Unit> = sequence {
         // Static-only PoseStack: per-block translate(pos - center). The camera is
         // applied per frame via the model-view stack, never baked here.
         val matrices = PoseStack()
@@ -282,8 +293,10 @@ class CachedSchematicMesh : AutoCloseable {
                 .putBakedQuad(matrices.last(), quad, quadInstance)
             matrices.popPose()
         }
-        for (pos in source.blockPositions()) {
+        for (pos in BlockPos.betweenClosed(source.renderMinPos, source.renderMaxPos)) {
+            yield(Unit)
             val state = source.view.getBlockState(pos)
+            if (state.isAir) continue
             tessellator.tesselateBlock(
                 output,
                 (pos.x - center.x).toFloat(),
@@ -297,8 +310,10 @@ class CachedSchematicMesh : AutoCloseable {
         *///?} else {
         val blockRenderManager = Minecraft.getInstance().blockRenderer
         val random = RandomSource.create(42L)
-        for (pos in source.blockPositions()) {
+        for (pos in BlockPos.betweenClosed(source.renderMinPos, source.renderMaxPos)) {
+            yield(Unit)
             val state = source.view.getBlockState(pos)
+            if (state.isAir) continue
             val parts = blockRenderManager.getBlockModel(state).collectParts(random)
             if (parts.isEmpty()) continue
             val layer = ItemBlockRenderTypes.getMovingBlockRenderType(state)
@@ -319,7 +334,7 @@ class CachedSchematicMesh : AutoCloseable {
         //?}
     }
 
-    private fun tessellateFluids(source: SchematicRenderSource, center: Vec3, recorder: LayerRecorder) {
+    private fun tessellateFluids(source: SchematicRenderSource, center: Vec3, recorder: LayerRecorder): Sequence<Unit> = sequence {
         //? if >=26.1 {
         /*val fluidRenderer = FluidRenderer(Minecraft.getInstance().modelManager.fluidStateModelSet)
         *///?} else {
@@ -327,6 +342,7 @@ class CachedSchematicMesh : AutoCloseable {
         //?}
         val matrices = PoseStack()
         for (pos in BlockPos.betweenClosed(source.renderMinPos, source.renderMaxPos)) {
+            yield(Unit)
             val state = source.view.getBlockState(pos)
             val fluidState = state.fluidState
             if (fluidState.isEmpty) continue

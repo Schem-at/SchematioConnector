@@ -54,6 +54,8 @@ class SnapshotBlockRenderView(private val snapshot: SchematicSnapshot) : BlockAn
 
     override fun getBlockEntity(pos: BlockPos): BlockEntity? = snapshot.getBlockEntity(pos)
 
+    fun blockEntities(): Collection<BlockEntity> = snapshot.blockEntities()
+
     // ---- BlockAndTintGetter -----------------------------------------------------
 
     // 26.x: getShade(Direction, Boolean) is gone; face shading comes from a

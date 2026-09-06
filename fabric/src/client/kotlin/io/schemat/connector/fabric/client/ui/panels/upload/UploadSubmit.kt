@@ -23,40 +23,7 @@ internal fun UploadWizardPanel.startUpload() {
     val source = selectedSource ?: return
     statusMessage = null
 
-    when (source.kind) {
-        SourceKind.LOCAL_FILE ->
-            performUpload(source) { Files.readAllBytes(Path.of(source.id)) }
-
-        SourceKind.WORLDEDIT_CLIPBOARD -> {
-            exporting = true
-            Bridges.worldEdit.clipboardToBytes { bytes, error ->
-                exporting = false
-                if (bytes == null) {
-                    services.onMainThread {
-                        statusMessage = error ?: "Failed to read the WorldEdit clipboard"
-                        statusKind = Widgets.StatusKind.DANGER
-                    }
-                } else {
-                    performUpload(source) { bytes }
-                }
-            }
-        }
-
-        SourceKind.PLACEMENT, SourceKind.AREA_SELECTION -> {
-            exporting = true
-            Bridges.litematica.exportToBytes(source) { bytes, error ->
-                exporting = false
-                if (bytes == null) {
-                    services.onMainThread {
-                        statusMessage = error ?: "Failed to export the schematic"
-                        statusKind = Widgets.StatusKind.DANGER
-                    }
-                } else {
-                    performUpload(source) { bytes }
-                }
-            }
-        }
-    }
+    captureSource { bytes -> performUpload(source) { bytes } }
 }
 
 internal fun UploadWizardPanel.performUpload(source: ExportSource, bytesProvider: suspend () -> ByteArray) {
@@ -77,6 +44,9 @@ internal fun UploadWizardPanel.performUpload(source: ExportSource, bytesProvider
         .filter { it.lowercase().replace("-", "") != authorId.lowercase().replace("-", "") }
     val communityId = selectedCommunity?.id?.takeIf { it.isNotBlank() }
 
+    val preview = capturedPreviewPng ?: placeholderPng(name)
+    val publicUpload = isPublic
+    val epoch = snapshotEpoch
     services.call(
         busy = uploadBusy,
         block = {
@@ -87,9 +57,9 @@ internal fun UploadWizardPanel.performUpload(source: ExportSource, bytesProvider
                 authorId = authorId,
                 schematicBytes = bytes,
                 schematicFileName = fileName,
-                previewImagePng = capturedPreviewPng ?: placeholderPng(name),
+                previewImagePng = preview,
                 format = format,
-                isPublic = isPublic,
+                isPublic = publicUpload,
                 tagIds = tagIds,
                 tagFilters = tagFilters,
                 coAuthorIds = coAuthorIds,
@@ -98,6 +68,7 @@ internal fun UploadWizardPanel.performUpload(source: ExportSource, bytesProvider
             uploadWithPermissionSelfHeal(request)
         },
     ) { result ->
+        if (snapshotEpoch != epoch) return@call
         when (result) {
             is ApiResult.Success -> {
                 val detail = result.value

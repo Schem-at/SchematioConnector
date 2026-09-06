@@ -64,7 +64,17 @@ def main():
     parser.add_argument('--inspector-port', type=int, default=38271)
     parser.add_argument('--server-port', type=int, default=25576)
     parser.add_argument('--run-name', default='bridge')
+    config = dict(line.split('=',1) for line in (ROOT/'gradle.properties').read_text().splitlines() if '=' in line and not line.startswith('#'))
+    release = '.'.join(config['version'+p] for p in ['Major','Minor','Patch'])
+    parser.add_argument('--plugin', type=pathlib.Path, default=ROOT / f'bukkit/build/libs/SchematioConnector-Paper-{release}.jar')
+    parser.add_argument('--worldedit', type=pathlib.Path, help='Use a local WorldEdit or FAWE jar')
+    parser.add_argument('--server-cache', type=pathlib.Path, help='Downloaded Paper server directory (single-version runs)')
+    parser.add_argument('--native-library', type=pathlib.Path)
+    parser.add_argument('--fixture-x', type=int, default=0)
+    parser.add_argument('--fixture-z', type=int, default=0)
     args = parser.parse_args()
+    if args.server_cache and len(args.versions) != 1:
+        parser.error('--server-cache requires exactly one Minecraft version')
     INSPECTOR_PORT = args.inspector_port
     assert args.run_name.replace('-', '').isalnum(), 'run-name must be one directory name'
     spec = importlib.util.spec_from_file_location('server_smoke', ROOT / 'scripts/smoke-server.py')
@@ -73,7 +83,7 @@ def main():
     for version in args.versions:
         paper = '26.1.2' if version == '26.1' else version
         java = (args.jdk25 if version.startswith('26.') else args.jdk21) / 'bin/java'
-        cache = next((OUT / 'servers').glob(f'paper-{paper}-*-worldedit'))
+        cache = args.server_cache or next((OUT / 'servers').glob(f'paper-{paper}-*-worldedit'))
         run = OUT / args.run_name / f'server-{version}'
         run.mkdir(parents=True, exist_ok=True)
         for name in ['server.jar', 'eula.txt']:
@@ -81,22 +91,26 @@ def main():
         for name in ['libraries', 'cache', 'versions']:
             if (cache / name).is_dir(): shutil.copytree(cache / name, run / name, dirs_exist_ok=True)
         plugins = run / 'plugins'; plugins.mkdir(exist_ok=True)
-        shutil.copy2(ROOT / 'bukkit/build/libs/SchematioConnector-Paper-1.3.3.jar', plugins)
-        we_id = '2YDdVDmG' if version.startswith('1.21.') else 'F5ea2ov3'
-        we = downloads.json_url(f'https://api.modrinth.com/v2/version/{we_id}')
-        asset = next(f for f in we['files'] if f['primary'])
-        for stale in plugins.glob('worldedit-*.jar'): stale.unlink()
-        downloads.download(asset['url'], plugins / asset['filename'])
+        for pattern in ['SchematioConnector*.jar', 'worldedit-*.jar', 'FastAsyncWorldEdit*.jar']:
+            for stale in plugins.glob(pattern): stale.unlink()
+        shutil.copy2(args.plugin, plugins / 'SchematioConnector.jar')
+        if args.worldedit:
+            shutil.copy2(args.worldedit, plugins / args.worldedit.name)
+        else:
+            worldedit, = (cache / 'plugins').glob('worldedit-*.jar')
+            shutil.copy2(worldedit, plugins / worldedit.name)
+            we = {'version_number': worldedit.name}
         cfg = plugins / 'SchematioConnector/config.yml'; cfg.parent.mkdir(exist_ok=True)
         cfg.write_text('api-endpoint: http://127.0.0.1:38272/api/v1\ncommunity-token: smoke.community.token\ndisabled-commands: []\n')
         (run / 'server.properties').write_text('server-ip=127.0.0.1\nserver-port=' + str(args.server_port) + '\nonline-mode=false\nenforce-secure-profile=false\nlevel-type=minecraft:flat\ngenerator-settings={"layers":[{"block":"minecraft:bedrock","height":1}],"biome":"minecraft:plains"}\ngenerate-structures=false\nview-distance=2\nsimulation-distance=2\nspawn-protection=0\n')
         server_log = run / 'console.log'
         client_log = OUT / f'bridge-client-{version}.log'
         server = client = None
-        record = {'minecraft': version, 'paper': paper, 'worldedit': we['version_number'], 'passed': False, 'checks': []}
+        record = {'minecraft': version, 'paper': paper, 'worldedit': args.worldedit.name if args.worldedit else we['version_number'], 'passed': False, 'checks': []}
         with server_log.open('w') as slog, client_log.open('w') as clog:
             try:
-                server = subprocess.Popen([str(java), '-XX:ActiveProcessorCount=2', '-Xms256M', '-Xmx1536M', '-jar', 'server.jar', 'nogui'], cwd=run, stdin=subprocess.PIPE, stdout=slog, stderr=subprocess.STDOUT, text=True)
+                native = [f'-Dnucleation.native.path={args.native_library.resolve()}'] if args.native_library else []
+                server = subprocess.Popen([str(java), '-XX:ActiveProcessorCount=2', '-Xms256M', '-Xmx1536M', *native, '-jar', 'server.jar', 'nogui'], cwd=run, stdin=subprocess.PIPE, stdout=slog, stderr=subprocess.STDOUT, text=True)
                 until(lambda: 'Done (' in server_log.read_text(), 120)
                 assert 'WorldEdit integration enabled' in server_log.read_text()
                 client = subprocess.Popen(['./gradlew', f':fabric:{version}:runClient', '-I', 'scripts/client-smoke.init.gradle', '-Dschematio.smoke.interactive=true', f'-Dschematio.smoke.client-group={args.run_name}-clients', f'-Dschematio.inspector.root={args.inspector_root}', f'-Dschematio.inspector.port={INSPECTOR_PORT}', '-Dschematio.smoke.endpoint=http://127.0.0.1:38272/api/v1', '--console=plain'], cwd=ROOT, stdout=clog, stderr=subprocess.STDOUT)
@@ -108,18 +122,18 @@ def main():
                 nonce = js(f'Packages.java.util.Arrays.toString({IPC}ServerSession.INSTANCE.getNonce())')
                 record['checks'].append('signed attestation verified')
                 name = call('get_state')['player']['name']
-                server.stdin.write(f'op {name}\ngamemode creative {name}\ntp {name} 0 -63 0\nsetblock 0 -63 0 air\nsetblock 1 -63 0 air\n'); server.stdin.flush()
+                server.stdin.write(f'op {name}\ngamemode creative {name}\ntp {name} 0 -63 0\nsetblock {args.fixture_x} -63 {args.fixture_z} air\nsetblock {args.fixture_x + 1} -63 {args.fixture_z} air\n'); server.stdin.flush()
                 call('wait_ticks', {'ticks': 30})
                 call('run_command', {'command': '/schematio'})
                 until(lambda: 'schematioconnector:browse' in call('get_state')['panellib']['openPanels'])
                 record['checks'].append('server command opened client browser')
                 js(f'''var cb = new JavaAdapter(Packages.kotlin.jvm.functions.Function2, {{invoke:function(state, detail) {{Packages.java.lang.System.setProperty("schematio.bridge.load", String(state)); return Packages.kotlin.Unit.INSTANCE;}}}}); {IPC}ServerIpc.INSTANCE.sendLoadRequest(Packages.io.schemat.connector.core.ipc.LoadRefType.SCHEMATIC, "bridge-fixture", "", cb)''')
                 until(lambda: js('Packages.java.lang.System.getProperty("schematio.bridge.load")') == 'OK')
-                assert js('level.getBlockState(new Packages.net.minecraft.core.BlockPos(0,-63,0)).isAir()') == 'true'
+                assert js(f'level.getBlockState(new Packages.net.minecraft.core.BlockPos({args.fixture_x},-63,{args.fixture_z})).isAir()') == 'true'
                 record['checks'].append('reference loaded into clipboard without changing world')
                 call('run_command', {'command': '//paste'})
-                until(lambda: 'minecraft:stone' in js('String(level.getBlockState(new Packages.net.minecraft.core.BlockPos(0,-63,0)))'))
-                assert 'axis=x' in js('String(level.getBlockState(new Packages.net.minecraft.core.BlockPos(1,-63,0)))')
+                until(lambda: 'minecraft:stone' in js(f'String(level.getBlockState(new Packages.net.minecraft.core.BlockPos({args.fixture_x},-63,{args.fixture_z})))'))
+                assert 'axis=x' in js(f'String(level.getBlockState(new Packages.net.minecraft.core.BlockPos({args.fixture_x + 1},-63,{args.fixture_z})))')
                 record['checks'].append('explicit paste preserved stone and directional log')
                 js(f'''var status = new JavaAdapter(Packages.kotlin.jvm.functions.Function2, {{invoke:function(state, detail) {{return Packages.kotlin.Unit.INSTANCE;}}}}); var draft = new JavaAdapter(Packages.kotlin.jvm.functions.Function1, {{invoke:function(id) {{Packages.java.lang.System.setProperty("schematio.bridge.draft", String(id));return Packages.kotlin.Unit.INSTANCE;}}}}); {IPC}ServerIpc.INSTANCE.sendUploadClipboard(status,draft)''')
                 until(lambda: js('Packages.java.lang.System.getProperty("schematio.bridge.draft")') == 'bridge-draft')

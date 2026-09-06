@@ -1,0 +1,529 @@
+{
+  "version": "1.4.0",
+  "unit_tests": {
+    "core": {
+      "tests": 629,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "26.1": {
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "1.21.10": {
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "1.21.11": {
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "26.2": {
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "1.21.8": {
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "1.21.9": {
+      "tests": 52,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  },
+  "clients": [
+    {
+      "minecraft": "1.21.10",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=188 clear=0",
+        "isometric-transparent colors=171 clear=200110",
+        "perspective-studio colors=187 clear=0",
+        "perspective-transparent colors=169 clear=214053"
+      ],
+      "packaged": true,
+      "editors": true,
+      "integration": [
+        "[01:42:36] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS Axiom registration and schematic preparation; clipboard preserved"
+      ],
+      "seconds": 15.3,
+      "log": "build/release-readiness/clients-editors/1.21.10/gradle.log"
+    },
+    {
+      "minecraft": "1.21.11",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=189 clear=0",
+        "isometric-transparent colors=173 clear=200042",
+        "perspective-studio colors=191 clear=0",
+        "perspective-transparent colors=169 clear=214019"
+      ],
+      "packaged": true,
+      "editors": true,
+      "integration": [
+        "[01:47:06] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS Axiom registration and schematic preparation; clipboard preserved"
+      ],
+      "seconds": 17.1,
+      "log": "build/release-readiness/clients-editors/1.21.11/gradle.log"
+    },
+    {
+      "minecraft": "1.21.8",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=191 clear=0",
+        "isometric-transparent colors=174 clear=200110",
+        "perspective-studio colors=193 clear=0",
+        "perspective-transparent colors=171 clear=214053"
+      ],
+      "packaged": true,
+      "editors": true,
+      "integration": [
+        "[01:42:06] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS Axiom registration and schematic preparation; clipboard preserved"
+      ],
+      "seconds": 13.7,
+      "log": "build/release-readiness/clients-editors/1.21.8/gradle.log"
+    },
+    {
+      "minecraft": "1.21.9",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=183 clear=0",
+        "isometric-transparent colors=162 clear=200110",
+        "perspective-studio colors=187 clear=0",
+        "perspective-transparent colors=160 clear=214053"
+      ],
+      "packaged": true,
+      "editors": true,
+      "integration": [
+        "[01:42:21] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS Axiom registration and schematic preparation; clipboard preserved"
+      ],
+      "seconds": 14.8,
+      "log": "build/release-readiness/clients-editors/1.21.9/gradle.log"
+    },
+    {
+      "minecraft": "26.1",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=198 clear=0",
+        "isometric-transparent colors=179 clear=200042",
+        "perspective-studio colors=202 clear=0",
+        "perspective-transparent colors=180 clear=214019"
+      ],
+      "packaged": true,
+      "editors": true,
+      "integration": [
+        "[01:43:03] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS Axiom registration and schematic preparation; clipboard preserved"
+      ],
+      "seconds": 13.5,
+      "log": "build/release-readiness/clients-editors/26.1/gradle.log"
+    },
+    {
+      "minecraft": "26.2",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=188 clear=0",
+        "isometric-transparent colors=173 clear=200042",
+        "perspective-studio colors=192 clear=0",
+        "perspective-transparent colors=177 clear=214019"
+      ],
+      "packaged": true,
+      "editors": true,
+      "integration": [
+        "[01:43:16] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS Axiom registration and schematic preparation; clipboard preserved"
+      ],
+      "seconds": 12.0,
+      "log": "build/release-readiness/clients-editors/26.2/gradle.log"
+    },
+    {
+      "minecraft": "1.21.10",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=186 clear=0",
+        "isometric-transparent colors=171 clear=200110",
+        "perspective-studio colors=187 clear=0",
+        "perspective-transparent colors=170 clear=214053"
+      ],
+      "packaged": true,
+      "editors": false,
+      "integration": [
+        "[01:41:08] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS optional editors absent"
+      ],
+      "seconds": 17.2,
+      "log": "build/release-readiness/clients-plain/1.21.10/gradle.log"
+    },
+    {
+      "minecraft": "1.21.11",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=196 clear=0",
+        "isometric-transparent colors=177 clear=200042",
+        "perspective-studio colors=197 clear=0",
+        "perspective-transparent colors=176 clear=214019"
+      ],
+      "packaged": true,
+      "editors": false,
+      "integration": [
+        "[01:41:27] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS optional editors absent"
+      ],
+      "seconds": 19.4,
+      "log": "build/release-readiness/clients-plain/1.21.11/gradle.log"
+    },
+    {
+      "minecraft": "1.21.8",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=195 clear=0",
+        "isometric-transparent colors=176 clear=200110",
+        "perspective-studio colors=195 clear=0",
+        "perspective-transparent colors=177 clear=214053"
+      ],
+      "packaged": true,
+      "editors": false,
+      "integration": [
+        "[01:40:31] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS optional editors absent"
+      ],
+      "seconds": 20.9,
+      "log": "build/release-readiness/clients-plain/1.21.8/gradle.log"
+    },
+    {
+      "minecraft": "1.21.9",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=188 clear=0",
+        "isometric-transparent colors=176 clear=200110",
+        "perspective-studio colors=187 clear=0",
+        "perspective-transparent colors=173 clear=214053"
+      ],
+      "packaged": true,
+      "editors": false,
+      "integration": [
+        "[01:40:50] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS optional editors absent"
+      ],
+      "seconds": 19.2,
+      "log": "build/release-readiness/clients-plain/1.21.9/gradle.log"
+    },
+    {
+      "minecraft": "26.1",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=186 clear=0",
+        "isometric-transparent colors=174 clear=200042",
+        "perspective-studio colors=181 clear=0",
+        "perspective-transparent colors=166 clear=214019"
+      ],
+      "packaged": true,
+      "editors": false,
+      "integration": [
+        "[01:41:39] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS optional editors absent"
+      ],
+      "seconds": 12.1,
+      "log": "build/release-readiness/clients-plain/26.1/gradle.log"
+    },
+    {
+      "minecraft": "26.2",
+      "exit_code": 0,
+      "passed": true,
+      "checks": [
+        "isometric-studio colors=195 clear=0",
+        "isometric-transparent colors=176 clear=200042",
+        "perspective-studio colors=195 clear=0",
+        "perspective-transparent colors=177 clear=214019"
+      ],
+      "packaged": true,
+      "editors": false,
+      "integration": [
+        "[01:41:52] [Render thread/INFO]: [STDOUT]: SCHEMAT-INTEGRATION PASS optional editors absent"
+      ],
+      "seconds": 12.4,
+      "log": "build/release-readiness/clients-plain/26.2/gradle.log"
+    }
+  ],
+  "clipboard": [
+    {
+      "minecraft": "1.21.8",
+      "passed": true,
+      "log": "build/release-readiness/clipboard-1.21.8.log"
+    },
+    {
+      "minecraft": "1.21.9",
+      "passed": true,
+      "log": "build/release-readiness/clipboard-1.21.9.log"
+    },
+    {
+      "minecraft": "1.21.10",
+      "passed": true,
+      "log": "build/release-readiness/clipboard-1.21.10.log"
+    },
+    {
+      "minecraft": "1.21.11",
+      "passed": true,
+      "log": "build/release-readiness/clipboard-1.21.11.log"
+    },
+    {
+      "minecraft": "26.1.2",
+      "passed": true,
+      "log": "build/release-readiness/clipboard-26.1.2.log"
+    },
+    {
+      "minecraft": "26.2",
+      "passed": true,
+      "log": "build/release-readiness/clipboard-26.2.log"
+    }
+  ],
+  "bridge": [
+    {
+      "minecraft": "1.21.10",
+      "paper": "1.21.10",
+      "worldedit": "worldedit-bukkit-7.3.19.jar",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "1.21.11",
+      "paper": "1.21.11",
+      "worldedit": "worldedit-bukkit-7.3.19.jar",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "1.21.8",
+      "paper": "1.21.8",
+      "worldedit": "worldedit-bukkit-7.3.19.jar",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "1.21.9",
+      "paper": "1.21.9",
+      "worldedit": "worldedit-bukkit-7.3.19.jar",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "26.1",
+      "paper": "26.1.2",
+      "worldedit": "worldedit-bukkit-7.4.5.jar",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    },
+    {
+      "minecraft": "26.2",
+      "paper": "26.2",
+      "worldedit": "worldedit-bukkit-7.4.5.jar",
+      "passed": true,
+      "checks": [
+        "signed attestation verified",
+        "server command opened client browser",
+        "reference loaded into clipboard without changing world",
+        "explicit paste preserved stone and directional log",
+        "WorldEdit clipboard serialized and returned a draft",
+        "Litematica placement loaded and exported with original block states",
+        "file preview rendered a chest block entity with transparent PNG readback",
+        "reconnect rotated nonce and verified a new attestation"
+      ],
+      "client_exit": 0,
+      "server_exit": 0
+    }
+  ],
+  "final_matrix": {
+    "version": "1.4.0",
+    "targets": [
+      "1.21.8",
+      "1.21.9",
+      "1.21.10",
+      "1.21.11",
+      "26.1",
+      "26.2"
+    ],
+    "passed": true,
+    "checks": [
+      {
+        "check": "matrix-build",
+        "passed": true,
+        "seconds": 1.3,
+        "log": "build/release-readiness/matrix-build.log"
+      },
+      {
+        "check": "matrix-artifacts",
+        "passed": true,
+        "seconds": 1.5,
+        "log": "build/release-readiness/matrix-artifacts.log"
+      },
+      {
+        "check": "matrix-native",
+        "passed": true,
+        "seconds": 0.3,
+        "log": "build/release-readiness/matrix-native.log"
+      },
+      {
+        "check": "matrix-fabric-1.21.8",
+        "passed": true,
+        "seconds": 10.3,
+        "log": "build/release-readiness/matrix-fabric-1.21.8.log"
+      },
+      {
+        "check": "matrix-paper-1.21.8",
+        "passed": true,
+        "seconds": 14.5,
+        "log": "build/release-readiness/matrix-paper-1.21.8.log"
+      },
+      {
+        "check": "matrix-fabric-1.21.9",
+        "passed": true,
+        "seconds": 10.3,
+        "log": "build/release-readiness/matrix-fabric-1.21.9.log"
+      },
+      {
+        "check": "matrix-paper-1.21.9",
+        "passed": true,
+        "seconds": 13.6,
+        "log": "build/release-readiness/matrix-paper-1.21.9.log"
+      },
+      {
+        "check": "matrix-fabric-1.21.10",
+        "passed": true,
+        "seconds": 9.9,
+        "log": "build/release-readiness/matrix-fabric-1.21.10.log"
+      },
+      {
+        "check": "matrix-paper-1.21.10",
+        "passed": true,
+        "seconds": 13.9,
+        "log": "build/release-readiness/matrix-paper-1.21.10.log"
+      },
+      {
+        "check": "matrix-fabric-1.21.11",
+        "passed": true,
+        "seconds": 10.1,
+        "log": "build/release-readiness/matrix-fabric-1.21.11.log"
+      },
+      {
+        "check": "matrix-paper-1.21.11",
+        "passed": true,
+        "seconds": 13.3,
+        "log": "build/release-readiness/matrix-paper-1.21.11.log"
+      },
+      {
+        "check": "matrix-fabric-26.1",
+        "passed": true,
+        "seconds": 9.9,
+        "log": "build/release-readiness/matrix-fabric-26.1.log"
+      },
+      {
+        "check": "matrix-paper-26.1",
+        "passed": true,
+        "seconds": 11.2,
+        "log": "build/release-readiness/matrix-paper-26.1.log"
+      },
+      {
+        "check": "matrix-fabric-26.2",
+        "passed": true,
+        "seconds": 9.7,
+        "log": "build/release-readiness/matrix-fabric-26.2.log"
+      },
+      {
+        "check": "matrix-paper-26.2",
+        "passed": true,
+        "seconds": 10.3,
+        "log": "build/release-readiness/matrix-paper-26.2.log"
+      },
+      {
+        "check": "matrix-clipboard",
+        "passed": true,
+        "seconds": 22.4,
+        "log": "build/release-readiness/matrix-clipboard.log"
+      },
+      {
+        "check": "matrix-client-plain",
+        "passed": true,
+        "seconds": 58.4,
+        "log": "build/release-readiness/matrix-client-plain.log"
+      },
+      {
+        "check": "matrix-client-editors",
+        "passed": true,
+        "seconds": 60.1,
+        "log": "build/release-readiness/matrix-client-editors.log"
+      }
+    ]
+  }
+}

@@ -3,7 +3,7 @@
   "id": "schematioconnector",
   "version": "${version}",
   "name": "Schematio Connector",
-  "description": "Upload and download schematics from schemat.io",
+  "description": "Browse, preview and share Schematio builds in Minecraft. Optional Axiom, Litematica and WorldEdit integration.",
   "authors": [
     "Schemat.io Team"
   ],
@@ -50,6 +50,8 @@
     "java": ">=${java_version}"
   },
   "suggests": {
-    "worldedit": "*"
+    "worldedit": "*",
+    "axiom": "6.0.5",
+    "litematica": "*"
   }
 }

@@ -92,14 +92,14 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Run core tests
-        run: ./gradlew :core:test $GRADLE_TOOLCHAIN_ARGS
+      - name: Build and test every target
+        run: ./gradlew :core:test :bukkit:build :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
 
-      - name: Build Paper plugin
-        run: ./gradlew :bukkit:build $GRADLE_TOOLCHAIN_ARGS
-
-      - name: Build Fabric mod (all supported Minecraft versions)
-        run: ./gradlew :fabric:buildAllVersions $GRADLE_TOOLCHAIN_ARGS
+      - name: Check packaged native conversion
+        run: |
+          for connector_jar in bukkit/build/libs/SchematioConnector-Paper-*.jar; do
+            java --class-path "$connector_jar" scripts/NativeSmoke.java
+          done
 
       - name: Check packaged release artifacts
         run: python3 scripts/verify-release.py
@@ -206,6 +206,15 @@ jobs:
     env:
       MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
     steps:
+      - name: Require Modrinth publication configuration
+        env:
+          MOD_PROJECT: ${{ vars.MODRINTH_MOD_PROJECT_ID }}
+          PLUGIN_PROJECT: ${{ vars.MODRINTH_PLUGIN_PROJECT_ID }}
+        run: |
+          test -n "$MODRINTH_TOKEN" && test -n "$MOD_PROJECT" && test -n "$PLUGIN_PROJECT" || {
+            echo "::error::Set MODRINTH_TOKEN, MODRINTH_MOD_PROJECT_ID and MODRINTH_PLUGIN_PROJECT_ID first."
+            exit 1
+          }
       - name: Checkout (for changelog extraction)
         uses: actions/checkout@v4
         with:
@@ -247,6 +256,8 @@ jobs:
             fabric-api(required)
             fabric-language-kotlin(required)
             litematica(optional)
+            worldedit(optional)
+            axiom(optional)
           changelog: ${{ steps.changelog.outputs.body }}
 
       - name: Publish Fabric mod (MC 1.21.9) to Modrinth
@@ -265,6 +276,8 @@ jobs:
             fabric-api(required)
             fabric-language-kotlin(required)
             litematica(optional)
+            worldedit(optional)
+            axiom(optional)
           changelog: ${{ steps.changelog.outputs.body }}
 
       - name: Publish Fabric mod (MC 1.21.10) to Modrinth
@@ -283,6 +296,8 @@ jobs:
             fabric-api(required)
             fabric-language-kotlin(required)
             litematica(optional)
+            worldedit(optional)
+            axiom(optional)
           changelog: ${{ steps.changelog.outputs.body }}
 
       - name: Publish Fabric mod (MC 1.21.11) to Modrinth
@@ -301,6 +316,8 @@ jobs:
             fabric-api(required)
             fabric-language-kotlin(required)
             litematica(optional)
+            worldedit(optional)
+            axiom(optional)
           changelog: ${{ steps.changelog.outputs.body }}
 
       - name: Publish Fabric mod (MC 26.1) to Modrinth
@@ -319,6 +336,8 @@ jobs:
             fabric-api(required)
             fabric-language-kotlin(required)
             litematica(optional)
+            worldedit(optional)
+            axiom(optional)
           changelog: ${{ steps.changelog.outputs.body }}
 
       - name: Publish Fabric mod (MC 26.2) to Modrinth
@@ -337,6 +356,8 @@ jobs:
             fabric-api(required)
             fabric-language-kotlin(required)
             litematica(optional)
+            worldedit(optional)
+            axiom(optional)
           changelog: ${{ steps.changelog.outputs.body }}
 
       # To add a new MC version: copy a fabric step above, replace the version strings.

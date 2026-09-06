@@ -33,6 +33,11 @@ internal fun UploadWizardPanel.renderDetailsStep() {
             statusMessage = null
         }
     }
+    if (draft == null && frozenBytes != null) {
+        ImGui.text("Preview and upload use the captured build.")
+        ImGui.sameLine()
+        if (Widgets.button("Refresh source")) invalidateSnapshot()
+    }
     ImGui.separator()
     ImGui.spacing()
 

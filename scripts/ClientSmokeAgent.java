@@ -9,6 +9,7 @@ import javax.imageio.ImageIO;
 public class ClientSmokeAgent {
     private static ClassLoader loader;
     private static Object client;
+    private static boolean intermediary;
     private static final String RENDER = "io.schemat.connector.fabric.client.render.";
     private static final AtomicInteger pending = new AtomicInteger(4);
 
@@ -18,10 +19,11 @@ public class ClientSmokeAgent {
                 long deadline = System.currentTimeMillis() + 180_000;
                 while (System.currentTimeMillis() < deadline) {
                     for (Class<?> type : instrumentation.getAllLoadedClasses()) {
-                        if (!type.getName().equals("net.minecraft.client.Minecraft")) continue;
-                        Object candidate = type.getMethod("getInstance").invoke(null);
-                        if (candidate == null || !(boolean) type.getMethod("isGameLoadFinished").invoke(candidate)) continue;
-                        var gameDir = ((java.io.File) type.getField("gameDirectory").get(candidate)).toPath().toRealPath();
+                        if (!type.getName().equals("net.minecraft.client.Minecraft") && !type.getName().equals("net.minecraft.class_310")) continue;
+                        intermediary = type.getName().equals("net.minecraft.class_310");
+                        Object candidate = type.getMethod(mcName("getInstance", "method_1551")).invoke(null);
+                        if (candidate == null || !(boolean) type.getMethod(mcName("isGameLoadFinished", "method_53466")).invoke(candidate)) continue;
+                        var gameDir = ((java.io.File) type.getField(mcName("gameDirectory", "field_1697")).get(candidate)).toPath().toRealPath();
                         if (!gameDir.equals(Path.of(System.getProperty("schematio.smoke.output")).toRealPath())) {
                             throw new IllegalStateException("Smoke client must use its isolated game directory; got " + gameDir);
                         }
@@ -40,6 +42,8 @@ public class ClientSmokeAgent {
         thread.start();
     }
 
+    private static String mcName(String named, String mapped) { return intermediary ? mapped : named; }
+
     private static Class<?> type(String name) throws Exception { return Class.forName(name, true, loader); }
     private static Object singleton(String name) throws Exception { return type(name).getField("INSTANCE").get(null); }
 
@@ -56,6 +60,7 @@ public class ClientSmokeAgent {
                 set.invoke(schematic, 1, 0, 1, "minecraft:water[level=0]");
                 bytes = (byte[]) schematicClass.getMethod("toSchematic").invoke(schematic);
             } finally { schematicClass.getMethod("close").invoke(schematic); }
+            checkAxiom(bytes);
             var factory = singleton(RENDER + "data.NucleationSnapshotSource");
             var source = factory.getClass().getMethod("snapshotFromBytes", byte[].class).invoke(factory, bytes);
 
@@ -93,7 +98,7 @@ public class ClientSmokeAgent {
                             if (pending.decrementAndGet() == 0) {
                                 renderer.getClass().getMethod("releaseCache").invoke(renderer);
                                 Files.writeString(path.getParent().resolve("passed.txt"), "Client initialization, model tessellation, studio capture, alpha capture passed\n");
-                                client.getClass().getMethod("stop").invoke(client);
+                                client.getClass().getMethod(mcName("stop", "method_1592")).invoke(client);
                             }
                         } catch (Throwable t) { fail(t); }
                         return type("kotlin.Unit").getField("INSTANCE").get(null);
@@ -103,6 +108,27 @@ public class ClientSmokeAgent {
                 target.getClass().getMethod("readPng", boolean.class, callbackType).invoke(target, mode.equals("TRANSPARENT"), callback);
             }
         } catch (Throwable t) { fail(t); }
+    }
+
+    private static void checkAxiom(byte[] bytes) throws Exception {
+        var fabricLoader = type("net.fabricmc.loader.api.FabricLoader");
+        var instance = fabricLoader.getMethod("getInstance").invoke(null);
+        boolean installed = (boolean) fabricLoader.getMethod("isModLoaded", String.class).invoke(instance, "axiom");
+        var integration = singleton("io.schemat.connector.fabric.client.integration.axiom.AxiomIntegration");
+        boolean available = (boolean) integration.getClass().getMethod("getAvailable").invoke(integration);
+        if (installed != available) throw new AssertionError("Axiom adapter availability does not match installed pinned contract");
+        if (!installed) { System.out.println("SCHEMAT-INTEGRATION PASS optional editors absent"); return; }
+        var adapter = type("io.schemat.axiom.AxiomClipboardAdapter");
+        var prepare = adapter.getDeclaredMethod("prepare", byte[].class, String.class); prepare.setAccessible(true);
+        var current = adapter.getDeclaredMethod("current"); current.setAccessible(true);
+        var before = current.invoke(null);
+        var prepared = prepare.invoke(null, bytes, "Release fixture");
+        var clipboardType = type("com.moulberry.axiom.clipboard.ClipboardObject");
+        if (!"Release fixture".equals(clipboardType.getMethod("name").invoke(prepared))) throw new AssertionError("Clipboard name lost");
+        var region = clipboardType.getMethod("blockRegion").invoke(prepared);
+        if (((Number) region.getClass().getMethod("count").invoke(region)).longValue() < 4) throw new AssertionError("Clipboard blocks lost");
+        if (before != current.invoke(null)) throw new AssertionError("Preparation replaced Axiom clipboard");
+        System.out.println("SCHEMAT-INTEGRATION PASS Axiom registration and schematic preparation; clipboard preserved");
     }
 
     private static void fail(Throwable t) {

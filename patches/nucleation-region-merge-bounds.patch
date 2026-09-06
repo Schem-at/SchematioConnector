@@ -1,0 +1,14 @@
+diff --git a/src/region.rs b/src/region.rs
+index 21d7dc48..babdfe82 100644
+--- a/src/region.rs
++++ b/src/region.rs
+@@ -773,6 +773,9 @@ impl Region {
+         self.rebuild_air_index();
+         self.rebuild_non_air_count();
+ 
++        // Compaction must include blocks added outside the original region.
++        self.rebuild_tight_bounds();
++
+         // Merge entities and block entities
+         self.merge_entities(other);
+         self.merge_block_entities(other);

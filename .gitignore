@@ -84,3 +84,6 @@ fabric/libs/*
 
 # Stonecutter per-version run logs
 fabric/versions/*/logs/
+
+# Pinned sibling dependencies checked out by CI
+.build-deps/

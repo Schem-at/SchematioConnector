@@ -29,6 +29,7 @@ object SchematioPanels : PanelLibEntrypoint {
         fun raw(panel: Panel, title: String, icon: String?, listed: Boolean = true) {
             val handle = mod.rawPanel(panel.id, title, icon, listed) { panel.render() }
             PanelManager.bind(panel.id, handle)
+            handle.onClose { panel.onClose() }
         }
         raw(BrowsePanel, "Browse", Icons.SEARCH)
         raw(UploadWizardPanel, "Upload", Icons.UPLOAD)

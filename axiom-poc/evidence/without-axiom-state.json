@@ -1,0 +1,32 @@
+{
+  "screen": "AccessibilityOnboardingScreen",
+  "screenTitle": "Welcome to Minecraft!\n\nWould you like to enable the Narrator or visit the Accessibility Settings?",
+  "inWorld": false,
+  "player": null,
+  "panellib": {
+    "overlayOpen": false,
+    "focused": false,
+    "openPanels": [],
+    "panels": [
+      "mcinspector:mcp",
+      "mcinspector:packets"
+    ]
+  },
+  "server": null,
+  "singleplayer": false,
+  "fps": 60,
+  "tick": 1012,
+  "window": {
+    "mouseWidth": 1440,
+    "mouseHeight": 900,
+    "framebufferWidth": 2880,
+    "framebufferHeight": 1800,
+    "guiScale": 7,
+    "guiWidth": 412,
+    "guiHeight": 258,
+    "focused": true,
+    "mouseGrabbed": false,
+    "mouseX": -2552.40234375,
+    "mouseY": -175.5390625
+  }
+}

@@ -9,4 +9,5 @@ package io.schemat.connector.fabric.client.ui.framework
 interface Panel {
     val id: String
     fun render()
+    fun onClose() {}
 }

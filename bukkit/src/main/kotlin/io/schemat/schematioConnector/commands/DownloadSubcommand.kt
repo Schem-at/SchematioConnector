@@ -344,6 +344,10 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                             val msg = parseErrorMessage(errorBody) ?: "Rate limited. Please try again later."
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
+                        503 -> {
+                            val msg = parseErrorMessage(errorBody) ?: "Schematic conversion is temporarily unavailable. Please try again later."
+                            audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
+                        }
                         -1 -> {
                             audience.sendMessage(Component.text("Could not connect to schemat.io API").color(NamedTextColor.RED))
                             audience.sendMessage(Component.text("The service may be temporarily unavailable").color(NamedTextColor.GRAY))

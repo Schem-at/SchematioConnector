@@ -22,7 +22,10 @@ public class BridgeBackend {
             s.setBlock(1, 0, 0, "minecraft:oak_log[axis=x]");
             schematic = s.toSchematic();
         }
-        Files.write(output.resolve("fixture.schem"), schematic);
+        if (args.length > 1) schematic = Files.readAllBytes(Path.of(args[1]));
+        final byte[] fixture = schematic;
+        final String format = args.length > 2 ? args[2] : "schem";
+        Files.write(output.resolve("fixture." + format), fixture);
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 38272), 0);
         server.createContext("/", ex -> {
             try {
@@ -49,8 +52,8 @@ public class BridgeBackend {
                 } else if (path.equals("/api/v1/plugin/clipboard/resolve")) {
                     var request = JsonParser.parseString(new String(body, StandardCharsets.UTF_8)).getAsJsonObject();
                     if (!request.get("ref_id").getAsString().equals("bridge-fixture")) throw new AssertionError("Unexpected reference");
-                    response = schematic; result = null;
-                    ex.getResponseHeaders().set("X-Schematio-Format", "schem");
+                    response = fixture; result = null;
+                    ex.getResponseHeaders().set("X-Schematio-Format", format);
                 } else if (path.equals("/api/v1/plugin/clipboard/drafts")) {
                     // Isolate the file part without decoding binary bytes as UTF-8.
                     String multipart = new String(body, StandardCharsets.ISO_8859_1);

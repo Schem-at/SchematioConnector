@@ -5,6 +5,7 @@ import io.schemat.connector.core.modapi.ApiResult
 import io.schemat.connector.fabric.client.services.ClientServices
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import net.minecraft.client.gui.components.Tooltip
 import net.minecraft.client.gui.components.AbstractWidget
 import net.minecraft.network.chat.Component
@@ -25,9 +26,10 @@ fun <T> ClientServices.call(
     busy: AtomicBoolean? = null,
     block: suspend () -> ApiResult<T>,
     onResult: (ApiResult<T>) -> Unit,
-) {
-    if (busy != null && !busy.compareAndSet(false, true)) return
-    scope.launch {
+): Job? {
+    if (busy != null && !busy.compareAndSet(false, true)) return null
+    return scope.launch {
+        val requestJob = coroutineContext[Job]!!
         val result = try {
             block()
         } catch (e: CancellationException) {
@@ -37,6 +39,7 @@ fun <T> ClientServices.call(
             ApiResult.Failure(ApiError.Unexpected(0, e.message ?: "Unexpected client error"))
         }
         onMainThread {
+            if (requestJob.isCancelled) return@onMainThread
             busy?.set(false)
             onResult(result)
         }

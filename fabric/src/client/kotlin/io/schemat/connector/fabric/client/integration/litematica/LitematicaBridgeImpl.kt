@@ -114,8 +114,29 @@ class LitematicaBridgeImpl : LitematicaBridge {
 
     // ------------------------------------------------------------------ load
 
-    override fun loadSchematic(file: File, name: String, onResult: (Boolean, String?) -> Unit) {
+    override fun captureImportCheck(): () -> String? {
         val client = Minecraft.getInstance()
+        val world = client.level
+        val player = client.player
+        val selected = DataManager.getSchematicPlacementManager().selectedSchematicPlacement
+        val origin = selected?.origin?.immutable()
+        val rotation = selected?.rotation
+        val mirror = selected?.mirror
+        val schematic = selected?.schematic
+        return {
+            when {
+                world == null || client.level !== world || client.player !== player -> "World changed. Load the build again."
+                DataManager.getSchematicPlacementManager().selectedSchematicPlacement !== selected ||
+                    selected?.origin != origin || selected?.rotation != rotation || selected?.mirror != mirror || selected?.schematic !== schematic ->
+                    "Your Litematica placement changed. Load again when ready."
+                else -> null
+            }
+        }
+    }
+
+    override fun loadSchematic(file: File, name: String, check: () -> String?, onResult: (Boolean, String?) -> Unit) {
+        val client = Minecraft.getInstance()
+        val destinationCheck = captureImportCheck()
         CompletableFuture.supplyAsync {
             // File IO off-thread: make sure the file sits under the schematics dir
             // (callers normally write it there already; copy defensively otherwise).
@@ -126,7 +147,7 @@ class LitematicaBridgeImpl : LitematicaBridge {
             if (source.startsWith(dir.toAbsolutePath())) {
                 source
             } else {
-                val target = dir.resolve(sanitizeFileName(name) + LITEMATIC_EXTENSION)
+                val target = Files.createTempFile(dir, sanitizeFileName(name) + "-", LITEMATIC_EXTENSION)
                 Files.copy(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                 target.toAbsolutePath()
             }
@@ -136,7 +157,11 @@ class LitematicaBridgeImpl : LitematicaBridge {
                 client.execute { onResult(false, "Could not save the schematic file: ${ioError.cause?.message ?: ioError.message}") }
                 return@whenComplete
             }
-            client.execute { loadOnClientThread(path, name, onResult) }
+            client.execute {
+                val rejection = check() ?: destinationCheck()
+                if (rejection != null) onResult(false, rejection)
+                else loadOnClientThread(path, name, onResult)
+            }
         }
     }
 
@@ -177,15 +202,20 @@ class LitematicaBridgeImpl : LitematicaBridge {
         "Schematic saved to ${path.parent}, but auto-placement failed ($reason). " +
             "Open Litematica's Load Schematics menu to place it."
 
+    // Placement list indices and names can change while the upload form is open.
+    private val placementIds = java.util.WeakHashMap<SchematicPlacement, String>()
+    private fun placementId(placement: SchematicPlacement): String =
+        placementIds.getOrPut(placement) { PLACEMENT_ID_PREFIX + java.util.UUID.randomUUID() }
+
     // ------------------------------------------------------------------ export: sources
 
     override fun listExportSources(): List<ExportSource> {
         val sources = mutableListOf<ExportSource>()
         try {
             DataManager.getSchematicPlacementManager().allSchematicsPlacements
-                .forEachIndexed { index, placement ->
+                .forEach { placement ->
                     sources += ExportSource(
-                        id = "$PLACEMENT_ID_PREFIX$index",
+                        id = placementId(placement),
                         label = placement.name,
                         kind = SourceKind.PLACEMENT
                     )
@@ -215,11 +245,8 @@ class LitematicaBridgeImpl : LitematicaBridge {
         val manager = DataManager.getSchematicPlacementManager()
         val selected = manager.selectedSchematicPlacement
         if (selected != null) {
-            // Mirror listExportSources(): the id is the index into the manager's list
-            // (findPlacement falls back to the name when indices shift).
-            val index = manager.allSchematicsPlacements.indexOf(selected)
             ExportSource(
-                id = "$PLACEMENT_ID_PREFIX${index.coerceAtLeast(0)}",
+                id = placementId(selected),
                 label = selected.name,
                 kind = SourceKind.PLACEMENT
             )
@@ -280,9 +307,7 @@ class LitematicaBridgeImpl : LitematicaBridge {
     /** Client thread. Resolve a PLACEMENT export source back to the live placement. */
     private fun findPlacement(source: ExportSource): SchematicPlacement? {
         val placements = DataManager.getSchematicPlacementManager().allSchematicsPlacements
-        val index = source.id.removePrefix(PLACEMENT_ID_PREFIX).toIntOrNull()
-        return index?.let { placements.getOrNull(it) }?.takeIf { it.name == source.label }
-            ?: placements.firstOrNull { it.name == source.label }
+        return placements.firstOrNull { placementIds[it] == source.id }
     }
 
     /** Client thread. Resolve an AREA_SELECTION export source back to an AreaSelection. */
@@ -295,7 +320,7 @@ class LitematicaBridgeImpl : LitematicaBridge {
         else -> null
     }
 
-    /** Client thread. File-backed placements read straight from disk; in-memory ones go via writeToFile. */
+    /** Client thread. Freeze the loaded placement through Litematica's own serializer. */
     private fun exportPlacement(source: ExportSource, onResult: (ByteArray?, String?) -> Unit) {
         try {
             val placement = findPlacement(source)
@@ -304,14 +329,8 @@ class LitematicaBridgeImpl : LitematicaBridge {
                 return
             }
 
-            val backingFile = placement.schematicFile
-            if (backingFile != null && Files.isRegularFile(backingFile)) {
-                readBytesAsync(backingFile, deleteAfter = null, onResult)
-                return
-            }
-
-            // In-memory schematic: serialize to a temp file (same idiom as Litematica's
-            // GuiSchematicSave in-memory path, which calls writeToFile on the GUI thread).
+            // Serialize the loaded schematic, including unsaved edits. A backing file
+            // can be older than the placement the player selected.
             val tempDir = Files.createTempDirectory("schematio-export")
             val fileName = sanitizeFileName(placement.name) + LITEMATIC_EXTENSION
             val ok = placement.schematic.writeToFile(tempDir, fileName, true)
@@ -510,7 +529,7 @@ class LitematicaBridgeImpl : LitematicaBridge {
                     )
                 }
             }
-            val blockEntityMap = runCatching { schematic.getBlockEntityMapForRegion(region.name) }.getOrNull()
+            val blockEntityMap: Map<BlockPos, *> = runCatching { schematic.getBlockEntityMapForRegion(region.name) }.getOrNull()
                 ?: continue
             for ((localPos, nbt) in blockEntityMap) {
                 val pos = BlockPos(
@@ -522,7 +541,19 @@ class LitematicaBridgeImpl : LitematicaBridge {
                     pos.y in captureMin.y..captureMax.y &&
                     pos.z in captureMin.z..captureMax.z
                 ) {
-                    builder.setBlockEntityNbt(pos, nbt)
+                    // Litematica 0.26.12+ on 1.21.11 wraps NBT in MaLiLib CompoundData.
+                    //? if >=1.21.11 && <26.1 {
+                    val vanillaNbt = when (nbt) {
+                        is net.minecraft.nbt.CompoundTag -> nbt
+                        is fi.dy.masa.malilib.util.data.tag.CompoundData ->
+                            fi.dy.masa.malilib.util.data.tag.converter.DataConverterNbt.toVanillaCompound(nbt)
+                        else -> continue
+                    }
+                    builder.setBlockEntityNbt(pos, vanillaNbt)
+                    //?} else {
+                    /*builder.setBlockEntityNbt(pos, nbt as? net.minecraft.nbt.CompoundTag ?: continue)
+                    *///?}
+
                 }
             }
         }

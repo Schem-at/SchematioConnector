@@ -23,10 +23,10 @@ SchematioConnector ships as two things:
 | Fabric (1.20.x) | *Planned* | A future backport target, deliberately deferred until the multi-version pipeline is settled. |
 
 Download the [latest published release](https://github.com/Schem-at/SchematioConnector/releases/latest).
-The next release candidate is **1.3.3**. Its validation results and remaining checks
-are recorded in [docs/release-readiness.md](docs/release-readiness.md).
+The **1.4.0** release adds Axiom integration and safer editor transfers.
+Validation is recorded in [docs/release-1.4.0.md](docs/release-1.4.0.md).
 
-The 1.3.3 preview renderer includes the Minecraft 26.2 port. The bundled schematic
+The preview renderer includes the Minecraft 26.2 port. The bundled schematic
 parser supports Windows x64, Linux x64/arm64, and macOS x64/arm64.
 
 Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
@@ -35,7 +35,7 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 
 ### Fabric client
 
-- **Shared overlay** - the client UI lives in the [panel-lib](https://github.com/Nano112/panel-lib) overlay (**K**): one toolbar and dockspace shared with other panel-lib mods, the game embedded beside the panels, and a common theme. Schematio adds a **Schematio ▾** menu with Browse / Upload / Quick Shares / Settings.
+- **Dockable panels** - press **K** to browse, upload or change settings beside the game. Layout controls are under the window icon at the top right.
 - **Schematic browser** - search, tag filtering (including tag *filter values*), thumbnails, detail view, save to disk. Open it with the **K** key (rebindable, *Controls → Misc*) or `/schematio`.
 - **Upload wizard** - upload from a local file, your Litematica schematic, or your WorldEdit clipboard, with metadata, tags, and co-authors (with head avatars).
 - **Thumbnail composer** - render your schematic to a thumbnail in-game: orbit/pan/zoom camera, isometric or perspective projection, FOV control, angle presets, and transparent / HDRI / studio backgrounds. 16:9 offscreen capture.
@@ -44,6 +44,7 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 - **Quick shares** - create temporary share links from the UI or commands, and load shares others send you (password-protected shares supported).
 - **Tag system** - the global Minecraft tag tree plus per-community tags, with assignability rules and filter definitions, both for browsing and for tagging uploads.
 - **Litematica integration** (optional) - download straight into a Litematica placement, export Litematica schematics to schemat.io, browser buttons inside Litematica's GUI, and schematic snapshot thumbnails.
+- **Axiom integration** (optional, Axiom 6.0.5) - select the Schematio tool in Axiom, search for a build, then load it into Axiom's clipboard. Axiom controls placement and undo. Imports are limited to 16 MiB and 2 million blocks in volume; schematics containing entities are rejected. Unknown Axiom versions use the normal file import workflow.
 - **WorldEdit integration** (optional) - upload from / download into the WorldEdit clipboard.
 - **Player auth** - the client authenticates you with schemat.io via your Mojang session (a player-scoped JWT; no manual token setup needed).
 - **Offline behavior** - previously fetched listings stay browsable when the API is unreachable, and the UI degrades gracefully to a limited mode when Litematica/WorldEdit aren't installed.
@@ -64,13 +65,13 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 2. Install the required dependencies into `mods/`:
    - **[Fabric API](https://modrinth.com/mod/fabric-api)**
    - **[Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin)** 1.13.12 or newer
-3. *(Optional, client)* Install **[Litematica](https://modrinth.com/mod/litematica)** + **[MaLiLib](https://modrinth.com/mod/malilib)** to enable load-to-placement, export, and snapshot thumbnails, and **WorldEdit** for clipboard upload/download. Without them the mod runs in a limited mode (browsing and file-based upload still work).
+3. *(Optional, client)* Install Axiom 6.0.5 for its Schematio library tool, or install **[Litematica](https://modrinth.com/mod/litematica)** + **[MaLiLib](https://modrinth.com/mod/malilib)** to enable load-to-placement, export, and snapshot thumbnails, and **WorldEdit** for clipboard upload/download. Without them the mod runs in a limited mode (browsing and file-based upload still work).
 4. Download the jar **matching your Minecraft version** - the naming is:
 
    ```
    SchematioConnector-Fabric-mc<minecraft version>-<mod version>.jar
-   e.g. SchematioConnector-Fabric-mc1.21.11-1.3.3.jar  →  for Minecraft 1.21.11
-        SchematioConnector-Fabric-mc26.1-1.3.3.jar     →  for Minecraft 26.1
+   e.g. SchematioConnector-Fabric-mc1.21.11-1.4.0.jar  →  for Minecraft 1.21.11
+        SchematioConnector-Fabric-mc26.1-1.4.0.jar     →  for Minecraft 26.1
    ```
 
 5. Drop it in `mods/` and start the game. On a client, press **K** or run `/schematio` - you'll be signed in automatically via your Mojang session.
@@ -257,3 +258,16 @@ See [RELEASING.md](RELEASING.md) for the release pipeline (GitHub Releases for e
 - [schemat.io](https://schemat.io) - the schematic platform this connects to
 - [GitHub](https://github.com/Schem-at/SchematioConnector) - source code and [issues](https://github.com/Schem-at/SchematioConnector/issues)
 - Modrinth - *coming soon*
+
+## Network use and development
+
+The client connects to schemat.io for sign-in, search, thumbnails, downloads and
+account features. Sign-in sends a session proof to Mojang and your Minecraft name,
+UUID and proof identifier to Schematio. The Mojang access token is sent to Mojang.
+Uploads send the schematic, thumbnail and details you submit. Server installations
+use the configured community token for Schematio requests; the mod/plugin bridge
+exchanges transfer requests with the Minecraft server you joined.
+
+Connector was originally handwritten. Development now uses AI assistance for code,
+tests and documentation. Changes, issue reports and release checks are available
+in this repository.

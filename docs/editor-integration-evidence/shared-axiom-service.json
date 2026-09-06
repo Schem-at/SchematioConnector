@@ -1,0 +1,6 @@
+{
+  "service": "class io.schemat.connector.fabric.client.integration.axiom.ConnectorAxiom$register$1",
+  "status": "Ready in Axiom's clipboard. Use Axiom's Paste shortcut to position, then Enter to place.",
+  "axiom": true,
+  "overlay": false
+}

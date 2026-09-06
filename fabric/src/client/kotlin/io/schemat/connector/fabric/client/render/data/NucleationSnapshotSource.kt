@@ -20,30 +20,64 @@ import net.minecraft.core.BlockPos
  * them). Block-entity NBT isn't exposed by Nucleation, so block entities render as
  * defaults (see [SchematicData]).
  *
- * Call on the client thread (registry access + the immutable snapshot is then safe to
- * read from the render thread).
+ * Decode plain data on an IO worker, then resolve states on the client thread.
  */
 object NucleationSnapshotSource {
-    fun snapshotFromBytes(bytes: ByteArray): SchematicRenderSource =
+    private data class Block(val x: Int, val y: Int, val z: Int, val state: String)
+
+    /** Owns plain data only; native handles are closed before returning from decode. */
+    class Prepared internal constructor(
+        private val minPos: BlockPos,
+        private val maxPos: BlockPos,
+        private val resolve: (SchematicSnapshot.Builder) -> Iterator<Unit>,
+    ) {
+        private val builder = SchematicSnapshot.Builder(minPos, maxPos)
+        private val remaining by lazy { resolve(builder) }
+
+        /** Registry and block-entity access stays on the client thread. */
+        fun advance(budgetNanos: Long = 2_000_000L): SchematicRenderSource? {
+            val start = System.nanoTime()
+            do {
+                if (!remaining.hasNext()) {
+                    return SchematicRenderSource(SnapshotBlockRenderView(builder.build()), minPos, maxPos)
+                }
+                remaining.next()
+            } while (System.nanoTime() - start < budgetNanos)
+            return null
+        }
+    }
+
+    /** Decode on an IO worker; cancellation releases the native schematic via use. */
+    fun decode(bytes: ByteArray, checkCancelled: () -> Unit = {}): Prepared =
         SchematicData.fromBytes(bytes).use { data ->
+            checkCancelled()
+            require(data.sizeX > 0 && data.sizeY > 0 && data.sizeZ > 0) { "Schematic has empty bounds" }
             val minPos = BlockPos.ZERO
             val maxPos = BlockPos(data.sizeX - 1, data.sizeY - 1, data.sizeZ - 1)
             val (captureMin, captureMax) = SchematicRenderSource.clampedRenderRegion(minPos, maxPos)
-
-            val builder = SchematicSnapshot.Builder(minPos, maxPos)
+            val blocks = ArrayList<Block>()
+            val palette = HashMap<String, String>()
             data.forEachBlock { x, y, z, stateString ->
+                checkCancelled()
                 if (x in captureMin.x..captureMax.x &&
                     y in captureMin.y..captureMax.y &&
                     z in captureMin.z..captureMax.z
-                ) {
-                    // setBlockState skips air; BlockStateMapper returns null for unknown blocks.
-                    BlockStateMapper.parse(stateString)?.let { state ->
-                        val pos = BlockPos(x, y, z)
-                        builder.setBlockState(pos, state)
-                        if (state.hasBlockEntity()) builder.setDefaultBlockEntity(pos)
-                    }
-                }
+                ) blocks.add(Block(x, y, z, palette.getOrPut(stateString) { stateString }))
             }
-            SchematicRenderSource(SnapshotBlockRenderView(builder.build()), minPos, maxPos)
+            Prepared(minPos, maxPos) { builder ->
+                sequence {
+                    for (block in blocks) {
+                        BlockStateMapper.parse(block.state)?.let { state ->
+                            val pos = BlockPos(block.x, block.y, block.z)
+                            builder.setBlockState(pos, state)
+                            if (state.hasBlockEntity()) builder.setDefaultBlockEntity(pos)
+                        }
+                        yield(Unit)
+                    }
+                }.iterator()
+            }
         }
+
+    /** Synchronous entry point for callers already owning the client thread. */
+    fun snapshotFromBytes(bytes: ByteArray): SchematicRenderSource = decode(bytes).advance(Long.MAX_VALUE)!!
 }

@@ -1,0 +1,136 @@
+{
+  "callbackOwnership": {
+    "before": {
+      "axiom": true,
+      "panel": false,
+      "width": 1672,
+      "height": 1668,
+      "thumbs": "Stats(queued=0, inFlight=0, resident=0)",
+      "callbacks": {
+        "monitor": "4343169440",
+        "cursor": "4343169056"
+      }
+    },
+    "afterPanelInit": {
+      "axiom": false,
+      "panel": true,
+      "width": 1782,
+      "height": 1756,
+      "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+      "callbacks": {
+        "monitor": "4343169440",
+        "cursor": "4343169056"
+      }
+    }
+  },
+  "handoffs": [
+    {
+      "axiom": {
+        "axiom": true,
+        "panel": false,
+        "width": 1672,
+        "height": 1668,
+        "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+        "callbacks": {
+          "monitor": "4343169440",
+          "cursor": "4343169056"
+        }
+      },
+      "connector": {
+        "axiom": false,
+        "panel": true,
+        "width": 1782,
+        "height": 1756,
+        "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+        "callbacks": {
+          "monitor": "4343169440",
+          "cursor": "4343169056"
+        }
+      }
+    },
+    {
+      "axiom": {
+        "axiom": true,
+        "panel": false,
+        "width": 1672,
+        "height": 1668,
+        "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+        "callbacks": {
+          "monitor": "4343169440",
+          "cursor": "4343169056"
+        }
+      },
+      "connector": {
+        "axiom": false,
+        "panel": true,
+        "width": 1782,
+        "height": 1756,
+        "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+        "callbacks": {
+          "monitor": "4343169440",
+          "cursor": "4343169056"
+        }
+      }
+    },
+    {
+      "axiom": {
+        "axiom": true,
+        "panel": false,
+        "width": 1672,
+        "height": 1668,
+        "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+        "callbacks": {
+          "monitor": "4343169440",
+          "cursor": "4343169056"
+        }
+      },
+      "connector": {
+        "axiom": false,
+        "panel": true,
+        "width": 1782,
+        "height": 1756,
+        "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+        "callbacks": {
+          "monitor": "4343169440",
+          "cursor": "4343169056"
+        }
+      }
+    },
+    {
+      "axiom": {
+        "axiom": true,
+        "panel": false,
+        "width": 1672,
+        "height": 1668,
+        "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+        "callbacks": {
+          "monitor": "4343169440",
+          "cursor": "4343169056"
+        }
+      },
+      "connector": {
+        "axiom": false,
+        "panel": true,
+        "width": 1782,
+        "height": 1756,
+        "thumbs": "Stats(queued=0, inFlight=0, resident=20)",
+        "callbacks": {
+          "monitor": "4343169440",
+          "cursor": "4343169056"
+        }
+      }
+    }
+  ],
+  "frozenUpload": {
+    "capturedPngBytes": 52167,
+    "sameBytesAfterFileChanged": true,
+    "previewReloadedOriginal": true,
+    "refreshClearsBytesAndPreview": true
+  },
+  "closedComposer": {
+    "source": true,
+    "prepared": true,
+    "decodeJob": true,
+    "target": true
+  }
+}

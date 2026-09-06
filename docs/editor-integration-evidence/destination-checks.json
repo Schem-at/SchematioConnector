@@ -1,0 +1,33 @@
+{
+  "worldedit": {
+    "loaded": {
+      "ok": true,
+      "error": "null"
+    },
+    "stale": {
+      "ok": false,
+      "error": "Your WorldEdit clipboard changed. Load again to replace it."
+    },
+    "replacementPreserved": {
+      "ok": true
+    }
+  },
+  "litematica": {
+    "loaded": {
+      "ok": true,
+      "error": "null"
+    },
+    "stale": {
+      "ok": false,
+      "error": "Your Litematica placement changed. Load again when ready."
+    },
+    "sameNameSourceNotSubstituted": {
+      "exported": false,
+      "error": "Placement \"Destination fixture\" is no longer loaded"
+    },
+    "movedPlacementRejected": {
+      "samePlacement": true,
+      "error": "Your Litematica placement changed. Load again when ready."
+    }
+  }
+}

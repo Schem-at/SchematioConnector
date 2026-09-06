@@ -49,4 +49,28 @@ class NucleationSnapshotSourceTest {
         assertEquals(source.view.getBlockState(BlockPos.ZERO), chest.blockState)
         assertEquals(listOf(chest), source.blockEntities())
     }
+
+    @Test
+    fun resolvesAcrossBudgetsWithoutLosingBlocks() {
+        val bytes = Schematic("incremental-preview").use {
+            repeat(12) { x -> it.setBlock(x, 0, 0, "minecraft:stone") }
+            it.toSchematic()
+        }
+        val pending = NucleationSnapshotSource.decode(bytes)
+        repeat(12) { kotlin.test.assertNull(pending.advance(0L)) }
+        val source = kotlin.test.assertNotNull(pending.advance(0L))
+        repeat(12) { x -> assertEquals(Blocks.STONE.defaultBlockState(), source.view.getBlockState(BlockPos(x, 0, 0))) }
+    }
+
+    @Test
+    fun cancelledDecodeDoesNotPoisonNextSnapshot() {
+        val bytes = javaClass.getResourceAsStream("/schematic/single_stone.schem")!!.readBytes()
+        var visited = 0
+        kotlin.test.assertFailsWith<java.util.concurrent.CancellationException> {
+            NucleationSnapshotSource.decode(bytes) {
+                if (++visited == 2) throw java.util.concurrent.CancellationException()
+            }
+        }
+        assertEquals(Blocks.STONE.defaultBlockState(), NucleationSnapshotSource.snapshotFromBytes(bytes).view.getBlockState(BlockPos.ZERO))
+    }
 }

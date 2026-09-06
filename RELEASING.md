@@ -75,3 +75,26 @@ server smoke matrix, release jar count, and Modrinth entries together.
 See [docs/nucleation-build.md](docs/nucleation-build.md) for the native parser
 bundle. The no-ai-slop skill in `.agents/skills/no-ai-slop/` applies to release
 notes, the article, and installation instructions.
+
+## Fast local validation
+
+Run `python3 scripts/validate.py --jdk21 /path/to/jdk21 --jdk25 /path/to/jdk25`.
+It discovers targets from settings.gradle.kts, uses Gradle's incremental tasks,
+checks the seven packaged jars and native conversion, then runs twelve isolated
+server starts and six clipboard import/paste checks with three workers. Downloads are shared across release versions.
+The report is `build/release-readiness/matrix.json`; each check retains its log.
+
+Add `--clients` on a machine with a desktop/OpenGL session to launch each packaged
+client twice: with optional editors absent, then with pinned Axiom and Litematica.
+These checks verify startup, Axiom registration and schematic preparation, and
+four real model-render/PNG captures. They use isolated directories and stop the
+game automatically. They do not establish multiplayer transfers or authenticated
+uploads. `scripts/smoke-bridge.py` covers real Fabric/Paper bridge transfers using
+MC-Inspector and its local fixture backend.
+
+To repeat in-game bridge transfers after the server checks, run
+`python3 scripts/smoke-bridge-matrix.py --jdk21 /path/to/jdk21 --jdk25 /path/to/jdk25 --inspector-root /path/to/MC-Inspector`.
+It starts and stops its own localhost backend, then verifies signed handshakes,
+clipboard load/paste/upload, Litematica export and reconnects on each target.
+The bridge runner uses development clients; the separate client matrix validates
+the shipped jars and their nested dependencies.

@@ -1,0 +1,28 @@
+{
+  "bounds": {
+    "min": [
+      8,
+      74,
+      -12
+    ],
+    "max": [
+      34,
+      101,
+      15
+    ]
+  },
+  "before": {
+    "sha256": "1a069ab77872f97a2eacc67f5d775ee41aeedb88b1c404ea974e32b73381be9f",
+    "nonAir": 1245
+  },
+  "afterPaste": {
+    "sha256": "28d6bc7b7a259c0b49d009da94674020bffb8475aff650043ca3053bb886652a",
+    "nonAir": 2741
+  },
+  "afterUndo": {
+    "sha256": "1a069ab77872f97a2eacc67f5d775ee41aeedb88b1c404ea974e32b73381be9f",
+    "nonAir": 1245
+  },
+  "pasteChangedWorld": true,
+  "undoRestoredWorld": true
+}

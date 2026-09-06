@@ -68,6 +68,25 @@ object UploadWizardPanel : Panel {
     // ---- step 1: source ----
     internal var sources: List<ExportSource> = emptyList()
     internal var selectedSource: ExportSource? = null
+        set(value) {
+            if (field != value) invalidateSnapshot()
+            field = value
+        }
+    internal var snapshotEpoch = 0L
+    internal var frozenBytes: ByteArray? = null
+    internal var snapshotJob: kotlinx.coroutines.Job? = null
+
+    internal fun invalidateSnapshot() {
+        snapshotEpoch++
+        snapshotJob?.cancel()
+        snapshotJob = null
+        frozenBytes = null
+        capturedPreviewPng = null
+        exporting = false
+        releasePreviewTexture()
+    }
+
+    override fun onClose() { invalidateSnapshot() }
 
     // ---- step 2: details ----
     // ImStrings allocated once — never re-created; buffers survive close/reopen
@@ -131,6 +150,7 @@ object UploadWizardPanel : Panel {
      * status). Call from the keybind handler for a clean start.
      */
     fun open() {
+        if (PanelManager.isOpen(id)) { PanelManager.open(this); return }
         reset()
         PanelManager.open(this)
     }
@@ -168,6 +188,7 @@ object UploadWizardPanel : Panel {
     }
 
     private fun reset() {
+        invalidateSnapshot()
         step = Step.SOURCE
         sources = emptyList()
         selectedSource = null

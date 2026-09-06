@@ -15,6 +15,12 @@ import org.slf4j.LoggerFactory
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 
 /**
  * Real [WorldEditBridge] backed by the WorldEdit mod's own runtime (`worldedit` mod id).
@@ -37,8 +43,8 @@ import java.util.UUID
  * only parse Sponge/MCEdit data - `.litematic` is rejected with a friendly error (the
  * detail screen always requests the `schem` conversion for this path).
  *
- * Threading: all WorldEdit calls run on the integrated server thread
- * ([MinecraftServer.execute]); results are delivered on the render thread
+ * Threading: session access and clipboard replacement run on the integrated server
+ * thread; file decoding uses one IO worker. Results are delivered on the render thread
  * ([Minecraft.execute]) as the [WorldEditBridge] contract requires.
  *
  * Verified against worldedit-core 7.3.10:
@@ -53,6 +59,8 @@ class WorldEditBridgeImpl : WorldEditBridge {
 
     companion object {
         private val LOGGER = LoggerFactory.getLogger("schematioconnector-worldedit-bridge")
+        private val decoder = ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, ArrayBlockingQueue(1),
+            { r -> Thread(r, "schematio-worldedit-decode").apply { isDaemon = true } })
 
         /** Formats WorldEdit can actually parse; everything else gets a clear error. */
         private val READABLE_FORMATS = setOf("schem", "sponge", "schematic")
@@ -67,6 +75,7 @@ class WorldEditBridgeImpl : WorldEditBridge {
         // fail fast (NoClassDefFoundError / linkage errors) when WorldEdit is absent
         // or incompatible, so callers keep the Noop bridge installed.
         WorldEdit.getInstance().sessionManager
+        ClientLifecycleEvents.CLIENT_STOPPING.register { decoder.shutdownNow() }
     }
 
     /** Available only while an integrated server (singleplayer / LAN host) is running. */
@@ -102,7 +111,38 @@ class WorldEditBridgeImpl : WorldEditBridge {
         }
     }
 
-    override fun bytesToClipboard(bytes: ByteArray, format: String, onResult: (Boolean, String?) -> Unit) {
+    override fun captureImportCheck(onResult: ((() -> String?)?, String?) -> Unit) {
+        val client = Minecraft.getInstance()
+        val server = client.singleplayerServer ?: return onResult(null, NEEDS_SINGLEPLAYER)
+        val player = client.player ?: return onResult(null, "Join a world before importing")
+        val world = client.level
+        val uuid = player.uuid
+        val name = player.gameProfile.name
+        server.execute {
+            try {
+                val session = localSession(server, uuid, name)
+                    ?: throw IllegalStateException("No WorldEdit session found")
+                val holder = runCatching { session.clipboard }.getOrNull()
+                val transform = holder?.transform
+                val check: () -> String? = {
+                    val actor = server.playerList.getPlayer(uuid)?.let(::adaptPlayer)
+                    when {
+                        client.singleplayerServer !== server || client.level !== world || client.player !== player -> "World changed. Load the build again."
+                        actor == null || !(actor.hasPermission("worldedit.schematic.load") || actor.hasPermission("worldedit.clipboard.load")) -> "You do not have permission to load WorldEdit schematics."
+                        localSession(server, uuid, name) !== session || runCatching { session.clipboard }.getOrNull() !== holder || holder?.transform !== transform ->
+                            "Your WorldEdit clipboard changed. Load again to replace it."
+                        else -> null
+                    }
+                }
+                val rejection = check()
+                client.execute { if (rejection != null) onResult(null, rejection) else onResult(check, null) }
+            } catch (e: Exception) {
+                client.execute { onResult(null, e.message ?: "WorldEdit is unavailable") }
+            }
+        }
+    }
+
+    override fun bytesToClipboard(bytes: ByteArray, format: String, check: () -> String?, onResult: (Boolean, String?) -> Unit) {
         val client = Minecraft.getInstance()
         val server = client.singleplayerServer ?: return onResult(false, NEEDS_SINGLEPLAYER)
         val normalized = format.lowercase().removePrefix(".")
@@ -115,27 +155,42 @@ class WorldEditBridgeImpl : WorldEditBridge {
         val player = client.player ?: return onResult(false, "Join a world before using the WorldEdit clipboard")
         val uuid = player.uuid
         val name = player.gameProfile.name
-        server.execute {
-            var ok = false
-            var error: String? = null
-            try {
-                val session = localSession(server, uuid, name)
-                if (session == null) {
-                    error = "No WorldEdit session found - run a WorldEdit command (e.g. //pos1) once, then retry"
-                } else {
-                    val clipboard = readClipboard(bytes)
-                    if (clipboard == null) {
-                        error = "WorldEdit could not parse the schematic data (expected Sponge .schem)"
-                    } else {
-                        session.setClipboard(ClipboardHolder(clipboard))
-                        ok = true
-                    }
-                }
-            } catch (t: Throwable) {
-                LOGGER.warn("Failed to set the WorldEdit clipboard", t)
-                error = "Failed to set the WorldEdit clipboard: ${t.message ?: "unexpected error"}"
+        captureImportCheck { destinationCheck, captureError ->
+            if (destinationCheck == null) { onResult(false, captureError); return@captureImportCheck }
+            val decoded = try {
+                CompletableFuture.supplyAsync({ readClipboard(bytes) }, decoder)
+            } catch (_: RejectedExecutionException) {
+                onResult(false, "WorldEdit is still decoding another build. Try again shortly.")
+                return@captureImportCheck
             }
-            client.execute { onResult(ok, error) }
+            decoded.whenComplete { clipboard, decodeError ->
+                server.execute {
+                    var ok = false
+                    var error: String? = null
+                    try {
+                        val session = localSession(server, uuid, name)
+                        if (session == null) {
+                            error = "No WorldEdit session found - run a WorldEdit command (e.g. //pos1) once, then retry"
+                        } else {
+                            val rejection = check() ?: destinationCheck()
+                            if (rejection != null) {
+                                error = rejection
+                            } else if (clipboard == null || decodeError != null) {
+                                error = "WorldEdit could not parse the schematic data (expected Sponge .schem)"
+                            } else {
+                                session.setClipboard(ClipboardHolder(clipboard))
+                                ok = true
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        LOGGER.warn("Failed to set the WorldEdit clipboard", t)
+                        error = "Failed to set the WorldEdit clipboard: ${t.message ?: "unexpected error"}"
+                    }
+                    if (!ok) runCatching { (clipboard as? AutoCloseable)?.close() }
+                        .onFailure { LOGGER.warn("Failed to release discarded clipboard", it) }
+                    client.execute { onResult(ok, error) }
+                }
+            }
         }
     }
 
@@ -172,8 +227,15 @@ class WorldEditBridgeImpl : WorldEditBridge {
     private fun adaptPlayer(player: ServerPlayer): com.sk89q.worldedit.entity.Player? {
         return try {
             val adapterClass = Class.forName("com.sk89q.worldedit.fabric.FabricAdapter")
-            val method = adapterClass.methods.first { it.name == "adaptPlayer" && it.parameterCount == 1 }
-            method.invoke(null, player) as com.sk89q.worldedit.entity.Player
+            val legacy = adapterClass.methods.firstOrNull { it.name == "adaptPlayer" && it.parameterCount == 1 }
+            if (legacy != null) {
+                legacy.invoke(null, player) as com.sk89q.worldedit.entity.Player
+            } else {
+                // 7.4 shares an instance adapter through CoreMcAdapter.
+                val adapter = adapterClass.getMethod("get").invoke(null)
+                val method = adapterClass.methods.first { it.name == "fromNativePlayer" && it.parameterCount == 1 }
+                method.invoke(adapter, player) as com.sk89q.worldedit.entity.Player
+            }
         } catch (t: Throwable) {
             LOGGER.debug("FabricAdapter.adaptPlayer unavailable: {}", t.toString())
             null
@@ -191,6 +253,9 @@ class WorldEditBridgeImpl : WorldEditBridge {
             }
         } catch (_: Exception) {
             // fall through to explicit attempts
+        } catch (_: LinkageError) {
+            // WorldEdit changed the detection method's binary signature in 7.4.
+            // Its explicit format readers remain compatible with this bridge.
         }
         val formatsToTry = listOf(
             BuiltInClipboardFormat.SPONGE_V3_SCHEMATIC,

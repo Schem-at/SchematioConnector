@@ -72,6 +72,7 @@ object SchematicRenderEngine {
         pose: CameraPose,
         background: BackgroundMode,
     ): Int {
+        if (!OffscreenSchematicRenderer.preparePreview(source)) return 0
         val t = target ?: OffscreenTarget(LIVE_WIDTH, LIVE_HEIGHT).also { target = it }
 
         val dirty = source !== lastSource || pose != lastPose || background != lastBackground

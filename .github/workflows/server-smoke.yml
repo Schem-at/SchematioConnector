@@ -62,6 +62,14 @@ jobs:
             [ "${#JARS[@]}" -eq 1 ] || { echo "Expected one candidate jar, found ${#JARS[@]}"; exit 1; }
             python3 scripts/smoke-server.py "$PLATFORM" "$MINECRAFT" --jar "${JARS[0]}" --worldedit
           fi
+      - name: Check Litematica clipboard import and paste
+        if: matrix.platform == 'paper'
+        env:
+          MINECRAFT: ${{ matrix.minecraft }}
+        run: |
+          shopt -s globstar nullglob
+          JARS=(staging/**/SchematioConnector-Paper-*.jar)
+          python3 scripts/smoke-clipboard-matrix.py --minecraft "$MINECRAFT" --plugin "${JARS[0]}" --jdk21 "$JAVA_HOME" --jdk25 "$JAVA_HOME"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -70,3 +78,5 @@ jobs:
             build/release-readiness/servers/**/result.json
             build/release-readiness/servers/**/inputs.json
             build/release-readiness/servers/**/console.log
+            build/release-readiness/clipboard-*.log
+            build/clipboard-smoke/**/console.log

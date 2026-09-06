@@ -67,6 +67,18 @@ object SchematicDetailPanel : Panel {
     private var fetchError: String? = null
     private val fetchBusy = AtomicBoolean(false)
     private val actionBusy = AtomicBoolean(false)
+    private val transferEpoch = io.schemat.connector.core.TransferEpoch()
+    private var actionJob: kotlinx.coroutines.Job? = null
+    private var fetchJob: kotlinx.coroutines.Job? = null
+
+    override fun onClose() { cancelTransfer(); fetchJob?.cancel(); fetchBusy.set(false) }
+
+    private fun cancelTransfer() {
+        transferEpoch.cancel()
+        actionJob?.cancel()
+        actionJob = null
+        actionBusy.set(false)
+    }
 
     // ---- status messages ----
     private var statusText: String? = null
@@ -84,6 +96,8 @@ object SchematicDetailPanel : Panel {
         val replacing = summary?.id != schematic.id
         summary = schematic
         if (replacing) {
+            cancelTransfer()
+            fetchJob?.cancel()
             detail = null
             fetchError = null
             fetchBusy.set(false)
@@ -99,12 +113,13 @@ object SchematicDetailPanel : Panel {
         val s = summary ?: return
         if (detail != null || fetchBusy.get()) return
         val loadId = s.id  // capture before async call to guard against stale responses
-        services.call(
-            busy = fetchBusy,
+        fetchBusy.set(true)
+        fetchJob = services.call(
             block = { services.cached.schematic(s.id) },
         ) { result ->
             // Discard stale responses that arrived after the user switched to a different schematic
             if (summary?.id != loadId) return@call
+            fetchBusy.set(false)
             when (result) {
                 is ApiResult.Success -> {
                     detail = result.value
@@ -124,6 +139,7 @@ object SchematicDetailPanel : Panel {
      */
     fun refreshDetail(schematicId: String) {
         if (summary?.id != schematicId) return
+        fetchJob?.cancel()
         detail = null
         fetchError = null
         fetchBusy.set(false)
@@ -361,6 +377,10 @@ object SchematicDetailPanel : Panel {
         if (Widgets.button("Quick share")) { d?.let { openQuickShare(it) } }
         if (qsDisabled) ImGui.endDisabled()
 
+        if (actionBusy.get()) {
+            if (Widgets.button("Cancel transfer")) { cancelTransfer(); statusText = "Cancelled. Your editor is unchanged." }
+        }
+
         // Row 2: author-only manage actions
         if (isAuthor) {
             // Edit
@@ -413,71 +433,69 @@ object SchematicDetailPanel : Panel {
         return base.replace(Regex("[^a-zA-Z0-9._\\- ]"), "_").ifBlank { "schematic" }
     }
 
-    private fun downloadToFile(d: SchematicDetail, format: String, extension: String, onSaved: (Path) -> Unit) {
-        services.call(
-            busy = actionBusy,
+    private fun downloadToFile(d: SchematicDetail, format: String, extension: String, onSaved: (Path, () -> String?) -> Unit) {
+        val ticket = transferEpoch.begin()
+        val check: () -> String? = { if (transferEpoch.isCurrent(ticket)) null else "Request cancelled." }
+        actionBusy.set(true)
+        actionJob = services.call(
             block = {
                 when (val result = services.api.download(d.id, format)) {
-                    is ApiResult.Success -> {
-                        val dir = downloadDirectory()
-                        Files.createDirectories(dir)
-                        val file = dir.resolve("${fileBaseName(d)}.$extension")
-                        Files.write(file, result.value)
-                        ApiResult.Success(file)
-                    }
+                    is ApiResult.Success -> ApiResult.Success(
+                        io.schemat.connector.fabric.client.integration.SchematicFiles.save(downloadDirectory(), fileBaseName(d), extension, result.value)
+                    )
                     is ApiResult.Failure -> result
                 }
             },
         ) { result ->
+            if (!transferEpoch.isCurrent(ticket)) return@call
+            actionBusy.set(false)
             when (result) {
-                is ApiResult.Success -> onSaved(result.value)
-                is ApiResult.Failure -> {
-                    statusText = result.error.toUserMessage()
-                    statusKind = Widgets.StatusKind.DANGER
-                }
+                is ApiResult.Success -> onSaved(result.value, check)
+                is ApiResult.Failure -> { statusText = result.error.toUserMessage(); statusKind = Widgets.StatusKind.DANGER }
             }
         }
     }
 
     private fun loadIntoLitematica(d: SchematicDetail) {
-        downloadToFile(d, "litematic", "litematic") { file ->
-            Bridges.litematica.loadSchematic(file.toFile(), d.name) { ok, error ->
-                if (ok) {
-                    statusText = "Loaded \"${d.name}\" into Litematica"
-                    statusKind = Widgets.StatusKind.SUCCESS
-                } else {
-                    statusText = error ?: "Failed to load schematic into Litematica"
-                    statusKind = Widgets.StatusKind.DANGER
-                }
+        val destinationCheck = Bridges.litematica.captureImportCheck()
+        downloadToFile(d, "litematic", "litematic") { file, requestCheck ->
+            actionBusy.set(true)
+            Bridges.litematica.loadSchematic(file.toFile(), d.name, { requestCheck() ?: destinationCheck() }) { ok, error ->
+                if (requestCheck() != null) return@loadSchematic
+                actionBusy.set(false)
+                statusText = if (ok) "Loaded \"${d.name}\" into Litematica" else error ?: "Failed to load schematic into Litematica"
+                statusKind = if (ok) Widgets.StatusKind.SUCCESS else Widgets.StatusKind.DANGER
             }
         }
     }
 
     private fun saveToDisk(d: SchematicDetail) {
-        downloadToFile(d, "litematic", "litematic") { file ->
+        downloadToFile(d, "litematic", "litematic") { file, _ ->
             statusText = "Saved to $file"
             statusKind = Widgets.StatusKind.SUCCESS
         }
     }
 
     private fun toWorldEditClipboard(d: SchematicDetail) {
-        services.call(
-            busy = actionBusy,
-            block = { services.api.download(d.id, "schem") },
-        ) { result ->
-            when (result) {
-                is ApiResult.Success -> Bridges.worldEdit.bytesToClipboard(result.value, "schem") { ok, error ->
-                    if (ok) {
-                        statusText = "Copied \"${d.name}\" to WorldEdit clipboard"
-                        statusKind = Widgets.StatusKind.SUCCESS
-                    } else {
-                        statusText = error ?: "Failed to copy to WorldEdit clipboard"
-                        statusKind = Widgets.StatusKind.DANGER
+        val ticket = transferEpoch.begin()
+        actionBusy.set(true)
+        val requestCheck: () -> String? = { if (transferEpoch.isCurrent(ticket)) null else "Request cancelled." }
+        Bridges.worldEdit.captureImportCheck { destinationCheck, error ->
+            if (!transferEpoch.isCurrent(ticket)) return@captureImportCheck
+            if (destinationCheck == null) {
+                actionBusy.set(false); statusText = error; statusKind = Widgets.StatusKind.DANGER
+                return@captureImportCheck
+            }
+            actionJob = services.call(block = { services.api.download(d.id, "schem") }) { result ->
+                if (!transferEpoch.isCurrent(ticket)) return@call
+                when (result) {
+                    is ApiResult.Success -> Bridges.worldEdit.bytesToClipboard(result.value, "schem", { requestCheck() ?: destinationCheck() }) { ok, failure ->
+                        if (!transferEpoch.isCurrent(ticket)) return@bytesToClipboard
+                        actionBusy.set(false)
+                        statusText = if (ok) "Copied \"${d.name}\" to WorldEdit clipboard" else failure
+                        statusKind = if (ok) Widgets.StatusKind.SUCCESS else Widgets.StatusKind.DANGER
                     }
-                }
-                is ApiResult.Failure -> {
-                    statusText = result.error.toUserMessage()
-                    statusKind = Widgets.StatusKind.DANGER
+                    is ApiResult.Failure -> { actionBusy.set(false); statusText = result.error.toUserMessage(); statusKind = Widgets.StatusKind.DANGER }
                 }
             }
         }
