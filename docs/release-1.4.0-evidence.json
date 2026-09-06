@@ -403,5 +403,127 @@
       "client_exit": 0,
       "server_exit": 0
     }
-  ]
+  ],
+  "final_matrix": {
+    "version": "1.4.0",
+    "targets": [
+      "1.21.8",
+      "1.21.9",
+      "1.21.10",
+      "1.21.11",
+      "26.1",
+      "26.2"
+    ],
+    "passed": true,
+    "checks": [
+      {
+        "check": "matrix-build",
+        "passed": true,
+        "seconds": 1.3,
+        "log": "build/release-readiness/matrix-build.log"
+      },
+      {
+        "check": "matrix-artifacts",
+        "passed": true,
+        "seconds": 1.5,
+        "log": "build/release-readiness/matrix-artifacts.log"
+      },
+      {
+        "check": "matrix-native",
+        "passed": true,
+        "seconds": 0.3,
+        "log": "build/release-readiness/matrix-native.log"
+      },
+      {
+        "check": "matrix-fabric-1.21.8",
+        "passed": true,
+        "seconds": 10.3,
+        "log": "build/release-readiness/matrix-fabric-1.21.8.log"
+      },
+      {
+        "check": "matrix-paper-1.21.8",
+        "passed": true,
+        "seconds": 14.5,
+        "log": "build/release-readiness/matrix-paper-1.21.8.log"
+      },
+      {
+        "check": "matrix-fabric-1.21.9",
+        "passed": true,
+        "seconds": 10.3,
+        "log": "build/release-readiness/matrix-fabric-1.21.9.log"
+      },
+      {
+        "check": "matrix-paper-1.21.9",
+        "passed": true,
+        "seconds": 13.6,
+        "log": "build/release-readiness/matrix-paper-1.21.9.log"
+      },
+      {
+        "check": "matrix-fabric-1.21.10",
+        "passed": true,
+        "seconds": 9.9,
+        "log": "build/release-readiness/matrix-fabric-1.21.10.log"
+      },
+      {
+        "check": "matrix-paper-1.21.10",
+        "passed": true,
+        "seconds": 13.9,
+        "log": "build/release-readiness/matrix-paper-1.21.10.log"
+      },
+      {
+        "check": "matrix-fabric-1.21.11",
+        "passed": true,
+        "seconds": 10.1,
+        "log": "build/release-readiness/matrix-fabric-1.21.11.log"
+      },
+      {
+        "check": "matrix-paper-1.21.11",
+        "passed": true,
+        "seconds": 13.3,
+        "log": "build/release-readiness/matrix-paper-1.21.11.log"
+      },
+      {
+        "check": "matrix-fabric-26.1",
+        "passed": true,
+        "seconds": 9.9,
+        "log": "build/release-readiness/matrix-fabric-26.1.log"
+      },
+      {
+        "check": "matrix-paper-26.1",
+        "passed": true,
+        "seconds": 11.2,
+        "log": "build/release-readiness/matrix-paper-26.1.log"
+      },
+      {
+        "check": "matrix-fabric-26.2",
+        "passed": true,
+        "seconds": 9.7,
+        "log": "build/release-readiness/matrix-fabric-26.2.log"
+      },
+      {
+        "check": "matrix-paper-26.2",
+        "passed": true,
+        "seconds": 10.3,
+        "log": "build/release-readiness/matrix-paper-26.2.log"
+      },
+      {
+        "check": "matrix-clipboard",
+        "passed": true,
+        "seconds": 22.4,
+        "log": "build/release-readiness/matrix-clipboard.log"
+      },
+      {
+        "check": "matrix-client-plain",
+        "passed": true,
+        "seconds": 58.4,
+        "log": "build/release-readiness/matrix-client-plain.log"
+      },
+      {
+        "check": "matrix-client-editors",
+        "passed": true,
+        "seconds": 60.1,
+        "log": "build/release-readiness/matrix-client-editors.log"
+      }
+    ]
+  }
 }

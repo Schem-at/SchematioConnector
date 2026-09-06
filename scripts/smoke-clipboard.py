@@ -85,8 +85,9 @@ def main():
     config = plugins / 'SchematioConnector/config.yml'
     config.parent.mkdir(exist_ok=True)
     config.write_text('api-endpoint: http://127.0.0.1:1/api/v1\ncommunity-token: ""\n')
-    data = fixture()
-    assert data == (ROOT / 'scripts/fixtures/clipboard-v7.litematic').read_bytes(), 'Regenerate the tracked native fixture after changing fixture()'
+    data = (ROOT / 'scripts/fixtures/clipboard-v7.litematic').read_bytes()
+    # Python/zlib versions encode different gzip headers. Compare the actual NBT.
+    assert gzip.decompress(fixture()) == gzip.decompress(data), 'Regenerate the tracked native fixture after changing fixture()'
     (run / 'fixture.litematic').write_bytes(data)
     classes = run / 'probe-classes'
     classes.mkdir(exist_ok=True)

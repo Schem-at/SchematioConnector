@@ -54,8 +54,8 @@ Builds and unit tests, packaged startup and in-game checks are separate checks:
 
 `python3 scripts/validate.py --jdk21 /path/to/jdk21 --jdk25 /path/to/jdk25 --clients`
 repeats the matrix. Gradle reuses unchanged work; server downloads are shared and
-server cases run with three workers. The initial warm build took 41 seconds;
-individual packaged client cases took about 12–21 seconds on the test Mac.
+server cases run with three workers. The complete warm matrix took 193 seconds on the test Mac, including all twelve
+packaged client runs and the server/clipboard checks.
 Logs and machine-readable results are kept under `build/release-readiness/`.
 
 The runtime checks use isolated worlds and an offline test identity. They do not
