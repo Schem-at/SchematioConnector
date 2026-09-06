@@ -1,0 +1,32 @@
+{
+  "valid": {
+    "ok": true,
+    "cells": 1
+  },
+  "version": {
+    "ok": false,
+    "error": "java.io.IOException: Expected a Sponge v2 or v3 schematic.: null"
+  },
+  "volume": {
+    "ok": false,
+    "error": "java.io.IOException: This proof of concept supports builds up to 2 million blocks in volume.: null"
+  },
+  "entities": {
+    "ok": false,
+    "error": "java.io.IOException: This build contains entities. Use Axiom's native blueprint workflow for now.: null"
+  },
+  "malformed": {
+    "ok": false,
+    "error": "java.util.zip.ZipException: Not in GZIP format: null"
+  },
+  "cancel": {
+    "busy": false,
+    "status": "Cancelled. Your Axiom clipboard is unchanged.",
+    "unchanged": true
+  },
+  "staleClipboard": {
+    "busy": false,
+    "status": "Your Axiom clipboard changed. Load again to replace it.",
+    "unchanged": true
+  }
+}

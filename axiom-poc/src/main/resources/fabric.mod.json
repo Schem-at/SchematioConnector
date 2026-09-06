@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "schematio_axiom",
+  "version": "${version}",
+  "name": "Schematio for Axiom (proof of concept)",
+  "description": "Browse Schematio from Axiom and load builds into its clipboard.",
+  "environment": "client",
+  "entrypoints": {"client": ["io.schemat.axiom.SchematioAxiomClient"]},
+  "depends": {"fabricloader": ">=0.19.0", "minecraft": "~26.2", "java": ">=25", "fabric-api": "*"},
+  "suggests": {"axiom": "6.0.5"},
+  "contact": {"homepage": "https://schemat.io", "sources": "https://github.com/Schem-at/SchematioConnector"}
+}
