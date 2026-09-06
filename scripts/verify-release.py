@@ -31,6 +31,10 @@ def inspect_mod(data, label, errors, found):
         if "${" in json.dumps(meta):
             errors.append(f"{label}: unexpanded metadata placeholder")
         found[mod_id] = meta
+        if mod_id == "panellib":
+            for font_license in ("LICENSE-Inter.txt", "LICENSE-Font-Awesome.txt"):
+                if b"SIL OPEN FONT LICENSE" not in jar.read("assets/panellib/fonts/" + font_license):
+                    errors.append(f"{label}: missing font license text")
         for entrypoints in meta.get("entrypoints", {}).values():
             for entry in entrypoints:
                 value = entry if isinstance(entry, str) else entry["value"]

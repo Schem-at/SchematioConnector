@@ -180,16 +180,7 @@ jobs:
           files: |
             staging/*.jar
             staging/SHA256SUMS
-          body: |
-            ${{ steps.notes.outputs.body }}
-
-            ---
-
-            ### Installation
-
-            **Paper:** download `SchematioConnector-Paper-${{ needs.build.outputs.version }}.jar`, drop it into `plugins/`, restart the server.
-
-            **Fabric (client or server):** download the `SchematioConnector-Fabric-mc<your MC version>-${{ needs.build.outputs.version }}.jar` matching your Minecraft version, drop it into `mods/`. Requires Fabric API and Fabric Language Kotlin; Litematica integration is optional.
+          body: ${{ steps.notes.outputs.body }}
 
   # ---------------------------------------------------------------------------
   # Modrinth publishing - WIRED BUT INACTIVE.
