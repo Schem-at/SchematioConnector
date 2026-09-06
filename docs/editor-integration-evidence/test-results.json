@@ -1,0 +1,44 @@
+{
+  "core/build/test-results/test": {
+    "tests": 629,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "fabric/versions/1.21.10/build/test-results/test": {
+    "tests": 52,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "fabric/versions/1.21.11/build/test-results/test": {
+    "tests": 52,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "fabric/versions/1.21.8/build/test-results/test": {
+    "tests": 52,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "fabric/versions/1.21.9/build/test-results/test": {
+    "tests": 52,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "fabric/versions/26.1/build/test-results/test": {
+    "tests": 52,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "fabric/versions/26.2/build/test-results/test": {
+    "tests": 52,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

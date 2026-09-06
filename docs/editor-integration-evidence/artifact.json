@@ -1,0 +1,8 @@
+{
+  "path": "fabric/versions/26.2/build/libs/SchematioConnector-Fabric-mc26.2-1.3.3.jar",
+  "sha256": "c84a9c11d97318810bddf0d8d10bf95fc76372fe47dd3c03c273c0c8343bac11",
+  "bytes": 25339461,
+  "panelLib": "META-INF/jars/panel-lib-mc26.2-0.1.2.jar",
+  "panelLibSha256": "a76c584730885ab4e51d74e3324b30ebeddaf071bca103914ab12ef9dff617fa",
+  "axiomBundled": false
+}

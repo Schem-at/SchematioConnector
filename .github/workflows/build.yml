@@ -49,6 +49,9 @@ jobs:
           validate-wrappers: true
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
+      - name: Prepare pinned panel-lib
+        uses: ./.github/actions/prepare-panel-lib
+
       - name: Run core tests
         run: ./gradlew :core:test $GRADLE_TOOLCHAIN_ARGS
 

@@ -164,18 +164,19 @@ class ClientServices(val authManager: ClientAuthManager) {
                 .GET()
                 .build()
             val response = withContext(Dispatchers.IO) {
-                imageHttpClient.send(request, HttpResponse.BodyHandlers.ofByteArray())
+                imageHttpClient.send(request, HttpResponse.BodyHandlers.ofInputStream())
             }
-            when {
-                response.statusCode() != 200 -> {
+            response.body().use { body ->
+                if (response.statusCode() != 200) {
                     LOGGER.warn("Failed to fetch image {} (status={})", absoluteUrl, response.statusCode())
                     null
+                } else {
+                    val bytes = body.readNBytes(MAX_IMAGE_BYTES + 1)
+                    if (bytes.size > MAX_IMAGE_BYTES) {
+                        LOGGER.warn("Image exceeds size limit: {}", absoluteUrl)
+                        null
+                    } else bytes.also { writeDiskCache(cacheFile, it) }
                 }
-                response.body().size > MAX_IMAGE_BYTES -> {
-                    LOGGER.warn("Image too large ({} bytes): {}", response.body().size, absoluteUrl)
-                    null
-                }
-                else -> response.body().also { writeDiskCache(cacheFile, it) }
             }
         } catch (e: Exception) {
             LOGGER.warn("Exception fetching image {}: {}", absoluteUrl, e.message)
@@ -197,7 +198,11 @@ class ClientServices(val authManager: ClientAuthManager) {
     }
 
     private fun readDiskCache(file: Path): ByteArray? =
-        runCatching { if (Files.isReadable(file)) Files.readAllBytes(file) else null }.getOrNull()
+        runCatching {
+            if (Files.isReadable(file)) Files.newInputStream(file).use {
+                it.readNBytes(MAX_IMAGE_BYTES + 1).takeIf { bytes -> bytes.size <= MAX_IMAGE_BYTES }
+            } else null
+        }.getOrNull()
 
     private fun writeDiskCache(file: Path, bytes: ByteArray) {
         runCatching {
@@ -269,6 +274,8 @@ class ClientServices(val authManager: ClientAuthManager) {
     /** Cancel background work and release the HTTP transport. */
     fun shutdown() {
         scope.cancel()
+        previewImages.cleanup()
+        headAvatars.cleanup()
         transport.close()
     }
 }

@@ -17,7 +17,10 @@ import java.util.concurrent.Future;
 
 /** Drawn exclusively by Axiom through its CustomTool extension point. */
 public final class AxiomLibraryTool implements CustomTool {
-    private final SchematioClient api = new SchematioClient(URI.create(System.getProperty("schematio.axiom.endpoint", "https://schemat.io/api/v1")));
+    private final LibraryClient api;
+    private static AxiomLibraryTool registered;
+    public AxiomLibraryTool() { this(new SchematioClient(URI.create(System.getProperty("schematio.axiom.endpoint", "https://schemat.io/api/v1")))); }
+    public AxiomLibraryTool(LibraryClient api) { this.api = api; }
     private final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
         Thread thread = new Thread(r, "schematio-axiom-transfer"); thread.setDaemon(true); return thread;
     });
@@ -33,8 +36,14 @@ public final class AxiomLibraryTool implements CustomTool {
     private String searchedQuery = "";
 
     public static void register() {
-        var tool = new AxiomLibraryTool();
+        register(new SchematioClient(URI.create(System.getProperty("schematio.axiom.endpoint", "https://schemat.io/api/v1"))));
+    }
+
+    public static void register(LibraryClient api) {
+        if (registered != null) return;
+        var tool = new AxiomLibraryTool(api);
         ServiceLoader.load(ToolRegistryService.class).findFirst().orElseThrow().register(tool);
+        registered = tool;
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> tool.worker.shutdownNow());
     }
 
@@ -105,7 +114,10 @@ public final class AxiomLibraryTool implements CustomTool {
                 var result = api.search(text, number);
                 Minecraft.getInstance().execute(() -> {
                     if (generation != searchGeneration) return;
-                    page = result; selected = null; searched = true; searchedQuery = text; busy = false;
+                    var previous = selected;
+                    page = result;
+                    selected = previous == null ? null : result.builds().stream().filter(b -> b.id().equals(previous.id())).findFirst().orElse(null);
+                    searched = true; searchedQuery = text; busy = false;
                     status = result.builds().isEmpty() ? "No builds found. Try another search." : "Choose a build to load.";
                 });
             } catch (Exception e) {

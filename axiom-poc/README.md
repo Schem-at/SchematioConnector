@@ -18,7 +18,7 @@ Put `axiom-poc/build/libs/Schematio-Axiom-mc26.2-0.1.0-poc.1.jar` in a Minecraft
 
 Search for `tree`, select a result, and click **Load into Axiom**. Point at the world and use the Paste shortcut shown by Axiom's clipboard panel. Position the preview and press Enter. Axiom's normal Undo action reverses the placement. The add-on respects Axiom's import permissions and waits until an existing placement is finished or cancelled.
 
-This is a separate experimental add-on in the Connector repository. It demonstrates the integration boundary before incorporation into the regular Connector mod. It is not a published Connector release. [Connector source and releases](https://github.com/Schem-at/SchematioConnector).
+The standalone add-on remains available for testing. The development Connector build now includes this tool and supplies its shared API services; see [the integration changes and verification](../docs/editor-integration.md). Installing both skips the standalone registration. Neither experimental build is a published Connector release. [Connector source and releases](https://github.com/Schem-at/SchematioConnector).
 
 ## What belongs to each mod
 
@@ -59,6 +59,6 @@ Add `-PinspectorJar=/absolute/path/to/MC-Inspector-mc26.2-0.1.0.jar` to run with
 
 The Python helpers in `scripts/` are test tools and stay outside the mod jar. They use MCInspector's loopback MCP endpoint on port 38272 by default; set `SCHEMATIO_INSPECTOR_PORT` to change it. The editor input helper calls Axiom's existing GLFW callback methods without replacing handlers or calling ImGui directly.
 
-With the Schematio tool registered and a build already in Axiom's clipboard, `scripts/runtime_checks.py` tests invalid files, cancellation and clipboard replacement against a delayed local HTTP fixture. It restores the original endpoint and clipboard afterwards. `scripts/benchmark.py` samples the idle editor with a populated search and clipboard preview. Both require the disposable test world and completed Axiom onboarding; use them with the MCInspector UI closed.
+With the Schematio tool registered, `scripts/runtime_checks.py` tests invalid files, cancellation and clipboard replacement against a delayed local HTTP fixture. It restores the original API service and clipboard afterwards. `scripts/benchmark.py` samples the idle editor with a populated search and clipboard preview. Both require the disposable test world and completed Axiom onboarding; use them with the MCInspector UI closed.
 
 The integration is based on [AxiomClientAPI](https://github.com/Moulberry/AxiomClientAPI), the [official example](https://github.com/Moulberry/AxiomClientAPIExample), and inspection of Axiom 6.0.5's published Minecraft 26.2 jar. Only the add-on's source is included here.

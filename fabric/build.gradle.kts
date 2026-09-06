@@ -207,6 +207,45 @@ loom {
     }
 }
 
+// Reuse the lightweight tool only on its verified Minecraft/Axiom contract.
+// The Axiom jar and nested API are compile-only and never shipped in Connector.
+if (mcVersion == "26.2") {
+    val axiomCompile by configurations.creating { isTransitive = false }
+    val extractAxiomApi by tasks.registering(Copy::class) {
+        from(provider { zipTree(axiomCompile.singleFile) })
+        include("META-INF/jars/axiomclientapi-unobf.jar")
+        eachFile { path = name }
+        includeEmptyDirs = false
+        into(layout.buildDirectory.dir("axiom-api"))
+    }
+    dependencies {
+        axiomCompile("maven.modrinth:axiom:o59cWLPI")
+        compileOnly(files(axiomCompile))
+        compileOnly(files(layout.buildDirectory.file("axiom-api/axiomclientapi-unobf.jar")).builtBy(extractAxiomApi))
+    }
+    sourceSets.named("client") { java.srcDir(rootProject.file("axiom-poc/src/main/java")) }
+    kotlin.sourceSets.named("client") { kotlin.srcDir(rootProject.file("fabric/src/axiom26/kotlin")) }
+    val integrationRuntime by configurations.creating { isTransitive = false }
+    dependencies {
+        integrationRuntime("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
+        integrationRuntime("net.fabricmc:fabric-language-kotlin:$flkVersion")
+        if (providers.gradleProperty("withAxiom").orNull == "true") integrationRuntime("maven.modrinth:axiom:o59cWLPI")
+        providers.gradleProperty("inspectorJar").orNull?.let { integrationRuntime(files(it)) }
+        if (providers.gradleProperty("withLitematica").orNull == "true") {
+            integrationRuntime("maven.modrinth:litematica:$litematicaVersion")
+            integrationRuntime("maven.modrinth:malilib:$malilibVersion")
+        }
+        providers.gradleProperty("worldEditJar").orNull?.let { integrationRuntime(files(it)) }
+    }
+    tasks.register<net.fabricmc.loom.task.prod.ClientProductionRunTask>("runIntegrationClient") {
+        mods.from(integrationRuntime)
+        runDir = rootProject.layout.projectDirectory.dir(providers.gradleProperty("integrationRunDir").getOrElse("axiom-poc/run-connector"))
+        jvmArgs.addAll("-Xmx3G", "-XX:ActiveProcessorCount=4")
+        programArgs.addAll("--username", "SchematioPOC", "--accessToken", "0", "--version", "26.2", "--width", "1440", "--height", "900")
+        providers.gradleProperty("integrationWorld").orNull?.let { programArgs.addAll("--quickPlaySingleplayer", it) }
+    }
+}
+
 // Covers BOTH processResources (main: fabric.mod.json) and
 // processClientResources (client: *.mixins.json) - the environment source
 // sets are split.

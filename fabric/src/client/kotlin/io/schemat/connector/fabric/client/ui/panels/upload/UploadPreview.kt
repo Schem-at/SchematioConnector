@@ -34,52 +34,12 @@ internal fun UploadWizardPanel.generatePreview() {
     val source = selectedSource ?: return
     statusMessage = null
 
-    when (source.kind) {
-        SourceKind.LOCAL_FILE -> {
-            // User-initiated one-off read; local schematics are small.
-            val bytes = runCatching { Files.readAllBytes(Path.of(source.id)) }.getOrElse { e ->
-                statusMessage = "Failed to read file: ${e.message ?: e.javaClass.simpleName}"
-                statusKind = Widgets.StatusKind.DANGER
-                return
-            }
-            openComposer(bytes)
-        }
-
-        SourceKind.WORLDEDIT_CLIPBOARD -> {
-            exporting = true
-            Bridges.worldEdit.clipboardToBytes { bytes, error ->
-                exporting = false
-                if (bytes == null) {
-                    services.onMainThread {
-                        statusMessage = error ?: "Failed to read the WorldEdit clipboard"
-                        statusKind = Widgets.StatusKind.DANGER
-                    }
-                } else {
-                    services.onMainThread { openComposer(bytes) }
-                }
-            }
-        }
-
-        SourceKind.PLACEMENT, SourceKind.AREA_SELECTION -> {
-            exporting = true
-            Bridges.litematica.exportToBytes(source) { bytes, error ->
-                exporting = false
-                if (bytes == null) {
-                    services.onMainThread {
-                        statusMessage = error ?: "Failed to export the schematic"
-                        statusKind = Widgets.StatusKind.DANGER
-                    }
-                } else {
-                    services.onMainThread { openComposer(bytes) }
-                }
-            }
+    captureSource { bytes ->
+        val epoch = snapshotEpoch
+        PreviewComposerPanel.show(bytes) { png ->
+            if (snapshotEpoch == epoch && frozenBytes === bytes) capturedPreviewPng = png
         }
     }
-}
-
-/** Open the composer on [bytes]; its capture callback stores the PNG for upload. */
-internal fun UploadWizardPanel.openComposer(bytes: ByteArray) {
-    PreviewComposerPanel.show(bytes) { png -> capturedPreviewPng = png }
 }
 
 // ---- captured-preview thumbnail rendering ----

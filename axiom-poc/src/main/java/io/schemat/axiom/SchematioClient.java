@@ -13,13 +13,9 @@ import java.util.List;
 import java.util.UUID;
 
 /** Uses the JDK transport and Minecraft's Gson; no additional runtime dependencies. */
-final class SchematioClient {
+final class SchematioClient implements LibraryClient {
     static final int MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024;
     private final URI endpoint;
-    record Build(String id, String name, String author, String shortId) {
-        String webUrl() { return "https://schemat.io/schematics/" + encode(shortId); }
-    }
-    record Page(List<Build> builds, int number, int last, int total) {}
 
     SchematioClient(URI endpoint) {
         boolean local = "http".equals(endpoint.getScheme()) && List.of("localhost", "127.0.0.1", "[::1]").contains(endpoint.getHost());
@@ -30,7 +26,7 @@ final class SchematioClient {
         this.endpoint = URI.create(endpoint.toString().replaceAll("/+$", "") + "/");
     }
 
-    Page search(String query, int page) throws IOException {
+    public Page search(String query, int page) throws IOException {
         String path = "schematics?per_page=8&page=" + Math.max(1, page) + "&sort=created_at&order=desc&search=" + encode(query);
         JsonObject root = JsonParser.parseString(new String(request(path, null, 1024 * 1024), StandardCharsets.UTF_8)).getAsJsonObject();
         var builds = new ArrayList<Build>();
@@ -46,7 +42,7 @@ final class SchematioClient {
         return new Page(List.copyOf(builds), meta.get("current_page").getAsInt(), meta.get("last_page").getAsInt(), meta.get("total").getAsInt());
     }
 
-    byte[] download(String id) throws IOException {
+    public byte[] download(String id) throws IOException {
         String safeId = UUID.fromString(id).toString();
         return request("schematics/" + safeId + "/download", "{\"format\":\"schem\"}", MAX_DOWNLOAD_BYTES);
     }

@@ -50,6 +50,7 @@ class SchematioClientMod : ClientModInitializer {
         configDir.toFile().mkdirs()
         authManager = ClientAuthManager(configDir)
         services = ClientServices(authManager)
+        io.schemat.connector.fabric.client.integration.axiom.AxiomIntegration.initialize(services)
 
         // Client↔plugin interop: register channel + handshake.
         ServerIpc.init()
@@ -85,7 +86,8 @@ class SchematioClientMod : ClientModInitializer {
         // One-time "limited mode" notice on world join when neither Litematica nor
         // WorldEdit is present: browse/upload still work, load/export do not.
         ClientPlayConnectionEvents.JOIN.register { _, _, client ->
-            if (Bridges.litematica.isAvailable || Bridges.worldEdit.isAvailable) {
+            if (Bridges.litematica.isAvailable || Bridges.worldEdit.isAvailable ||
+                io.schemat.connector.fabric.client.integration.axiom.AxiomIntegration.available) {
                 return@register
             }
             LOGGER.warn(
@@ -121,6 +123,7 @@ class SchematioClientMod : ClientModInitializer {
         // Connector" category, then dispatch presses each client tick.
         Keybinds.register()
         ClientTickEvents.END_CLIENT_TICK.register { client ->
+            services.previewImages.tick()
             Keybinds.handleInput(client)
             ClipboardLoadTracker.tick()
             ClipboardUploadTracker.tick()

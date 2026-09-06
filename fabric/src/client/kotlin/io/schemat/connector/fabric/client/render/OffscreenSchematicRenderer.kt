@@ -177,6 +177,11 @@ object OffscreenSchematicRenderer {
      */
     private var meshCache: CachedSchematicMesh? = null
 
+    fun preparePreview(source: SchematicRenderSource): Boolean =
+        (meshCache ?: CachedSchematicMesh().also { meshCache = it }).buildFrom(source, 2_000_000L)
+
+    fun isPrepared(source: SchematicRenderSource): Boolean = meshCache?.isBuiltFor(source) == true
+
     /**
      * Render the schematic into [target]. Render thread only.
      *

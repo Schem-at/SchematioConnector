@@ -115,7 +115,16 @@ class SchematicRenderSource(
             .map { it.immutable() }
 
     /** Block entities present in the view within the RENDERED (clamped) region (chests, signs, …). */
+    private var cachedBlockEntities: List<BlockEntity>? = null
+
     fun blockEntities(): List<BlockEntity> {
+        cachedBlockEntities?.let { return it }
+        if (view is SnapshotBlockRenderView) {
+            return view.blockEntities().filter { entity ->
+                val pos = entity.blockPos
+                pos.x in renderMinPos.x..renderMaxPos.x && pos.y in renderMinPos.y..renderMaxPos.y && pos.z in renderMinPos.z..renderMaxPos.z
+            }.also { cachedBlockEntities = it }
+        }
         val result = mutableListOf<BlockEntity>()
         for (pos in BlockPos.betweenClosed(renderMinPos, renderMaxPos)) {
             val state = view.getBlockState(pos)
@@ -123,6 +132,7 @@ class SchematicRenderSource(
                 view.getBlockEntity(pos)?.let { result += it }
             }
         }
+        cachedBlockEntities = result
         return result
     }
 

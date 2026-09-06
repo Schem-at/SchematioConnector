@@ -84,7 +84,7 @@ class Handler(BaseHTTPRequestHandler):
 
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
 threading.Thread(target=server.serve_forever, daemon=True).start()
-run("java.lang.System.getProperties().put('schematio.test.clipboard',clip.getClipboard());'saved'")
+run("java.lang.System.getProperties().put('schematio.test.api',field('api').get(tool));var current=clip.getClipboard();if(current!=null)java.lang.System.getProperties().put('schematio.test.clipboard',current);'saved'")
 
 
 def endpoint(url):
@@ -94,7 +94,7 @@ def endpoint(url):
 
 def begin():
     started.clear()
-    run("var b=java.lang.Class.forName('io.schemat.axiom.SchematioClient$Build').getDeclaredConstructors()[0];b.setAccessible(true);"
+    run("var b=java.lang.Class.forName('io.schemat.axiom.LibraryClient$Build').getDeclaredConstructors()[0];b.setAccessible(true);"
         "method('load').invoke(tool,b.newInstance('00000000-0000-0000-0000-000000000001','Delayed fixture','Test','fixture'));'started'")
     assert started.wait(3), 'Import did not start'
 
@@ -106,14 +106,16 @@ try:
     time.sleep(2)
     results['cancel'] = json.loads(run("JSON.stringify({busy:field('busy').get(tool),status:String(field('status').get(tool)),unchanged:clip.getClipboard()===java.lang.System.getProperties().get('schematio.test.clipboard')})"))
     assert results['cancel']['unchanged'] and not results['cancel']['busy']
+    run("var c=java.lang.Class.forName('io.schemat.axiom.AxiomClipboardAdapter');var mm=c.getDeclaredMethods();var p;for(var i=0;i<mm.length;i++)if(mm[i].getName()=='prepare')p=mm[i];p.setAccessible(true);"
+        f"var initial=p.invoke(null,java.util.Base64.getDecoder().decode('{base64.b64encode(fixture).decode()}'),'original fixture');clip.setClipboard(initial);'fixture clipboard'")
     begin()
     run("clip['setClipboard(com.moulberry.axiom.clipboard.ClipboardObject)'](null);'clipboard changed during request'")
     time.sleep(2)
     results['staleClipboard'] = json.loads(run("JSON.stringify({busy:field('busy').get(tool),status:String(field('status').get(tool)),unchanged:clip.getClipboard()===null})"))
     assert results['staleClipboard']['unchanged'] and 'clipboard changed' in results['staleClipboard']['status']
 finally:
-    run("method('cancel').invoke(tool);clip.setClipboard(java.lang.System.getProperties().remove('schematio.test.clipboard'));'restored'")
-    endpoint('https://schemat.io/api/v1')
+    run("method('cancel').invoke(tool);clip['setClipboard(com.moulberry.axiom.clipboard.ClipboardObject)'](java.lang.System.getProperties().remove('schematio.test.clipboard'));'restored'")
+    run("field('api').set(tool,java.lang.System.getProperties().remove('schematio.test.api'));'service restored'")
     server.shutdown()
 
 EVIDENCE.mkdir(parents=True, exist_ok=True)

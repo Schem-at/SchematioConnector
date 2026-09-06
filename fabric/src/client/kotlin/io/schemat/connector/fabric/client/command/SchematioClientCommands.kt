@@ -177,7 +177,14 @@ object SchematioClientCommands {
      * Litematica schematics directory (or `<game>/schematics/schemat.io` without
      * Litematica) and create a placement via [Bridges.litematica].
      */
+    private val commandTransfers = io.schemat.connector.core.TransferEpoch()
+
     private fun downloadAndLoad(id: String, password: String?, label: String): Int {
+        val ticket = commandTransfers.begin()
+        val destinationCheck = Bridges.litematica.captureImportCheck()
+        val check: () -> String? = {
+            if (!commandTransfers.isCurrent(ticket)) "A newer download replaced this request." else destinationCheck()
+        }
         ChatNotice.info("Downloading $label \"$id\"…")
         services.scope.launch {
             val result = try {
@@ -186,7 +193,7 @@ object SchematioClientCommands {
                 ApiResult.Failure(ApiError.Unexpected(0, e.message ?: "Unexpected client error"))
             }
             when (result) {
-                is ApiResult.Success -> saveAndLoad(id, result.value)
+                is ApiResult.Success -> saveAndLoad(id, result.value, check)
                 is ApiResult.Failure -> ChatNotice.error(
                     "Could not download $label \"$id\": ${result.error.toUserMessage()}"
                 )
@@ -196,18 +203,18 @@ object SchematioClientCommands {
     }
 
     /** IO thread. Write [bytes] to disk, then load into Litematica on the render thread. */
-    private fun saveAndLoad(name: String, bytes: ByteArray) {
+    private fun saveAndLoad(name: String, bytes: ByteArray, check: () -> String?) {
         val file = try {
             val dir = downloadDirectory()
             Files.createDirectories(dir)
-            dir.resolve(sanitizeFileName(name) + LITEMATIC_EXTENSION).also { Files.write(it, bytes) }
+            io.schemat.connector.fabric.client.integration.SchematicFiles.save(dir, sanitizeFileName(name), "litematic", bytes)
         } catch (e: Exception) {
             ChatNotice.error("Could not save \"$name\": ${e.message ?: "unexpected error"}")
             return
         }
         services.onMainThread {
             if (Bridges.litematica.isAvailable) {
-                Bridges.litematica.loadSchematic(file.toFile(), name) { ok, error ->
+                Bridges.litematica.loadSchematic(file.toFile(), name, check) { ok, error ->
                     if (ok) {
                         ChatNotice.info("Loaded \"$name\" into Litematica")
                     } else {

@@ -1,5 +1,10 @@
 package io.schemat.connector.fabric.client.ui.panels
 
+import io.schemat.connector.fabric.client.SchematioClientMod
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import imgui.ImGui
 import imgui.flag.ImGuiButtonFlags
 import imgui.flag.ImGuiCond
@@ -54,6 +59,9 @@ object PreviewComposerPanel : Panel {
 
     // ---- per-session state -------------------------------------------------
     private var source: SchematicRenderSource? = null
+    private var prepared: NucleationSnapshotSource.Prepared? = null
+    private var decodeJob: Job? = null
+    private var generation = 0L
     private var onCapture: ((ByteArray) -> Unit)? = null
     private var pose: CameraPose = CameraPose.ISO
     private var background: BackgroundMode = BackgroundMode.STUDIO
@@ -64,27 +72,31 @@ object PreviewComposerPanel : Panel {
     /**
      * Open the composer for [sourceBytes] (any format Nucleation auto-detects). On
      * capture, [onCapture] receives the PNG bytes and the panel closes. Call on the
-     * client/render thread (snapshot build touches registries + the GL pipeline).
+     * client/render thread. Decoding runs on an IO worker; registry resolution and
+     * meshing advance over later frames.
      */
     fun show(sourceBytes: ByteArray, onCapture: (ByteArray) -> Unit) {
+        onClose()
+        val epoch = generation
         this.onCapture = onCapture
-        capturing = false
         errorMessage = null
         pose = CameraPose.ISO
         background = BackgroundMode.STUDIO
-
-        // Reset so the "N hidden" note reflects THIS schematic, and drop any prior
-        // engine target/cache.
         BlockStateMapper.clearCache()
-        SchematicRenderEngine.release()
-        source = try {
-            NucleationSnapshotSource.snapshotFromBytes(sourceBytes)
-        } catch (t: Throwable) {
-            LOGGER.warn("Failed to build preview render source", t)
-            errorMessage = "Could not load schematic for preview: ${t.message ?: t.javaClass.simpleName}"
-            null
+        val services = SchematioClientMod.instance.services
+        decodeJob = services.scope.launch {
+            try {
+                val decoded = NucleationSnapshotSource.decode(sourceBytes) { coroutineContext.ensureActive() }
+                services.onMainThread { if (epoch == generation) prepared = decoded }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                LOGGER.warn("Failed to decode preview", e)
+                services.onMainThread {
+                    if (epoch == generation) errorMessage = "Could not load schematic for preview: ${e.message}"
+                }
+            }
         }
-        hiddenStateCount = BlockStateMapper.unresolvedCount
         PanelManager.open(this)
     }
 
@@ -98,6 +110,15 @@ object PreviewComposerPanel : Panel {
             }
             ImGuiTheme.windowTitleAccent()
 
+            prepared?.let { pending ->
+                try {
+                    pending.advance()?.let { source = it; prepared = null }
+                    hiddenStateCount = BlockStateMapper.unresolvedCount
+                } catch (e: Exception) {
+                    prepared = null
+                    errorMessage = "Could not prepare preview: ${e.message}"
+                }
+            }
             val src = source
             when {
                 errorMessage != null -> renderError(errorMessage!!)
@@ -151,7 +172,7 @@ object PreviewComposerPanel : Panel {
             handleViewportInput(w, h, hovered, active)
         } else {
             ImGui.dummy(w, h)
-            ImGui.text("Preview unavailable (no GL texture)")
+            ImGui.text("Preparing preview…")
         }
 
         ImGui.spacing()
@@ -241,6 +262,8 @@ object PreviewComposerPanel : Panel {
         ImGui.spacing()
         if (capturing) {
             Widgets.statusText("Capturing…", Widgets.StatusKind.INFO)
+        } else if (source?.let { io.schemat.connector.fabric.client.render.OffscreenSchematicRenderer.isPrepared(it) } != true) {
+            ImGui.text("Preparing preview... Close to cancel.")
         } else if (Widgets.button("Capture preview", accent = true)) {
             beginCapture()
         }
@@ -276,11 +299,13 @@ object PreviewComposerPanel : Panel {
 
     private fun beginCapture() {
         val src = source ?: return
-        if (capturing) return
+        if (capturing || !io.schemat.connector.fabric.client.render.OffscreenSchematicRenderer.isPrepared(src)) return
         capturing = true
+        val epoch = generation
         SchematicRenderEngine.capture(src, pose, background) { result ->
             // capture() already fires on the render thread, but hop defensively.
             Minecraft.getInstance().execute {
+                if (epoch != generation) return@execute
                 capturing = false
                 when (result) {
                     is CaptureResult.Success -> {
@@ -296,11 +321,19 @@ object PreviewComposerPanel : Panel {
         }
     }
 
-    private fun closePanel() {
+    override fun onClose() {
+        generation++
+        decodeJob?.cancel()
+        decodeJob = null
+        prepared = null
         SchematicRenderEngine.release()
         source = null
         onCapture = null
         capturing = false
+    }
+
+    private fun closePanel() {
+        onClose()
         PanelManager.close(id)
     }
 }

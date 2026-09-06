@@ -50,6 +50,9 @@ class SchematicSnapshot private constructor(
     /** Captured block entity at [pos], or null. */
     fun getBlockEntity(pos: BlockPos): BlockEntity? = blockEntities[pos]
 
+    /** Enumerate stored block entities without scanning the surrounding air or solid blocks. */
+    fun blockEntities(): Collection<BlockEntity> = blockEntities.values
+
     /**
      * Mutable accumulator for a snapshot. Populate on the client thread (BE
      * instantiation touches the client world's registries), then [build] once.

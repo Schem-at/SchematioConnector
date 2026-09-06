@@ -15,7 +15,10 @@ interface LitematicaBridge {
     val isAvailable: Boolean
 
     /** Load [file] as a Litematica schematic (and create a placement); result on render thread. */
-    fun loadSchematic(file: File, name: String, onResult: (Boolean, String?) -> Unit)
+    fun loadSchematic(file: File, name: String, check: () -> String? = { null }, onResult: (Boolean, String?) -> Unit)
+
+    /** Capture before downloading; check again immediately before changing the destination. */
+    fun captureImportCheck(): () -> String? = { "Litematica is unavailable" }
 
     /** Export candidates: loaded placements + area selections. */
     fun listExportSources(): List<ExportSource>
@@ -53,7 +56,11 @@ interface WorldEditBridge {
     fun clipboardToBytes(onResult: (ByteArray?, String?) -> Unit)
 
     /** Replace the clipboard with the given schematic bytes; result on render thread. */
-    fun bytesToClipboard(bytes: ByteArray, format: String, onResult: (Boolean, String?) -> Unit)
+    fun bytesToClipboard(bytes: ByteArray, format: String, check: () -> String? = { null }, onResult: (Boolean, String?) -> Unit)
+
+    /** Snapshot the integrated server clipboard on its owner thread. The returned check runs there too. */
+    fun captureImportCheck(onResult: ((() -> String?)?, String?) -> Unit) =
+        onResult(null, "WorldEdit is unavailable")
 }
 
 object NoopLitematicaBridge : LitematicaBridge {
@@ -61,7 +68,7 @@ object NoopLitematicaBridge : LitematicaBridge {
 
     override val isAvailable: Boolean = false
 
-    override fun loadSchematic(file: File, name: String, onResult: (Boolean, String?) -> Unit) =
+    override fun loadSchematic(file: File, name: String, check: () -> String?, onResult: (Boolean, String?) -> Unit) =
         onResult(false, UNAVAILABLE)
 
     override fun listExportSources(): List<ExportSource> = emptyList()
@@ -85,7 +92,7 @@ object NoopWorldEditBridge : WorldEditBridge {
     override fun clipboardToBytes(onResult: (ByteArray?, String?) -> Unit) =
         onResult(null, UNAVAILABLE)
 
-    override fun bytesToClipboard(bytes: ByteArray, format: String, onResult: (Boolean, String?) -> Unit) =
+    override fun bytesToClipboard(bytes: ByteArray, format: String, check: () -> String?, onResult: (Boolean, String?) -> Unit) =
         onResult(false, UNAVAILABLE)
 }
 

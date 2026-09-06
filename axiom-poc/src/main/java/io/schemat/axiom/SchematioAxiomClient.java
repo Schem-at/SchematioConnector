@@ -10,6 +10,10 @@ public final class SchematioAxiomClient implements ClientModInitializer {
     public static final Logger LOG = LoggerFactory.getLogger("schematio-axiom");
 
     @Override public void onInitializeClient() {
+        if (FabricLoader.getInstance().isModLoaded("schematioconnector")) {
+            LOG.info("Connector owns the Axiom integration; standalone initialization skipped");
+            return;
+        }
         var axiom = FabricLoader.getInstance().getModContainer("axiom");
         if (axiom.isEmpty()) {
             LOG.info("Axiom is absent; Schematio's Axiom integration is inactive");

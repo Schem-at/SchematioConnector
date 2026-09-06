@@ -1,0 +1,19 @@
+name: Prepare panel-lib
+description: Build the pinned panel-lib source before resolving Connector dependencies.
+runs:
+  using: composite
+  steps:
+    - name: Read panel-lib revision
+      id: revision
+      shell: bash
+      run: echo "value=$(awk -F= '/^panellib_revision=/{print $2}' gradle.properties)" >> "$GITHUB_OUTPUT"
+    - name: Check out panel-lib
+      uses: actions/checkout@v4
+      with:
+        repository: Nano112/panel-lib
+        ref: ${{ steps.revision.outputs.value }}
+        path: .build-deps/panel-lib
+        persist-credentials: false
+    - name: Build panel-lib into Maven Local
+      shell: bash
+      run: ./.build-deps/panel-lib/gradlew -p .build-deps/panel-lib publishToMavenLocal --no-daemon -Dorg.gradle.java.installations.fromEnv=JAVA_HOME_21_X64,JAVA_HOME_25_X64
