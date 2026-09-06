@@ -529,7 +529,7 @@ class LitematicaBridgeImpl : LitematicaBridge {
                     )
                 }
             }
-            val blockEntityMap = runCatching { schematic.getBlockEntityMapForRegion(region.name) }.getOrNull()
+            val blockEntityMap: Map<BlockPos, *> = runCatching { schematic.getBlockEntityMapForRegion(region.name) }.getOrNull()
                 ?: continue
             for ((localPos, nbt) in blockEntityMap) {
                 val pos = BlockPos(
@@ -541,7 +541,19 @@ class LitematicaBridgeImpl : LitematicaBridge {
                     pos.y in captureMin.y..captureMax.y &&
                     pos.z in captureMin.z..captureMax.z
                 ) {
-                    builder.setBlockEntityNbt(pos, nbt)
+                    // Litematica 0.26.12+ on 1.21.11 wraps NBT in MaLiLib CompoundData.
+                    //? if >=1.21.11 && <26.1 {
+                    val vanillaNbt = when (nbt) {
+                        is net.minecraft.nbt.CompoundTag -> nbt
+                        is fi.dy.masa.malilib.util.data.tag.CompoundData ->
+                            fi.dy.masa.malilib.util.data.tag.converter.DataConverterNbt.toVanillaCompound(nbt)
+                        else -> continue
+                    }
+                    builder.setBlockEntityNbt(pos, vanillaNbt)
+                    //?} else {
+                    /*builder.setBlockEntityNbt(pos, nbt as? net.minecraft.nbt.CompoundTag ?: continue)
+                    *///?}
+
                 }
             }
         }

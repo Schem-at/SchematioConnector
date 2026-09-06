@@ -12,7 +12,7 @@ import net.minecraft.nbt.NbtIo;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 
-/** The only schematic-transfer dependency on Axiom internals, pinned to 6.0.5 / MC 26.2. */
+/** The only schematic-transfer dependency on Axiom internals, pinned to Axiom 6.0.5 for each supported Minecraft version. */
 final class AxiomClipboardAdapter {
     static final long MAX_VOLUME = 2_000_000;
     static boolean permitted() { return AxiomClient.hasPermission(AxiomPermission.CAN_IMPORT_BLOCKS); }
@@ -28,7 +28,7 @@ final class AxiomClipboardAdapter {
         int height = Short.toUnsignedInt(schematic.getShortOr("Height", (short) 0));
         int length = Short.toUnsignedInt(schematic.getShortOr("Length", (short) 0));
         if (width == 0 || height == 0 || length == 0 || (long) width * height * length > MAX_VOLUME)
-            throw new IOException("This proof of concept supports builds up to 2 million blocks in volume.");
+            throw new IOException("Axiom imports are limited to 2 million blocks in volume.");
         // Axiom 6.0.5's schematic loader does not transfer entities into its placement list.
         // Reject explicitly until that conversion has been implemented and verified.
         if (!schematic.getListOrEmpty("Entities").isEmpty())

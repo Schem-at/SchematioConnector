@@ -11,7 +11,7 @@ object AxiomIntegration {
         val loader = FabricLoader.getInstance()
         val axiom = loader.getModContainer("axiom").orElse(null) ?: return
         val minecraft = loader.getModContainer("minecraft").orElseThrow().metadata.version.friendlyString
-        if (minecraft != "26.2" || axiom.metadata.version.friendlyString != "6.0.5") return
+        if (minecraft !in setOf("1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.2") || axiom.metadata.version.friendlyString != "6.0.5") return
         try {
             Class.forName("io.schemat.connector.fabric.client.integration.axiom.ConnectorAxiom")
                 .getMethod("register", ClientServices::class.java).invoke(null, services)

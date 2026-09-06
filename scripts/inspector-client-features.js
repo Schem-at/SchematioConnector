@@ -18,7 +18,7 @@
     var bridge = Packages.io.schemat.connector.fabric.client.integration.Bridges.INSTANCE.getLitematica();
     bridge.loadSchematic(file.toFile(), "release-placement", new JavaAdapter(Packages.kotlin.jvm.functions.Function2, {
         invoke: function (ok, error) {
-            if (!ok) { System.setProperty("schematio.features.placement", "FAIL: " + error); return Packages.kotlin.Unit.INSTANCE; }
+            if (String(ok) != "true") { System.setProperty("schematio.features.placement", "FAIL: " + error); return Packages.kotlin.Unit.INSTANCE; }
             var source = bridge.currentSelectionSource();
             bridge.exportToBytes(source, new JavaAdapter(Packages.kotlin.jvm.functions.Function2, {
                 invoke: function (bytes, problem) {

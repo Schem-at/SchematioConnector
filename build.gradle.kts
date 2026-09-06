@@ -8,7 +8,7 @@ plugins {
     id("org.jetbrains.dokka") version "1.9.20" apply false
     // Loom 1.16 is required: current Fabric API / Litematica builds are produced
     // with Loom 1.16.x, and 1.16 handles the 26.x mojmap-only scheme.
-    id("fabric-loom") version "1.16-SNAPSHOT" apply false
+    id("fabric-loom") version "1.17.20" apply false
 }
 
 // Version from gradle.properties (semantic versioning)

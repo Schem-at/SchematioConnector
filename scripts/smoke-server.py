@@ -31,14 +31,21 @@ def json_url(url):
 
 
 def download(url, target, sha256=None):
-    if not target.exists():
-        target.parent.mkdir(parents=True, exist_ok=True)
+    # Share immutable downloads across release versions and concurrent matrix jobs.
+    import tempfile
+    cache = ROOT / "build/release-readiness/downloads" / hashlib.sha256(url.encode()).hexdigest()
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    if not cache.exists() or (sha256 and hashlib.sha256(cache.read_bytes()).hexdigest() != sha256):
         data = fetch(url)
         if sha256 and hashlib.sha256(data).hexdigest() != sha256:
             raise ValueError(f"Checksum mismatch: {target.name}")
-        target.write_bytes(data)
-    if sha256 and hashlib.sha256(target.read_bytes()).hexdigest() != sha256:
-        raise ValueError(f"Checksum mismatch: {target.name}")
+        with tempfile.NamedTemporaryFile(dir=cache.parent, delete=False) as temp:
+            temp.write(data)
+            temporary = pathlib.Path(temp.name)
+        temporary.replace(cache)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists() or (sha256 and hashlib.sha256(target.read_bytes()).hexdigest() != sha256):
+        shutil.copy2(cache, target)
 
 
 def properties(path):

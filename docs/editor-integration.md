@@ -1,5 +1,7 @@
 # Connector editor integration
 
+This records the initial 26.2 integration checks. See [release 1.4.0](release-1.4.0.md) for the later six-version matrix.
+
 Connector now uses the existing Axiom tool inside the full mod on Minecraft 26.2 with Axiom 6.0.5. Search and downloads use Connector's shared API, authentication and cache services. Axiom continues to own its interface, clipboard preview, placement and undo. Its jar is a compile-only dependency and is not included in Connector.
 
 ## Changes

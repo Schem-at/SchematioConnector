@@ -64,7 +64,9 @@ def main():
     parser.add_argument('--inspector-port', type=int, default=38271)
     parser.add_argument('--server-port', type=int, default=25576)
     parser.add_argument('--run-name', default='bridge')
-    parser.add_argument('--plugin', type=pathlib.Path, default=ROOT / 'bukkit/build/libs/SchematioConnector-Paper-1.3.4.jar')
+    config = dict(line.split('=',1) for line in (ROOT/'gradle.properties').read_text().splitlines() if '=' in line and not line.startswith('#'))
+    release = '.'.join(config['version'+p] for p in ['Major','Minor','Patch'])
+    parser.add_argument('--plugin', type=pathlib.Path, default=ROOT / f'bukkit/build/libs/SchematioConnector-Paper-{release}.jar')
     parser.add_argument('--worldedit', type=pathlib.Path, help='Use a local WorldEdit or FAWE jar')
     parser.add_argument('--server-cache', type=pathlib.Path, help='Downloaded Paper server directory (single-version runs)')
     parser.add_argument('--native-library', type=pathlib.Path)
@@ -95,10 +97,9 @@ def main():
         if args.worldedit:
             shutil.copy2(args.worldedit, plugins / args.worldedit.name)
         else:
-            we_id = '2YDdVDmG' if version.startswith('1.21.') else 'F5ea2ov3'
-            we = downloads.json_url(f'https://api.modrinth.com/v2/version/{we_id}')
-            asset = next(f for f in we['files'] if f['primary'])
-            downloads.download(asset['url'], plugins / asset['filename'])
+            worldedit, = (cache / 'plugins').glob('worldedit-*.jar')
+            shutil.copy2(worldedit, plugins / worldedit.name)
+            we = {'version_number': worldedit.name}
         cfg = plugins / 'SchematioConnector/config.yml'; cfg.parent.mkdir(exist_ok=True)
         cfg.write_text('api-endpoint: http://127.0.0.1:38272/api/v1\ncommunity-token: smoke.community.token\ndisabled-commands: []\n')
         (run / 'server.properties').write_text('server-ip=127.0.0.1\nserver-port=' + str(args.server_port) + '\nonline-mode=false\nenforce-secure-profile=false\nlevel-type=minecraft:flat\ngenerator-settings={"layers":[{"block":"minecraft:bedrock","height":1}],"biome":"minecraft:plains"}\ngenerate-structures=false\nview-distance=2\nsimulation-distance=2\nspawn-protection=0\n')

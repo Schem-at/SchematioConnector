@@ -1,3 +1,5 @@
+import java.util.zip.ZipFile
+
 plugins {
     id("fabric-loom")
     id("org.jetbrains.kotlin.jvm")
@@ -207,21 +209,28 @@ loom {
     }
 }
 
-// Reuse the lightweight tool only on its verified Minecraft/Axiom contract.
+// Compile the optional tool against the Axiom artifact for this Minecraft target.
 // The Axiom jar and nested API are compile-only and never shipped in Connector.
-if (mcVersion == "26.2") {
+run {
+    val axiomVersion: String = property("deps.axiom") as String
+    val axiomApiName = if (is26x) "axiomclientapi-unobf.jar" else "axiomclientapi.jar"
     val axiomCompile by configurations.creating { isTransitive = false }
-    val extractAxiomApi by tasks.registering(Copy::class) {
-        from(provider { zipTree(axiomCompile.singleFile) })
-        include("META-INF/jars/axiomclientapi-unobf.jar")
-        eachFile { path = name }
-        includeEmptyDirs = false
-        into(layout.buildDirectory.dir("axiom-api"))
+    dependencies { axiomCompile("maven.modrinth:axiom:$axiomVersion") }
+    // Loom remaps file dependencies during configuration, before task execution.
+    // Extract the pinned API first; key its directory by the immutable release ID.
+    val axiomApi = layout.buildDirectory.file("axiom-api/$axiomVersion/$axiomApiName").get().asFile
+    if (!axiomApi.isFile) {
+        axiomApi.parentFile.mkdirs()
+        ZipFile(axiomCompile.singleFile).use { jar ->
+            jar.getInputStream(jar.getEntry("META-INF/jars/$axiomApiName")
+                ?: error("Axiom $axiomVersion is missing $axiomApiName")).use { input ->
+                axiomApi.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
     }
     dependencies {
-        axiomCompile("maven.modrinth:axiom:o59cWLPI")
-        compileOnly(files(axiomCompile))
-        compileOnly(files(layout.buildDirectory.file("axiom-api/axiomclientapi-unobf.jar")).builtBy(extractAxiomApi))
+        add(if (is26x) "compileOnly" else "modCompileOnly", "maven.modrinth:axiom:$axiomVersion") { isTransitive = false }
+        add(if (is26x) "compileOnly" else "modCompileOnly", files(axiomApi))
     }
     sourceSets.named("client") { java.srcDir(rootProject.file("axiom-poc/src/main/java")) }
     kotlin.sourceSets.named("client") { kotlin.srcDir(rootProject.file("fabric/src/axiom26/kotlin")) }
@@ -229,7 +238,7 @@ if (mcVersion == "26.2") {
     dependencies {
         integrationRuntime("net.fabricmc.fabric-api:fabric-api:$fabricApiVersion")
         integrationRuntime("net.fabricmc:fabric-language-kotlin:$flkVersion")
-        if (providers.gradleProperty("withAxiom").orNull == "true") integrationRuntime("maven.modrinth:axiom:o59cWLPI")
+        if (providers.gradleProperty("withAxiom").orNull == "true") integrationRuntime("maven.modrinth:axiom:$axiomVersion")
         providers.gradleProperty("inspectorJar").orNull?.let { integrationRuntime(files(it)) }
         if (providers.gradleProperty("withLitematica").orNull == "true") {
             integrationRuntime("maven.modrinth:litematica:$litematicaVersion")
@@ -241,8 +250,12 @@ if (mcVersion == "26.2") {
         mods.from(integrationRuntime)
         runDir = rootProject.layout.projectDirectory.dir(providers.gradleProperty("integrationRunDir").getOrElse("axiom-poc/run-connector"))
         jvmArgs.addAll("-Xmx3G", "-XX:ActiveProcessorCount=4")
-        programArgs.addAll("--username", "SchematioPOC", "--accessToken", "0", "--version", "26.2", "--width", "1440", "--height", "900")
+        programArgs.addAll("--username", "SchematioPOC", "--accessToken", "0", "--version", mcVersion, "--width", "1440", "--height", "900")
         providers.gradleProperty("integrationWorld").orNull?.let { programArgs.addAll("--quickPlaySingleplayer", it) }
+        providers.gradleProperty("smokeAgent").orNull?.let {
+            jvmArgs.add("-javaagent:$it")
+            jvmArgs.add("-Dschematio.smoke.output=${runDir.get().asFile.absolutePath}")
+        }
     }
 }
 
