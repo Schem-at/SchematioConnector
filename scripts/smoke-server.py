@@ -100,7 +100,13 @@ def main():
         if not versions:
             raise ValueError(f"No WorldEdit release for {loader} {args.minecraft}")
         # WorldEdit 7.4.x requires Java 25 even on Minecraft 1.21.x.
-        pin = "7.3.19" if args.minecraft.startswith("1.21.") else "7.4.5"
+        # 26.3 first shipped in 7.4.6.
+        if args.minecraft.startswith("1.21."):
+            pin = "7.3.19"
+        elif args.minecraft.startswith("26.3"):
+            pin = "7.4.6"
+        else:
+            pin = "7.4.5"
         release = next(v for v in versions if v["version_number"] == pin)
         for stale in mods.glob("worldedit-*.jar"):
             stale.unlink()

@@ -12,7 +12,7 @@ stonecutter active "1.21.11"
 // GUI framework (GuiGraphics -> GuiGraphicsExtractor/ActiveTextCollector) and
 // the reworked block/fluid render pipeline is complete. It builds with the
 // Java 25 toolchain via mapping-less loom.
-val buildableVersions = listOf("1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.2")
+val buildableVersions = listOf("1.21.8", "1.21.9", "1.21.10", "1.21.11", "26.1", "26.2", "26.3")
 tasks.register("buildAllVersions") {
     group = "build"
     description = "Builds and collects the fabric jar for every supported Minecraft version."
@@ -71,6 +71,16 @@ stonecutter parameters {
                 "io.schemat.connector.fabric.client.compat.CharacterEvent",
                 "net.minecraft.client.input.CharacterEvent"
             )
+        }
+        // 26.3 moved the render backend out of blaze3d into com.mojang.renderpearl
+        // and swapped GLFW for SDL3 (key mappings: KEYSYM became KEYBOARD).
+        string(current.parsed >= "26.3") {
+            replace("com.mojang.blaze3d.GpuFormat", "com.mojang.renderpearl.api.GpuFormat")
+            replace("com.mojang.blaze3d.buffers.GpuBuffer", "com.mojang.renderpearl.api.buffers.GpuBuffer")
+            replace("com.mojang.blaze3d.opengl.GlTexture", "com.mojang.renderpearl.backend.opengl.GlTexture")
+            replace("com.mojang.blaze3d.textures.FilterMode", "com.mojang.renderpearl.api.textures.FilterMode")
+            replace("com.mojang.blaze3d.textures.GpuTexture", "com.mojang.renderpearl.api.textures.GpuTexture")
+            replace("InputConstants.Type.KEYSYM", "InputConstants.Type.KEYBOARD")
         }
     }
 }

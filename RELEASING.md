@@ -1,7 +1,7 @@
 # Releasing SchematioConnector
 
-A release contains one Paper plugin, six Fabric mods, and `SHA256SUMS`. Fabric
-jars target Minecraft 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, and 26.2.
+A release contains one Paper plugin, seven Fabric mods, and `SHA256SUMS`. Fabric
+jars target Minecraft 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, 26.2, and 26.3.
 
 ## Prepare and verify
 

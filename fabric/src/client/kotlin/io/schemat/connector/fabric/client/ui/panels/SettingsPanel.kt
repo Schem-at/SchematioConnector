@@ -174,7 +174,11 @@ object SettingsPanel : Panel {
         if (Widgets.button("Open config folder")) {
             val dir = FabricLoader.getInstance().configDir.resolve(SchematioConnectorMod.MOD_ID)
             dir.toFile().mkdirs()
+            //? if >=26.3 {
+            /*com.mojang.blaze3d.Blaze3D.openPath(dir)
+            *///?} else {
             Util.getPlatform().openFile(dir.toFile())
+            //?}
         }
 
         // Dev-only capture spike button (hidden in production)

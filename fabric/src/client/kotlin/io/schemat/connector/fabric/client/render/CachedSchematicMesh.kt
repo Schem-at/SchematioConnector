@@ -213,9 +213,7 @@ class CachedSchematicMesh : AutoCloseable {
             { "schemat-cached-vertices" }, GpuBuffer.USAGE_VERTEX,
             MemoryUtil.memByteBuffer(layer.vertexAddr, layer.vertexByteCount),
         ).also { layer.gpuVertices = it }
-        val indices = RenderSystem.getSequentialBuffer(layer.drawState.primitiveTopology())
-        val indexBuffer = indices.getBuffer(layer.drawState.indexCount())
-        renderType.prepare().drawFromBuffer(vertices, indexBuffer, indices.type(), 0, 0, layer.drawState.indexCount())
+        drawSequential(renderType, vertices, layer.drawState.indexCount())
         *///?} else {
         val builder = layer.scratch
         // reserve() advances the write head and returns the absolute write
@@ -462,5 +460,12 @@ class CachedSchematicMesh : AutoCloseable {
             delegate.setLineWidth(width); return this
         }
         //?}
+
+        // VertexConsumer.setUv3 was added in 26.3.
+        //? if >=26.3 {
+        /*override fun setUv3(u: Float, v: Float): VertexConsumer {
+            delegate.setUv3(u, v); return this
+        }
+        *///?}
     }
 }

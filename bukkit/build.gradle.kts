@@ -128,8 +128,13 @@ tasks.runServer {
 
     downloadPlugins {
         // WorldEdit: 7.4.x is compiled for Java 25 (26.x servers); 1.21.x servers run
-        // Java 21 and need 7.3.x. Modrinth version ids.
-        modrinth("worldedit", if (paperRunVersion.startsWith("26")) "qNuPcliz" else "2YDdVDmG")
+        // Java 21 and need 7.3.x; 26.3 needs 7.4.6+. Modrinth version ids.
+        val worldEditVersion = when {
+            paperRunVersion.startsWith("26.3") -> "YFnqiUlL" // 7.4.6
+            paperRunVersion.startsWith("26") -> "qNuPcliz"   // 7.4.4
+            else -> "2YDdVDmG"
+        }
+        modrinth("worldedit", worldEditVersion)
         // ProtocolLib 5.4.0 — required by the in-game diff viewer's per-player
         // display-entity renderer.
         github("dmulloy2", "ProtocolLib", "5.4.0", "ProtocolLib.jar")

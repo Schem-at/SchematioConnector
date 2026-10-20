@@ -26,9 +26,7 @@ internal class PreviewBuffers26 : AutoCloseable {
                     RenderSystem.getDevice().createBuffer(
                         { "schemat-preview-quad" }, GpuBuffer.USAGE_VERTEX, mesh.vertexBuffer(),
                     ).use { vertices ->
-                        val indices = RenderSystem.getSequentialBuffer(mesh.drawState().primitiveTopology())
-                        val indexBuffer = indices.getBuffer(mesh.drawState().indexCount())
-                        type.prepare().drawFromBuffer(vertices, indexBuffer, indices.type(), 0, 0, mesh.drawState().indexCount())
+                        drawSequential(type, vertices, mesh.drawState().indexCount())
                     }
                 }
             }
