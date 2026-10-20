@@ -234,8 +234,14 @@ object OffscreenSchematicRenderer {
             // offset with build size exactly like camDist = distance * radius.
             val matrices = PoseStack()
             matrices.translate(pose.panX * radius, pose.panY * radius, -camDist)
+            // 26.3 dropped PoseStack.mulPose(Quaternionfc); wrap the rotation in a matrix.
+            //? if >=26.3 {
+            /*matrices.mulPose(org.joml.Matrix4f().rotation(Axis.XP.rotationDegrees(pose.pitch)))
+            matrices.mulPose(org.joml.Matrix4f().rotation(Axis.YP.rotationDegrees(pose.yaw)))
+            *///?} else {
             matrices.mulPose(Axis.XP.rotationDegrees(pose.pitch))
             matrices.mulPose(Axis.YP.rotationDegrees(pose.yaw))
+            //?}
 
             //? if >=26.2 {
             /*val immediate = PreviewBuffers26()
@@ -560,7 +566,16 @@ object OffscreenSchematicRenderer {
                 }
             }
             try {
-                //? if >=26.2 {
+                // 26.3: renderAllFeatures is static over a caller-owned pass, mirroring
+                // vanilla PictureInPictureRenderer (prepareFrame -> pass -> bindDefaultUniforms).
+                //? if >=26.3 {
+                /*dispatcher.prepareFrame(queue).use { frame ->
+                    OffscreenTarget.withRenderPass("schemat-preview block entities") { pass ->
+                        RenderSystem.bindDefaultUniforms(pass)
+                        FeatureRenderDispatcher.renderAllFeatures(pass, frame)
+                    }
+                }
+                *///?} else if >=26.2 {
                 /*dispatcher.renderAllFeatures(queue)
                 *///?} else {
                 dispatcher.renderAllFeatures()

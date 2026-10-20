@@ -1,6 +1,6 @@
 # SchematioConnector
 
-![Minecraft](https://img.shields.io/badge/Minecraft-1.21.8%20%E2%80%93%201.21.11%2C%2026.1%2C%2026.2-62b47a)
+![Minecraft](https://img.shields.io/badge/Minecraft-1.21.8%20%E2%80%93%201.21.11%2C%2026.1%20%E2%80%93%2026.3-62b47a)
 ![Paper](https://img.shields.io/badge/Paper-1.21.8%2B-blue)
 ![Fabric](https://img.shields.io/badge/Fabric-client%20%2B%20server-dbd0b4)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -12,21 +12,21 @@ SchematioConnector ships as two things:
 | Component | What it is | Where it runs |
 |---|---|---|
 | **Paper plugin** | Server-side `/schematio` commands with chat and native-dialog UIs | Paper servers listed below |
-| **Fabric mod** | A full client-side UI (browser, upload wizard, thumbnail composer, communities) plus the same server commands when installed on a Fabric server | Fabric 1.21.8 - 1.21.11, 26.1 and 26.2 |
+| **Fabric mod** | A full client-side UI (browser, upload wizard, thumbnail composer, communities) plus the same server commands when installed on a Fabric server | Fabric 1.21.8 - 1.21.11, 26.1, 26.2 and 26.3 |
 
 ## Supported versions
 
 | Platform | Versions | Notes |
 |---|---|---|
-| Paper | 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.2, 26.2 | One jar (`api-version: 1.21`) |
-| Fabric | **1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, 26.2** | One jar per Minecraft version |
+| Paper | 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.2, 26.2, 26.3 | One jar (`api-version: 1.21`) |
+| Fabric | **1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1, 26.2, 26.3** | One jar per Minecraft version |
 | Fabric (1.20.x) | *Planned* | A future backport target, deliberately deferred until the multi-version pipeline is settled. |
 
 Download the [latest published release](https://github.com/Schem-at/SchematioConnector/releases/latest).
-The **1.4.1** release adds Axiom integration and safer editor transfers.
-Validation is recorded in [docs/release-1.4.1.md](docs/release-1.4.1.md).
+The **1.5.0** release adds Minecraft 26.3 on Fabric and Paper.
+Validation is recorded in [docs/release-1.5.0.md](docs/release-1.5.0.md).
 
-The preview renderer includes the Minecraft 26.2 port. The bundled schematic
+The preview renderer includes the Minecraft 26.2 and 26.3 ports. The bundled schematic
 parser supports Windows x64, Linux x64/arm64, and macOS x64/arm64.
 
 Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
@@ -44,7 +44,7 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 - **Quick shares** - create temporary share links from the UI or commands, and load shares others send you (password-protected shares supported).
 - **Tag system** - the global Minecraft tag tree plus per-community tags, with assignability rules and filter definitions, both for browsing and for tagging uploads.
 - **Litematica integration** (optional) - download straight into a Litematica placement, export Litematica schematics to schemat.io, browser buttons inside Litematica's GUI, and schematic snapshot thumbnails.
-- **Axiom integration** (optional, Axiom 6.0.5) - select the Schematio tool in Axiom, search for a build, then load it into Axiom's clipboard. Axiom controls placement and undo. Imports are limited to 16 MiB and 2 million blocks in volume; schematics containing entities are rejected. Unknown Axiom versions use the normal file import workflow.
+- **Axiom integration** (optional, Axiom 6.0.5; 6.1.3 on Minecraft 26.3) - select the Schematio tool in Axiom, search for a build, then load it into Axiom's clipboard. Axiom controls placement and undo. Imports are limited to 16 MiB and 2 million blocks in volume; schematics containing entities are rejected. Unknown Axiom versions use the normal file import workflow.
 - **WorldEdit integration** (optional) - upload from / download into the WorldEdit clipboard.
 - **Player auth** - the client authenticates you with schemat.io via your Mojang session (a player-scoped JWT; no manual token setup needed).
 - **Offline behavior** - previously fetched listings stay browsable when the API is unreachable, and the UI degrades gracefully to a limited mode when Litematica/WorldEdit aren't installed.
@@ -65,13 +65,13 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 2. Install the required dependencies into `mods/`:
    - **[Fabric API](https://modrinth.com/mod/fabric-api)**
    - **[Fabric Language Kotlin](https://modrinth.com/mod/fabric-language-kotlin)** 1.13.12 or newer
-3. *(Optional, client)* Install Axiom 6.0.5 for its Schematio library tool, or install **[Litematica](https://modrinth.com/mod/litematica)** + **[MaLiLib](https://modrinth.com/mod/malilib)** to enable load-to-placement, export, and snapshot thumbnails, and **WorldEdit** for clipboard upload/download. Without them the mod runs in a limited mode (browsing and file-based upload still work).
+3. *(Optional, client)* Install Axiom 6.0.5 (6.1.3 on 26.3) for its Schematio library tool, or install **[Litematica](https://modrinth.com/mod/litematica)** + **[MaLiLib](https://modrinth.com/mod/malilib)** to enable load-to-placement, export, and snapshot thumbnails, and **WorldEdit** for clipboard upload/download. Without them the mod runs in a limited mode (browsing and file-based upload still work).
 4. Download the jar **matching your Minecraft version** - the naming is:
 
    ```
    SchematioConnector-Fabric-mc<minecraft version>-<mod version>.jar
-   e.g. SchematioConnector-Fabric-mc1.21.11-1.4.1.jar  →  for Minecraft 1.21.11
-        SchematioConnector-Fabric-mc26.1-1.4.1.jar     →  for Minecraft 26.1
+   e.g. SchematioConnector-Fabric-mc1.21.11-1.5.0.jar  →  for Minecraft 1.21.11
+        SchematioConnector-Fabric-mc26.3-1.5.0.jar     →  for Minecraft 26.3
    ```
 
 5. Drop it in `mods/` and start the game. On a client, press **K** or run `/schematio` - you'll be signed in automatically via your Mojang session.
@@ -239,7 +239,12 @@ The Fabric module builds one jar per Minecraft version from a single source tree
 
 For 26.x, Loom runs without remapping and uses Java 25. Minecraft 26.2 also
 requires the GPU draw path in `CachedSchematicMesh` and reversed depth in the
-offscreen renderer.
+offscreen renderer. Minecraft 26.3 replaced GLFW with SDL3 (key codes are SDL
+scancodes; use `InputConstants`, never `org.lwjgl.glfw.GLFW`) and moved the render
+backend to `com.mojang.renderpearl`; the moved imports are rewritten by the
+`>=26.3` replacements in `fabric/stonecutter.gradle.kts`. On 26.3 the Axiom
+integration is pinned to Axiom 6.1.3, which needs Fabric Loader 0.19.5 or newer
+(older loaders bundle MixinExtras 0.5.4, which crashes on Axiom's mixins).
 
 ## Releasing
 

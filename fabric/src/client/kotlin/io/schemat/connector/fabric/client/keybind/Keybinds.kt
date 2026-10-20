@@ -23,7 +23,6 @@ import net.minecraft.client.Minecraft
 //? if >=1.21.9 {
 import net.minecraft.resources.Identifier
 //?}
-import org.lwjgl.glfw.GLFW
 
 /**
  * All client keybindings for SchematioConnector, grouped under a dedicated
@@ -56,10 +55,10 @@ object Keybinds {
     fun register() {
         // The overlay toggle (K) is owned by panel-lib.
         // Per-tool toggles ship unbound; user-assignable in Options > Controls.
-        browser = bind("key.schematioconnector.browser", GLFW.GLFW_KEY_UNKNOWN)
-        upload = bind("key.schematioconnector.upload", GLFW.GLFW_KEY_UNKNOWN)
-        quickShare = bind("key.schematioconnector.quickshare", GLFW.GLFW_KEY_UNKNOWN)
-        settings = bind("key.schematioconnector.settings", GLFW.GLFW_KEY_UNKNOWN)
+        browser = bind("key.schematioconnector.browser", InputConstants.UNKNOWN.value)
+        upload = bind("key.schematioconnector.upload", InputConstants.UNKNOWN.value)
+        quickShare = bind("key.schematioconnector.quickshare", InputConstants.UNKNOWN.value)
+        settings = bind("key.schematioconnector.settings", InputConstants.UNKNOWN.value)
     }
 
     /** Drains pending presses and opens the matching screen. Call each client tick. */

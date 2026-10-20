@@ -9,6 +9,12 @@ import com.mojang.blaze3d.pipeline.TextureTarget
 /*import com.mojang.blaze3d.GpuFormat
 import org.joml.Vector4f
 *///?}
+// 26.3 removed RenderSystem.output*TextureOverride: draws take an explicit RenderPass.
+//? if >=26.3 {
+/*import com.mojang.renderpearl.api.commands.RenderPass
+import java.util.Optional
+import java.util.OptionalDouble
+*///?}
 import com.mojang.blaze3d.platform.NativeImage
 import net.minecraft.client.Screenshot
 import org.slf4j.LoggerFactory
@@ -41,12 +47,41 @@ class OffscreenTarget(
 
     companion object {
         private val LOGGER = LoggerFactory.getLogger("schematioconnector-client")
+
+        //? if >=26.3 {
+        /*// The target [bind] selected; null routes draws to Minecraft's main target.
+        private var active: OffscreenTarget? = null
+
+        // Open a render pass on the bound target (vanilla PictureInPictureRenderer's
+        // createRenderPass(color, no clear, depth, no clear) shape) and close it after [block].
+        fun <T> withRenderPass(label: String, block: (RenderPass) -> T): T {
+            val target = active?.framebuffer ?: net.minecraft.client.Minecraft.getInstance().gameRenderer.mainRenderTarget()
+            return RenderSystem.getDevice().createCommandEncoder().createRenderPass(
+                { label }, target.colorTextureView!!, Optional.empty(),
+                target.depthTextureView, OptionalDouble.empty(),
+            ).use(block)
+        }
+        *///?}
+
+        /** Route subsequent draws back to the main framebuffer. Safe to call when nothing is bound. */
+        fun resetOutput() {
+            //? if >=26.3 {
+            /*active = null
+            *///?} else {
+            RenderSystem.outputColorTextureOverride = null
+            RenderSystem.outputDepthTextureOverride = null
+            //?}
+        }
     }
 
     // 26.2 added an explicit GpuFormat parameter; RGBA8_UNORM matches what
     // vanilla passes for its own colour targets (LevelRenderer "Entity Outline"
     // ctor, bytecode-verified against the 26.2 jar).
-    //? if >=26.2 {
+    // 26.3 replaced useDepth with a nullable depth format; D32_FLOAT matches the
+    // depth texture vanilla's PictureInPictureRenderer allocates (bytecode-verified).
+    //? if >=26.3 {
+    /*val framebuffer = TextureTarget("schemat-capture", width, height, GpuFormat.RGBA8_UNORM, GpuFormat.D32_FLOAT)
+    *///?} else if >=26.2 {
     /*val framebuffer = TextureTarget("schemat-capture", width, height, true, GpuFormat.RGBA8_UNORM)
     *///?} else {
     val framebuffer = TextureTarget("schemat-capture", width, height, /* useDepth = */ true)
@@ -86,15 +121,16 @@ class OffscreenTarget(
      * override fields. If the spike comes out blank, this redirect is the prime suspect.
      */
     fun bind() {
+        //? if >=26.3 {
+        /*active = this
+        *///?} else {
         RenderSystem.outputColorTextureOverride = framebuffer.colorTextureView
         RenderSystem.outputDepthTextureOverride = framebuffer.depthTextureView
+        //?}
     }
 
     /** Restore output to the main framebuffer. */
-    fun unbind() {
-        RenderSystem.outputColorTextureOverride = null
-        RenderSystem.outputDepthTextureOverride = null
-    }
+    fun unbind() = resetOutput()
 
     /**
      * Async readback to PNG bytes. The framebuffer must stay alive until [onResult]

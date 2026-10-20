@@ -28,12 +28,14 @@ jobs:
           - {platform: fabric, minecraft: '1.21.11', java: '21'}
           - {platform: fabric, minecraft: '26.1', java: '25'}
           - {platform: fabric, minecraft: '26.2', java: '25'}
+          - {platform: fabric, minecraft: '26.3', java: '25'}
           - {platform: paper, minecraft: '1.21.8', java: '21'}
           - {platform: paper, minecraft: '1.21.9', java: '21'}
           - {platform: paper, minecraft: '1.21.10', java: '21'}
           - {platform: paper, minecraft: '1.21.11', java: '21'}
           - {platform: paper, minecraft: '26.1.2', java: '25'}
           - {platform: paper, minecraft: '26.2', java: '25'}
+          - {platform: paper, minecraft: '26.3', java: '25'}
     steps:
       - uses: actions/checkout@v4
         with:

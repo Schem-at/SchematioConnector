@@ -141,8 +141,7 @@ object ThumbnailCapture {
             // Double-guard: OffscreenSchematicRenderer restores these in its own
             // finally, but if anything threw mid-pass we must never leave the
             // GUI rendering into our capture target.
-            RenderSystem.outputColorTextureOverride = null
-            RenderSystem.outputDepthTextureOverride = null
+            OffscreenTarget.resetOutput()
         }
     }
 
@@ -160,8 +159,7 @@ object ThumbnailCapture {
         try {
             OffscreenSchematicRenderer.render(source, pose, target, background)
         } finally {
-            RenderSystem.outputColorTextureOverride = null
-            RenderSystem.outputDepthTextureOverride = null
+            OffscreenTarget.resetOutput()
         }
     }
 
