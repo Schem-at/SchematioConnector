@@ -28,7 +28,7 @@ object FabricServerIpc {
     private val LOGGER = LoggerFactory.getLogger("SchematioServerIpc")
 
     private val greeted: MutableSet<UUID> = ConcurrentHashMap.newKeySet()
-    private var mod: SchematioConnectorMod? = null
+    @Volatile private var mod: SchematioConnectorMod? = null
     private var registered = false
 
     /** Null means "do not greet". */
@@ -78,11 +78,13 @@ object FabricServerIpc {
         }
     }
 
-    /** Re-announces to every online player (config reload / token change). */
+    /** Re-announces to every online player (config reload / token change), on the server thread. */
     fun greetAll() {
         val server = mod?.server ?: return
-        greeted.clear()
-        server.playerList.players.forEach { greet(it) }
+        server.execute {
+            greeted.clear()
+            server.playerList.players.forEach { greet(it) }
+        }
     }
 
     private fun greet(player: ServerPlayer) {
