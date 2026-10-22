@@ -1,4 +1,4 @@
-package io.schemat.connector.fabric.client.ipc
+package io.schemat.connector.fabric.ipc
 
 import io.schemat.connector.core.ipc.IpcProtocol
 import net.minecraft.network.RegistryFriendlyByteBuf

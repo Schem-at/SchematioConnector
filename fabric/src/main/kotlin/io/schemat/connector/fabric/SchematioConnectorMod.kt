@@ -8,6 +8,7 @@ import io.schemat.connector.core.service.SchematicsApiService
 import io.schemat.connector.fabric.adapter.FabricPlatformAdapter
 import io.schemat.connector.fabric.command.SchematioCommand
 import io.schemat.connector.fabric.dialog.FabricDialogService
+import io.schemat.connector.fabric.ipc.FabricServerIpc
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -61,6 +62,8 @@ class SchematioConnectorMod : ModInitializer {
     val baseUrl: String
         get() = apiEndpoint.replace(Regex("/api/v\\d+$"), "")
     private var apiToken: String? = null
+    val apiTokenConfigured: Boolean
+        get() = !apiToken.isNullOrBlank()
     private var trustAllCertificates: Boolean = false
 
     // Commands disabled via config
@@ -93,6 +96,9 @@ class SchematioConnectorMod : ModInitializer {
 
         // Register server lifecycle events
         registerServerEvents()
+
+        // schematio:c payload type + server hello (also runs on the client; registers once)
+        FabricServerIpc.register(this)
 
         LOGGER.info("Schematio Connector initialized!")
     }
@@ -225,6 +231,7 @@ class SchematioConnectorMod : ModInitializer {
             offlineMode = offlineMode,
             rateLimiter = rateLimiter
         )
+        FabricServerIpc.greetAll()
     }
 
     /**
@@ -255,5 +262,6 @@ class SchematioConnectorMod : ModInitializer {
             offlineMode = offlineMode,
             rateLimiter = rateLimiter
         )
+        FabricServerIpc.greetAll()
     }
 }

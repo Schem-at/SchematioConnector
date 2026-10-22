@@ -26,8 +26,8 @@ import io.schemat.connector.fabric.client.ui.panels.SchematicDetailPanel
 import io.schemat.connector.fabric.client.ui.panels.SettingsPanel
 import io.schemat.connector.fabric.client.ui.panels.SharesPanel
 import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel
+import io.schemat.connector.fabric.ipc.SchematioPayload
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
@@ -45,16 +45,8 @@ object ServerIpc {
     private val openUiGate = OpenUiGate()
 
     fun init() {
-        // Fabric networking API 6.x (>=26.1) renamed playS2C/playC2S to
-        // clientboundPlay/serverboundPlay.
-        //? if >=26.1 {
-        /*PayloadTypeRegistry.clientboundPlay().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
-        PayloadTypeRegistry.serverboundPlay().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
-        *///?} else {
-        PayloadTypeRegistry.playS2C().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
-        PayloadTypeRegistry.playC2S().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
-        //?}
-
+        // The payload type is registered once by the main initializer (FabricServerIpc.register),
+        // which also runs on the client.
         ClientPlayNetworking.registerGlobalReceiver(SchematioPayload.TYPE) { payload, _ ->
             // Fabric invokes this on the client thread.
             handle(payload.data)
