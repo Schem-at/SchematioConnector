@@ -1,0 +1,62 @@
+package io.schemat.connector.core.routing
+
+sealed interface ParsedDownload {
+    data class Ok(val id: String, val password: String?, val filter: DestinationFilter?) : ParsedDownload
+
+    data class Error(val message: String) : ParsedDownload
+}
+
+/** Parses the argument string of `/schematio download` and `/schematio quickshareget`. */
+object DownloadArgs {
+
+    private val SCHEMATIC_URL = Regex("^https?://[^/]+/schematics/([^/?#]+)")
+
+    fun parse(raw: String, quickShare: Boolean): ParsedDownload {
+        var tool: Tool? = null
+        var side: Side? = null
+        val positional = mutableListOf<String>()
+
+        for (token in raw.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }) {
+            if (!token.startsWith("--")) {
+                positional += token
+                continue
+            }
+            when (token) {
+                "--worldedit", "--we" -> {
+                    if (tool != null && tool != Tool.WORLDEDIT) return TOOL_CONFLICT
+                    tool = Tool.WORLDEDIT
+                }
+                "--litematica", "--lm" -> {
+                    if (tool != null && tool != Tool.LITEMATICA) return TOOL_CONFLICT
+                    tool = Tool.LITEMATICA
+                }
+                "--file" -> {
+                    if (tool != null && tool != Tool.FILE) return TOOL_CONFLICT
+                    tool = Tool.FILE
+                }
+                "--server" -> side = Side.SERVER
+                "--local" -> side = Side.LOCAL
+                else -> return ParsedDownload.Error(
+                    "Unknown flag $token. Use --we, --lm, --file, --server or --local."
+                )
+            }
+        }
+
+        if (side == Side.SERVER && (tool == Tool.FILE || tool == Tool.LITEMATICA)) {
+            return ParsedDownload.Error("Only WorldEdit can load on the server.")
+        }
+
+        var id = positional.firstOrNull()
+            ?: return ParsedDownload.Error(
+                if (quickShare) "Give a quick share code." else "Give a schematic ID or schemat.io link."
+            )
+        if (!quickShare) {
+            SCHEMATIC_URL.find(id)?.let { id = it.groupValues[1] }
+        }
+        val password = if (quickShare) positional.getOrNull(1) else null
+        val filter = if (side == null && tool == null) null else DestinationFilter(side, tool)
+        return ParsedDownload.Ok(id, password, filter)
+    }
+
+    private val TOOL_CONFLICT = ParsedDownload.Error("Choose one of --we, --lm or --file.")
+}
