@@ -51,6 +51,8 @@ object Capabilities {
     const val VERSION_CONTROL: Int = 1 shl 2      // reserved (north star)
     const val WANTS_COMMAND_OWNERSHIP: Int = 1 shl 3
     const val LOAD_CLIPBOARD: Int = 1 shl 4       // server can pull a REFERENCED schematic from the backend into a player's WorldEdit clipboard (reference-pull, protocol >= 2)
+    /** Server can load a schematic into the player's server-side WorldEdit clipboard right now (WorldEdit present, token configured, downloads enabled, player permitted). */
+    const val SERVER_WORLDEDIT: Int = 1 shl 5
 
     fun has(flags: Int, bit: Int): Boolean = (flags and bit) != 0
 }
