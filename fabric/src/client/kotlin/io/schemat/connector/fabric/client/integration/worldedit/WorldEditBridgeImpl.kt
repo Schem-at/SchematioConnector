@@ -8,6 +8,7 @@ import com.sk89q.worldedit.extent.clipboard.io.BuiltInClipboardFormat
 import com.sk89q.worldedit.extent.clipboard.io.ClipboardFormats
 import com.sk89q.worldedit.session.ClipboardHolder
 import io.schemat.connector.fabric.client.integration.WorldEditBridge
+import io.schemat.connector.fabric.worldedit.WorldEditPlayerAdapter
 import net.minecraft.client.Minecraft
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
@@ -218,29 +219,8 @@ class WorldEditBridgeImpl : WorldEditBridge {
         }
     }
 
-    /**
-     * `com.sk89q.worldedit.fabric.FabricAdapter.adaptPlayer(ServerPlayer)` via
-     * reflection - worldedit-fabric is not on the compile classpath (Loom mapping
-     * mismatch; see fabric/build.gradle.kts), but its classes are present at runtime
-     * whenever the `worldedit` mod is loaded.
-     */
-    private fun adaptPlayer(player: ServerPlayer): com.sk89q.worldedit.entity.Player? {
-        return try {
-            val adapterClass = Class.forName("com.sk89q.worldedit.fabric.FabricAdapter")
-            val legacy = adapterClass.methods.firstOrNull { it.name == "adaptPlayer" && it.parameterCount == 1 }
-            if (legacy != null) {
-                legacy.invoke(null, player) as com.sk89q.worldedit.entity.Player
-            } else {
-                // 7.4 shares an instance adapter through CoreMcAdapter.
-                val adapter = adapterClass.getMethod("get").invoke(null)
-                val method = adapterClass.methods.first { it.name == "fromNativePlayer" && it.parameterCount == 1 }
-                method.invoke(adapter, player) as com.sk89q.worldedit.entity.Player
-            }
-        } catch (t: Throwable) {
-            LOGGER.debug("FabricAdapter.adaptPlayer unavailable: {}", t.toString())
-            null
-        }
-    }
+    private fun adaptPlayer(player: ServerPlayer): com.sk89q.worldedit.entity.Player? =
+        WorldEditPlayerAdapter.adapt(player)
 
     /** Parse schematic [data]: detect the format, then try Sponge v3/v2 and MCEdit explicitly. */
     private fun readClipboard(data: ByteArray): Clipboard? {

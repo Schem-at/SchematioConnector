@@ -23,7 +23,7 @@ SchematioConnector ships as two things:
 | Fabric (1.20.x) | *Planned* | A future backport target, deliberately deferred until the multi-version pipeline is settled. |
 
 Download the [latest published release](https://github.com/Schem-at/SchematioConnector/releases/latest).
-The **1.5.0** release adds Minecraft 26.3 on Fabric and Paper.
+The **1.5.1** release fixes server-side WorldEdit clipboards on Fabric servers with WorldEdit 7.4. 1.5.0 added Minecraft 26.3 on Fabric and Paper.
 Validation is recorded in [docs/release-1.5.0.md](docs/release-1.5.0.md).
 
 The preview renderer includes the Minecraft 26.2 and 26.3 ports. The bundled schematic
@@ -70,8 +70,8 @@ Java 21+ is required at runtime on the 1.21.x targets; MC 26.x requires Java 25.
 
    ```
    SchematioConnector-Fabric-mc<minecraft version>-<mod version>.jar
-   e.g. SchematioConnector-Fabric-mc1.21.11-1.5.0.jar  →  for Minecraft 1.21.11
-        SchematioConnector-Fabric-mc26.3-1.5.0.jar     →  for Minecraft 26.3
+   e.g. SchematioConnector-Fabric-mc1.21.11-1.5.1.jar  →  for Minecraft 1.21.11
+        SchematioConnector-Fabric-mc26.3-1.5.1.jar     →  for Minecraft 26.3
    ```
 
 5. Drop it in `mods/` and start the game. On a client, press **K** or run `/schematio` - you'll be signed in automatically via your Mojang session.
