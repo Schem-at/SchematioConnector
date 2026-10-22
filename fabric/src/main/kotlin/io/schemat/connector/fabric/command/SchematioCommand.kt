@@ -22,12 +22,15 @@ import net.minecraft.network.chat.Component
 import org.apache.http.entity.ContentType
 import org.apache.http.util.EntityUtils
 import org.apache.http.entity.mime.MultipartEntityBuilder
+import org.slf4j.LoggerFactory
 import java.util.Base64
 
 /**
  * Main command handler for /schematio commands in Fabric.
  */
 object SchematioCommand {
+
+    private val LOGGER = LoggerFactory.getLogger("schematioconnector")
 
     /**
      * Cross-version permission check using reflection.
@@ -236,10 +239,8 @@ object SchematioCommand {
                         source.sendSystemMessage(Component.literal("\u00a77Page $currentPage of $lastPage"))
                     }
                 }
-            } catch (e: Exception) {
-                mod.platformAdapter.runOnMainThread {
-                    source.sendSystemMessage(Component.literal("\u00a7cError: ${e.message}"))
-                }
+            } catch (t: Throwable) {
+                reportFailure(mod, source, "list", t)
             }
         }
 
@@ -321,10 +322,8 @@ object SchematioCommand {
                 mod.platformAdapter.runOnMainThread {
                     FabricDialogRenderer.showDialog(player, dialogDef)
                 }
-            } catch (e: Exception) {
-                mod.platformAdapter.runOnMainThread {
-                    source.sendSystemMessage(Component.literal("\u00a7cError: ${e.message}"))
-                }
+            } catch (t: Throwable) {
+                reportFailure(mod, source, "list", t)
             }
         }
 
@@ -426,18 +425,27 @@ object SchematioCommand {
                     val clipboard = FabricWorldEditUtil.byteArrayToClipboard(bytes)
 
                     mod.platformAdapter.runOnMainThread {
-                        if (clipboard != null) {
-                            FabricWorldEditUtil.setClipboard(player, clipboard)
-
-                            if (isDialog && !isQuickShare) {
-                                val dialogDef = DialogBuilders.downloadSuccessDialog(downloadId, "schem", mod.baseUrl)
-                                FabricDialogRenderer.showDialog(player, dialogDef)
+                        try {
+                            if (clipboard == null) {
+                                source.sendSystemMessage(Component.literal("\u00a7cFailed to parse schematic data. The error is in the server log."))
+                            } else if (!FabricWorldEditUtil.setClipboard(player, clipboard)) {
+                                source.sendSystemMessage(Component.literal("\u00a7cCould not reach your WorldEdit session. The error is in the server log."))
                             } else {
-                                source.sendSystemMessage(Component.literal("\u00a7a${label.replaceFirstChar { it.uppercase() }} downloaded to clipboard!"))
-                                source.sendSystemMessage(Component.literal("\u00a77Use \u00a7e//paste\u00a77 to place it."))
+                                val size = clipboard.dimensions
+                                LOGGER.info(
+                                    "Loaded {} {} ({}x{}x{}) into the WorldEdit clipboard of {}",
+                                    label, downloadId, size.x(), size.y(), size.z(), player.scoreboardName,
+                                )
+                                if (isDialog && !isQuickShare) {
+                                    val dialogDef = DialogBuilders.downloadSuccessDialog(downloadId, "schem", mod.baseUrl)
+                                    FabricDialogRenderer.showDialog(player, dialogDef)
+                                } else {
+                                    source.sendSystemMessage(Component.literal("\u00a7a${label.replaceFirstChar { it.uppercase() }} downloaded to clipboard!"))
+                                    source.sendSystemMessage(Component.literal("\u00a77Use \u00a7e//paste\u00a77 to place it."))
+                                }
                             }
-                        } else {
-                            source.sendSystemMessage(Component.literal("\u00a7cFailed to parse schematic data."))
+                        } catch (t: Throwable) {
+                            reportFailure(mod, source, "download", t)
                         }
                     }
                 } else {
@@ -463,13 +471,15 @@ object SchematioCommand {
                             -1 -> "Connection failed."
                             else -> "Error (code: $statusCode)"
                         }
+                        LOGGER.warn(
+                            "Download of {} {} for {} failed with HTTP {}: {}",
+                            label, downloadId, player.scoreboardName, statusCode, errorBody?.take(500),
+                        )
                         source.sendSystemMessage(Component.literal("\u00a7c$errorMsg"))
                     }
                 }
-            } catch (e: Exception) {
-                mod.platformAdapter.runOnMainThread {
-                    source.sendSystemMessage(Component.literal("\u00a7cError: ${e.message}"))
-                }
+            } catch (t: Throwable) {
+                reportFailure(mod, source, "download", t)
             }
         }
 
@@ -498,11 +508,7 @@ object SchematioCommand {
             return 0
         }
 
-        val clipboard = FabricWorldEditUtil.getClipboard(player)
-        if (clipboard == null) {
-            source.sendSystemMessage(Component.literal("\u00a7cNo clipboard found. Use \u00a7e//copy\u00a7c first."))
-            return 0
-        }
+        val clipboard = requireClipboard(source, player) ?: return 0
 
         val schematicBytes = FabricWorldEditUtil.clipboardToByteArray(clipboard)
         if (schematicBytes == null) {
@@ -525,6 +531,7 @@ object SchematioCommand {
 
                 mod.platformAdapter.runOnMainThread {
                     if (response == null) {
+                        LOGGER.warn("Upload for {} got no response from the schemat.io API", player.scoreboardName)
                         source.sendSystemMessage(Component.literal("\u00a7cCould not connect to schemat.io API."))
                         return@runOnMainThread
                     }
@@ -539,16 +546,16 @@ object SchematioCommand {
                             source.sendSystemMessage(Component.literal("\u00a77Link: \u00a7f$link"))
                         } else {
                             val error = json.get("message")?.asString ?: json.get("error")?.asString ?: "Unknown error"
+                            LOGGER.warn("Upload for {} failed: {}", player.scoreboardName, responseString.take(500))
                             source.sendSystemMessage(Component.literal("\u00a7cUpload failed: $error"))
                         }
                     } catch (e: Exception) {
+                        LOGGER.warn("Could not read the upload response", e)
                         source.sendSystemMessage(Component.literal("\u00a7cError processing server response."))
                     }
                 }
-            } catch (e: Exception) {
-                mod.platformAdapter.runOnMainThread {
-                    source.sendSystemMessage(Component.literal("\u00a7cError: ${e.message}"))
-                }
+            } catch (t: Throwable) {
+                reportFailure(mod, source, "upload", t)
             }
         }
 
@@ -576,11 +583,7 @@ object SchematioCommand {
             return 0
         }
 
-        val clipboard = FabricWorldEditUtil.getClipboard(player)
-        if (clipboard == null) {
-            source.sendSystemMessage(Component.literal("\u00a7cNo clipboard found. Use \u00a7e//copy\u00a7c first."))
-            return 0
-        }
+        val clipboard = requireClipboard(source, player) ?: return 0
 
         val schematicBytes = FabricWorldEditUtil.clipboardToByteArray(clipboard)
         if (schematicBytes == null) {
@@ -617,11 +620,7 @@ object SchematioCommand {
             return 0
         }
 
-        val clipboard = FabricWorldEditUtil.getClipboard(player)
-        if (clipboard == null) {
-            source.sendSystemMessage(Component.literal("\u00a7cNo clipboard found. Use \u00a7e//copy\u00a7c first."))
-            return 0
-        }
+        val clipboard = requireClipboard(source, player) ?: return 0
 
         val schematicBytes = FabricWorldEditUtil.clipboardToByteArray(clipboard)
         if (schematicBytes == null) {
@@ -687,6 +686,7 @@ object SchematioCommand {
                                 source.sendSystemMessage(Component.literal("\u00a7eShare created but no URL returned."))
                             }
                         } catch (e: Exception) {
+                            LOGGER.warn("Could not read the quick share response", e)
                             source.sendSystemMessage(Component.literal("\u00a7cError parsing response: ${e.message}"))
                         }
                     } else {
@@ -697,27 +697,61 @@ object SchematioCommand {
                             -1 -> "Connection failed"
                             else -> "Error (code: $statusCode)"
                         }
+                        LOGGER.warn(
+                            "Quick share for {} failed with HTTP {}: {}",
+                            player.scoreboardName, statusCode, responseBody?.take(500),
+                        )
                         source.sendSystemMessage(Component.literal("\u00a7c$errorMsg"))
                     }
                 }
-            } catch (e: Exception) {
-                mod.platformAdapter.runOnMainThread {
-                    source.sendSystemMessage(Component.literal("\u00a7cError: ${e.message}"))
-                }
+            } catch (t: Throwable) {
+                reportFailure(mod, source, "quick share", t)
             }
         }
 
         return 1
     }
 
+    /**
+     * The player's WorldEdit clipboard, or null after telling them why there is none:
+     * an unreachable session (already logged by [FabricWorldEditUtil]) is reported
+     * separately from a plain empty clipboard.
+     */
+    private fun requireClipboard(source: CommandSourceStack, player: net.minecraft.server.level.ServerPlayer): com.sk89q.worldedit.extent.clipboard.Clipboard? {
+        if (FabricWorldEditUtil.getLocalSession(player) == null) {
+            source.sendSystemMessage(Component.literal("\u00a7cCould not reach your WorldEdit session. The error is in the server log."))
+            return null
+        }
+        val clipboard = FabricWorldEditUtil.getClipboard(player)
+        if (clipboard == null) {
+            source.sendSystemMessage(Component.literal("\u00a7cNo clipboard found. Use \u00a7e//copy\u00a7c first."))
+        }
+        return clipboard
+    }
+
+    /** Log an unexpected [action] failure to the console and tell the player it happened. */
+    private fun reportFailure(mod: SchematioConnectorMod, source: CommandSourceStack, action: String, t: Throwable) {
+        LOGGER.error("Schematio {} failed for {}", action, source.textName, t)
+        mod.platformAdapter.runOnMainThread {
+            source.sendSystemMessage(Component.literal("\u00a7cThe $action failed: ${t.message ?: t.javaClass.simpleName}. The error is in the server log."))
+        }
+    }
+
     private fun parseErrorMessage(errorBody: String?): String? {
         if (errorBody.isNullOrBlank()) return null
         return try {
             val json = JsonParser.parseString(errorBody).asJsonObject
-            json.get("message")?.asString ?: json.get("error")?.asString
+            json.get("message")?.asString ?: json.get("error")?.asString ?: firstValidationError(json)
         } catch (_: Exception) {
             null
         }
+    }
+
+    /** First message of a Laravel validation body: `{"errors":{"id":["..."]}}`. */
+    private fun firstValidationError(json: JsonObject): String? {
+        val errors = json.getAsJsonObject("errors") ?: return null
+        val first = errors.entrySet().firstOrNull()?.value ?: return null
+        return if (first.isJsonArray) first.asJsonArray.firstOrNull()?.asString else first.asString
     }
 
     // ===== Set Token =====
@@ -832,10 +866,8 @@ object SchematioCommand {
                         source.sendSystemMessage(Component.literal("\u00a7c$errorMsg"))
                     }
                 }
-            } catch (e: Exception) {
-                mod.platformAdapter.runOnMainThread {
-                    source.sendSystemMessage(Component.literal("\u00a7cError: ${e.message}"))
-                }
+            } catch (t: Throwable) {
+                reportFailure(mod, source, "password change", t)
             }
         }
 
