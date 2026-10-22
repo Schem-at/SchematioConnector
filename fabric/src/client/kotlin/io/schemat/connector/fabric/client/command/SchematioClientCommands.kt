@@ -62,7 +62,7 @@ object SchematioClientCommands {
 
     /** True when the connected server's plugin should own this action (forward instead of handling locally). */
     private fun forwards(action: ClientAction): Boolean =
-        DispatchTable.resolve(action, ServerSession.pluginPresent) == DispatchMode.SERVER_COMMAND
+        DispatchTable.resolve(action, ServerSession.pluginPresent, ServerSession.platform) == DispatchMode.SERVER_COMMAND
 
     /**
      * Sends a `/`-less command line straight to the server as an unsigned command packet.
