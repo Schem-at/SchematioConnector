@@ -1,5 +1,8 @@
 package io.schemat.connector.core.routing
 
+import io.schemat.connector.core.validation.InputValidator
+import io.schemat.connector.core.validation.ValidationResult
+
 sealed interface ParsedDownload {
     data class Ok(val id: String, val password: String?, val filter: DestinationFilter?) : ParsedDownload
 
@@ -9,6 +12,7 @@ sealed interface ParsedDownload {
 /** Parses the argument string of `/schematio download` and `/schematio quickshareget`. */
 object DownloadArgs {
 
+    private val TOOL_CONFLICT = ParsedDownload.Error("Choose one of --we, --lm or --file.")
     private val SCHEMATIC_URL = Regex("^https?://[^/]+/schematics/([^/?#]+)")
 
     fun parse(raw: String, quickShare: Boolean): ParsedDownload {
@@ -50,13 +54,14 @@ object DownloadArgs {
             ?: return ParsedDownload.Error(
                 if (quickShare) "Give a quick share code." else "Give a schematic ID or schemat.io link."
             )
-        if (!quickShare) {
+        if (quickShare) {
+            val v = InputValidator.validateQuickShareCode(id)
+            if (v is ValidationResult.Invalid) return ParsedDownload.Error(v.message)
+        } else {
             SCHEMATIC_URL.find(id)?.let { id = it.groupValues[1] }
         }
         val password = if (quickShare) positional.getOrNull(1) else null
         val filter = if (side == null && tool == null) null else DestinationFilter(side, tool)
         return ParsedDownload.Ok(id, password, filter)
     }
-
-    private val TOOL_CONFLICT = ParsedDownload.Error("Choose one of --we, --lm or --file.")
 }

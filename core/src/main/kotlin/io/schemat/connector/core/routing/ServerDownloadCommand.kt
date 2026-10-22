@@ -14,9 +14,13 @@ object ServerDownloadCommand {
         if (kind == DownloadKind.SCHEMATIC) return "schematio download $id"
 
         if (platform == IpcPlatform.FABRIC_SERVER) {
-            val code = (InputValidator.validateQuickShareCode(id) as? ValidationResult.Valid)?.value ?: id
-            val prefixed = if (code.startsWith("qs_")) code else "qs_$code"
-            return "schematio download $prefixed"
+            val result = InputValidator.validateQuickShareCode(id)
+            require(result is ValidationResult.Valid) { "Invalid quick share code: $id" }
+            val code = result.value
+            return buildString {
+                append("schematio download ").append(if (code.startsWith("qs_")) code else "qs_$code")
+                if (!password.isNullOrEmpty()) append(' ').append(password)
+            }
         }
         return buildString {
             append("schematio quickshareget ").append(id)

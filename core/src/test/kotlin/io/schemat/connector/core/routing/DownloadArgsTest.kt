@@ -71,4 +71,16 @@ class DownloadArgsTest {
         val r = DownloadArgs.parse("44srfK --local", false) as ParsedDownload.Ok
         assertTrue(r.filter == DestinationFilter(side = Side.LOCAL))
     }
+
+    @Test
+    fun `invalid quick share code is rejected`() {
+        val r = DownloadArgs.parse("bad!", true)
+        assertTrue(r is ParsedDownload.Error)
+    }
+
+    @Test
+    fun `schematic url tolerates trailing slash and query`() {
+        assertEquals("abc", (DownloadArgs.parse("https://schemat.io/schematics/abc/", false) as ParsedDownload.Ok).id)
+        assertEquals("abc", (DownloadArgs.parse("https://schemat.io/schematics/abc?x=1", false) as ParsedDownload.Ok).id)
+    }
 }
