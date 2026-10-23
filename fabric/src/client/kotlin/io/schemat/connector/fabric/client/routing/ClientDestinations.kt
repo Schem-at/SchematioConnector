@@ -12,9 +12,17 @@ import net.minecraft.client.Minecraft
 /** Per-world download destination profiles and live availability. Client thread only. */
 object ClientDestinations {
 
-    private const val PREFIX = "download_destinations."
-
     private val auth get() = SchematioClientMod.instance.services.authManager
+
+    /**
+     * Profiles are read every frame by the panels, so they come from an in-memory cache, not
+     * disk. There is no client config-reload hook; config.properties is only written through
+     * [save] while the game runs, so the cache cannot go stale.
+     */
+    private val store = DestinationProfileStore(
+        read = { name -> auth.getConfigString(name) },
+        write = { name, value -> auth.setConfigString(name, value) },
+    )
 
     /**
      * LAN-guest and Realms addresses may vary between sessions, so their profile may not persist.
@@ -27,17 +35,12 @@ object ClientDestinations {
     }
 
     /** The stored profile, else the stored default, else [Destination.DEFAULT_ORDER]. */
-    fun order(key: String = profileKey()): List<Destination> =
-        DestinationProfiles.decode(auth.getConfigString(PREFIX + key))
-            ?: DestinationProfiles.decode(auth.getConfigString(PREFIX + DestinationProfiles.DEFAULT_KEY))
-            ?: Destination.DEFAULT_ORDER
+    fun order(key: String = profileKey()): List<Destination> = store.order(key)
 
-    fun hasOwnProfile(key: String): Boolean = DestinationProfiles.decode(auth.getConfigString(PREFIX + key)) != null
+    fun hasOwnProfile(key: String): Boolean = store.hasOwnProfile(key)
 
     /** Stores [order] for [key]; null resets the profile. */
-    fun save(key: String, order: List<Destination>?) {
-        auth.setConfigString(PREFIX + key, order?.let { DestinationProfiles.encode(it) })
-    }
+    fun save(key: String, order: List<Destination>?) = store.save(key, order)
 
     fun unavailable(): Map<Destination, String> = ClientAvailability.unavailable(
         AvailabilityInput(
