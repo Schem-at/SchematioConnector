@@ -62,9 +62,10 @@ class PluginIpcServiceRegreetTest {
         every { player.listeningPluginChannels } returns setOf(IpcProtocol.CHANNEL)
     }
 
-    private fun hello(nonce: ByteArray) = IpcCodec.encodeHelloClient(
-        HelloClient(IpcProtocol.VERSION, "1.6.0", Capabilities.WANTS_COMMAND_OWNERSHIP, nonce),
-    )
+    private fun hello(
+        nonce: ByteArray,
+        flags: Int = Capabilities.WANTS_COMMAND_OWNERSHIP or Capabilities.ROUTES_DOWNLOADS,
+    ) = IpcCodec.encodeHelloClient(HelloClient(IpcProtocol.VERSION, "1.6.0", flags, nonce))
 
     @Test
     fun `regreetAll clears attestation and a second HELLO_CLIENT re-attests the new nonce`() {
@@ -81,6 +82,16 @@ class PluginIpcServiceRegreetTest {
         service.onPluginMessageReceived(IpcProtocol.CHANNEL, player, hello(n2))
         coVerify(exactly = 1) { attestClient.requestAttestation(bytesToHexLower(n2), IpcPlatform.PAPER_PLUGIN) }
         assertTrue(service.canOpenUi(player), "re-attested on the same connection")
+    }
+
+    @Test
+    fun `regreetAll leaves a 1_5 client that cannot re-hello attested`() {
+        val service = PluginIpcService(plugin)
+        service.onPluginMessageReceived(
+            IpcProtocol.CHANNEL, player, hello(ByteArray(16) { 1 }, Capabilities.WANTS_COMMAND_OWNERSHIP),
+        )
+        service.regreetAll()
+        assertTrue(service.canOpenUi(player), "a released client is not re-greeted, so it keeps its attestation")
     }
 
     @Test

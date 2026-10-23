@@ -100,21 +100,26 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
         )
 
     /**
-     * Forgets every greeting and re-greets all online players so a reload or token change
-     * re-advertises per-player capabilities. A re-greet restarts the handshake: the client
-     * rotates its nonce and sends a fresh HELLO_CLIENT, so we also drop each player's
-     * attestation, client flags and recorded hello. That way nothing is handed off (or
-     * loaded) for a client that is re-verifying, the next HELLO_CLIENT is accepted and
+     * Re-greets online players whose client routes downloads (ROUTES_DOWNLOADS), so a reload
+     * or token change re-advertises per-player capabilities. A re-greet restarts the
+     * handshake: the client rotates its nonce and sends a fresh HELLO_CLIENT, so we also drop
+     * that player's attestation, client flags and recorded hello. That way nothing is handed
+     * off (or loaded) for a client that is re-verifying, the next HELLO_CLIENT is accepted and
      * re-attested, and an in-flight attestation for the old hello is discarded by the
-     * `clientHellos[...] !== hello` check. Clients that never re-hello (1.5.x) stay on the
-     * chat flow until they reconnect. Must run on the main thread (Bukkit command handlers do).
+     * `clientHellos[...] !== hello` check. Released 1.5.x clients would drop to UNVERIFIED on
+     * a second hello and never re-attest, so they are left untouched. Must run on the main
+     * thread (Bukkit command handlers do).
      */
     fun regreetAll() {
-        greeted.clear()
-        attested.clear()
-        clientFlags.clear()
-        clientHellos.clear()
-        plugin.server.onlinePlayers.forEach { greet(it) }
+        for (player in plugin.server.onlinePlayers) {
+            val id = player.uniqueId
+            if (!Capabilities.has(clientFlags[id] ?: 0, Capabilities.ROUTES_DOWNLOADS)) continue
+            greeted.remove(id)
+            attested.remove(id)
+            clientFlags.remove(id)
+            clientHellos.remove(id)
+            greet(player)
+        }
     }
 
     fun register() {
