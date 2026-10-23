@@ -200,6 +200,31 @@ class ClientAuthManager(private val configDir: Path) {
         }
     }
 
+    /** Read a string value from config.properties, or null when absent or unreadable. */
+    fun getConfigString(name: String): String? {
+        return try {
+            val configFile = configDir.resolve("config.properties").toFile()
+            if (!configFile.exists()) return null
+            val props = Properties()
+            configFile.inputStream().use { props.load(it) }
+            props.getProperty(name)
+        } catch (e: Exception) {
+            LOGGER.warn("Failed to read config value $name: ${e.message}")
+            null
+        }
+    }
+
+    /** Persist a string value to config.properties; a null [value] removes the key. */
+    fun setConfigString(name: String, value: String?) {
+        try {
+            updateConfig { props ->
+                if (value == null) props.remove(name) else props.setProperty(name, value)
+            }
+        } catch (e: Exception) {
+            LOGGER.warn("Failed to persist config value $name: ${e.message}")
+        }
+    }
+
     /** Load config.properties (if present), apply [mutate], and store it back. */
     private fun updateConfig(mutate: (Properties) -> Unit) {
         val configFile = configDir.resolve("config.properties").toFile()
