@@ -3,27 +3,24 @@ package io.schemat.connector.fabric.client.ui.panels
 import com.mojang.blaze3d.opengl.GlTexture
 import imgui.ImGui
 import imgui.flag.ImGuiWindowFlags
-import io.schemat.connector.core.ipc.LoadRefType
-import io.schemat.connector.core.ipc.StatusState
 import io.schemat.connector.core.modapi.ApiResult
+import io.schemat.connector.core.routing.Destination
+import io.schemat.connector.core.routing.DownloadKind
 import io.schemat.connector.core.modapi.dto.SchematicDetail
 import io.schemat.connector.core.modapi.dto.SchematicSummary
 import io.schemat.connector.fabric.client.SchematioClientMod
 import io.schemat.connector.fabric.client.ui.framework.Panel
 import io.schemat.connector.fabric.client.integration.Bridges
-import io.schemat.connector.fabric.client.ipc.ServerIpc
+import io.schemat.connector.fabric.client.routing.ClientDestinations
+import io.schemat.connector.fabric.client.routing.DownloadRouter
 import io.schemat.connector.fabric.client.services.ClientServices
 import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
-import io.schemat.connector.fabric.client.ui.theme.Icons
 import dev.harrison.panellib.widgets.ConfirmModal
 import io.schemat.connector.fabric.client.ui.theme.ImGuiColors
 import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
-import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.Minecraft
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -53,7 +50,6 @@ object SchematicDetailPanel : Panel {
 
     override val id = "schematic-detail"
 
-    private const val SUBFOLDER = "schemat.io"
     private const val OFFLINE_TOOLTIP = "Not available while offline"
 
     // ---- services ----
@@ -68,15 +64,13 @@ object SchematicDetailPanel : Panel {
     private val fetchBusy = AtomicBoolean(false)
     private val actionBusy = AtomicBoolean(false)
     private val transferEpoch = io.schemat.connector.core.TransferEpoch()
-    private var actionJob: kotlinx.coroutines.Job? = null
     private var fetchJob: kotlinx.coroutines.Job? = null
 
     override fun onClose() { cancelTransfer(); fetchJob?.cancel(); fetchBusy.set(false) }
 
     private fun cancelTransfer() {
         transferEpoch.cancel()
-        actionJob?.cancel()
-        actionJob = null
+        pendingServerLoad = false
         actionBusy.set(false)
     }
 
@@ -84,8 +78,11 @@ object SchematicDetailPanel : Panel {
     private var statusText: String? = null
     private var statusKind: Widgets.StatusKind = Widgets.StatusKind.INFO
 
-    /** requestId of an in-flight server clipboard load; null when idle. */
-    private var pendingServerLoad: Int? = null
+    /** True while a server-side load started from a button has not reported back. */
+    private var pendingServerLoad = false
+
+    /** Ticket of the in-flight server-side load, so only its own callback clears [pendingServerLoad]. */
+    private var serverLoadTicket = 0L
 
     /**
      * Set the target schematic and open the panel. If the panel is already open for
@@ -103,7 +100,7 @@ object SchematicDetailPanel : Panel {
             fetchBusy.set(false)
             actionBusy.set(false)
             statusText = null
-            pendingServerLoad = null
+            pendingServerLoad = false
         }
         io.schemat.connector.fabric.client.ui.framework.PanelManager.open(SchematicDetailPanel)
         loadDetailIfNeeded()
@@ -340,35 +337,18 @@ object SchematicDetailPanel : Panel {
             Widgets.statusText(txt, statusKind)
         }
 
-        // Row 1: download / export — guard inside each handler with d?.let; buttons are
-        // already behind actionsDisabled (which includes !loaded) so d is non-null in practice.
-        if (Bridges.litematica.isAvailable) {
-            if (actionsDisabled) ImGui.beginDisabled()
-            if (Widgets.button("Load into Litematica")) { d?.let { loadIntoLitematica(it) } }
-            if (actionsDisabled) ImGui.endDisabled()
+        // Row 1: one load button per available destination, in the player's priority order.
+        // LOCAL_FILE is always available, so the row is never empty. The first button is the accent.
+        val unavailable = ClientDestinations.unavailable()
+        var first = true
+        for (dest in ClientDestinations.order()) {
+            if (dest != Destination.LOCAL_FILE && dest in unavailable) continue
+            val disabled = actionsDisabled || (dest == Destination.SERVER_WORLDEDIT && pendingServerLoad)
+            if (disabled) ImGui.beginDisabled()
+            if (Widgets.button(buttonLabel(dest), accent = first)) { d?.let { startLoad(dest, it) } }
+            if (disabled) ImGui.endDisabled()
             ImGui.sameLine()
-        }
-
-        if (actionsDisabled) ImGui.beginDisabled()
-        if (Widgets.button("Save to disk")) { d?.let { saveToDisk(it) } }
-        if (actionsDisabled) ImGui.endDisabled()
-        ImGui.sameLine()
-
-        if (Bridges.worldEdit.isAvailable) {
-            if (actionsDisabled) ImGui.beginDisabled()
-            if (Widgets.button("To WorldEdit clipboard")) { d?.let { toWorldEditClipboard(it) } }
-            if (actionsDisabled) ImGui.endDisabled()
-            ImGui.sameLine()
-        }
-
-        // Server-side WorldEdit clipboard, reference-pull (sub-project B): shown ONLY
-        // when the session is VERIFIED and the server advertised LOAD_CLIPBOARD.
-        if (ServerIpc.canLoadOnServer()) {
-            val serverDisabled = actionsDisabled || pendingServerLoad != null
-            if (serverDisabled) ImGui.beginDisabled()
-            if (Widgets.button("${Icons.DOWNLOAD}  Load on server")) { d?.let { loadOnServer(it) } }
-            if (serverDisabled) ImGui.endDisabled()
-            ImGui.sameLine()
+            first = false
         }
 
         // Quick share — non-destructive, independent of actionBusy
@@ -378,7 +358,9 @@ object SchematicDetailPanel : Panel {
         if (qsDisabled) ImGui.endDisabled()
 
         if (actionBusy.get()) {
-            if (Widgets.button("Cancel transfer")) { cancelTransfer(); statusText = "Cancelled. Your editor is unchanged." }
+            // The router owns the transfer and cannot be cancelled from here: this only stops
+            // waiting (late replies are ignored); a started local load may still complete.
+            if (Widgets.button("Cancel transfer")) { cancelTransfer(); statusText = "Stopped waiting for the transfer. It may still finish in the background." }
         }
 
         // Row 2: author-only manage actions
@@ -423,120 +405,56 @@ object SchematicDetailPanel : Panel {
 
     // ---- action implementations ----
 
-    private fun downloadDirectory(): Path =
-        (Bridges.litematica.schematicsDirectory()
-            ?: FabricLoader.getInstance().gameDir.resolve("schematics"))
-            .resolve(SUBFOLDER)
-
-    private fun fileBaseName(d: SchematicDetail): String {
-        val base = d.slug ?: d.shortId ?: d.id
-        return base.replace(Regex("[^a-zA-Z0-9._\\- ]"), "_").ifBlank { "schematic" }
-    }
-
-    private fun downloadToFile(d: SchematicDetail, format: String, extension: String, onSaved: (Path, () -> String?) -> Unit) {
-        val ticket = transferEpoch.begin()
-        val check: () -> String? = { if (transferEpoch.isCurrent(ticket)) null else "Request cancelled." }
-        actionBusy.set(true)
-        actionJob = services.call(
-            block = {
-                when (val result = services.api.download(d.id, format)) {
-                    is ApiResult.Success -> ApiResult.Success(
-                        io.schemat.connector.fabric.client.integration.SchematicFiles.save(downloadDirectory(), fileBaseName(d), extension, result.value)
-                    )
-                    is ApiResult.Failure -> result
-                }
-            },
-        ) { result ->
-            if (!transferEpoch.isCurrent(ticket)) return@call
-            actionBusy.set(false)
-            when (result) {
-                is ApiResult.Success -> onSaved(result.value, check)
-                is ApiResult.Failure -> { statusText = result.error.toUserMessage(); statusKind = Widgets.StatusKind.DANGER }
-            }
-        }
-    }
-
-    private fun loadIntoLitematica(d: SchematicDetail) {
-        val destinationCheck = Bridges.litematica.captureImportCheck()
-        downloadToFile(d, "litematic", "litematic") { file, requestCheck ->
-            actionBusy.set(true)
-            Bridges.litematica.loadSchematic(file.toFile(), d.name, { requestCheck() ?: destinationCheck() }) { ok, error ->
-                if (requestCheck() != null) return@loadSchematic
-                actionBusy.set(false)
-                statusText = if (ok) "Loaded \"${d.name}\" into Litematica" else error ?: "Failed to load schematic into Litematica"
-                statusKind = if (ok) Widgets.StatusKind.SUCCESS else Widgets.StatusKind.DANGER
-            }
-        }
-    }
-
-    private fun saveToDisk(d: SchematicDetail) {
-        downloadToFile(d, "litematic", "litematic") { file, _ ->
-            statusText = "Saved to $file"
-            statusKind = Widgets.StatusKind.SUCCESS
-        }
-    }
-
-    private fun toWorldEditClipboard(d: SchematicDetail) {
-        val ticket = transferEpoch.begin()
-        actionBusy.set(true)
-        val requestCheck: () -> String? = { if (transferEpoch.isCurrent(ticket)) null else "Request cancelled." }
-        Bridges.worldEdit.captureImportCheck { destinationCheck, error ->
-            if (!transferEpoch.isCurrent(ticket)) return@captureImportCheck
-            if (destinationCheck == null) {
-                actionBusy.set(false); statusText = error; statusKind = Widgets.StatusKind.DANGER
-                return@captureImportCheck
-            }
-            actionJob = services.call(block = { services.api.download(d.id, "schem") }) { result ->
-                if (!transferEpoch.isCurrent(ticket)) return@call
-                when (result) {
-                    is ApiResult.Success -> Bridges.worldEdit.bytesToClipboard(result.value, "schem", { requestCheck() ?: destinationCheck() }) { ok, failure ->
-                        if (!transferEpoch.isCurrent(ticket)) return@bytesToClipboard
-                        actionBusy.set(false)
-                        statusText = if (ok) "Copied \"${d.name}\" to WorldEdit clipboard" else failure
-                        statusKind = if (ok) Widgets.StatusKind.SUCCESS else Widgets.StatusKind.DANGER
-                    }
-                    is ApiResult.Failure -> { actionBusy.set(false); statusText = result.error.toUserMessage(); statusKind = Widgets.StatusKind.DANGER }
-                }
-            }
-        }
+    private fun buttonLabel(dest: Destination): String = when (dest) {
+        Destination.SERVER_WORLDEDIT -> "Load into WorldEdit (server)"
+        Destination.LOCAL_WORLDEDIT -> "Load into WorldEdit"
+        Destination.LOCAL_LITEMATICA -> "Load into Litematica"
+        Destination.LOCAL_FILE -> "Save to disk"
     }
 
     /**
-     * Reference-pull server clipboard load: sends only the schematic id over IPC;
-     * the SERVER pulls the bytes from the backend itself. STATUS updates stream
-     * into [statusText] (toast-style, spec §Client); a terminal status (or the
-     * tracker's 30 s synthetic ERROR) re-enables the button.
+     * Loads [d] into exactly [dest] (the player picked it, so there is no fallback).
+     * The panel epoch is captured here; replies from a superseded or cancelled transfer are
+     * ignored. [DownloadRouter] invokes both callbacks on the client thread.
      */
-    private fun loadOnServer(d: SchematicDetail) {
-        statusText = "Requesting server-side load…"
-        statusKind = Widgets.StatusKind.INFO
-        val requestId = ServerIpc.sendLoadRequest(LoadRefType.SCHEMATIC, d.id) { state, detail ->
-            if (state.isTerminal) pendingServerLoad = null
-            val (text, kind) = serverLoadMessage(state, detail, d.name)
-            statusText = text
-            statusKind = kind
-        }
-        if (requestId != null) {
-            pendingServerLoad = requestId // non-null disables the button until a terminal status/timeout
+    private fun startLoad(dest: Destination, d: SchematicDetail) {
+        val ticket = transferEpoch.begin()
+        val isServer = dest == Destination.SERVER_WORLDEDIT
+        if (isServer) {
+            pendingServerLoad = true
+            serverLoadTicket = ticket
         } else {
-            statusText = "No verified Schematio server connection"
-            statusKind = Widgets.StatusKind.WARNING
+            actionBusy.set(true)
         }
+        statusText = "Loading \"${d.name}\"…"
+        statusKind = Widgets.StatusKind.INFO
+        DownloadRouter.load(
+            dest, DownloadKind.SCHEMATIC, d.id, null, d.name,
+            reply = { text, isError ->
+                finish(ticket, isServer)
+                if (transferEpoch.isCurrent(ticket)) {
+                    statusText = text
+                    statusKind = if (isError) Widgets.StatusKind.DANGER else Widgets.StatusKind.SUCCESS
+                }
+            },
+            onFailure = { detail ->
+                finish(ticket, isServer)
+                if (transferEpoch.isCurrent(ticket)) {
+                    statusText = detail
+                    statusKind = Widgets.StatusKind.DANGER
+                }
+            },
+        )
     }
 
-    /** detail arrives pre-sanitized (ClipboardLoadTracker strips '§' codes). */
-    private fun serverLoadMessage(state: StatusState, detail: String, name: String): Pair<String, Widgets.StatusKind> =
-        when (state) {
-            StatusState.RESOLVING -> "Server is resolving \"$name\"…" to Widgets.StatusKind.INFO
-            StatusState.DOWNLOADING -> "Server is downloading \"$name\"…" to Widgets.StatusKind.INFO
-            StatusState.OK -> "Loaded \"$name\" into your server-side WorldEdit clipboard — //paste to place it" to Widgets.StatusKind.SUCCESS
-            StatusState.DENIED -> detail.ifBlank { "The server denied the request" } to Widgets.StatusKind.DANGER
-            StatusState.NOT_FOUND -> "The server's backend could not find this schematic" to Widgets.StatusKind.DANGER
-            StatusState.TOO_LARGE -> "Too large for a server clipboard load (8 MiB limit)" to Widgets.StatusKind.DANGER
-            StatusState.RATE_LIMITED -> detail.ifBlank { "Rate limited — try again shortly" } to Widgets.StatusKind.WARNING
-            StatusState.UNAVAILABLE -> detail.ifBlank { "The server can't load schematics right now" } to Widgets.StatusKind.DANGER
-            StatusState.ERROR -> detail.ifBlank { "Unexpected error during the server-side load" } to Widgets.StatusKind.DANGER
+    /** Re-enables the buttons once the transfer behind [ticket] has reported, even if it was superseded. */
+    private fun finish(ticket: Long, isServer: Boolean) {
+        if (isServer) {
+            if (ticket == serverLoadTicket) pendingServerLoad = false
+        } else if (transferEpoch.isCurrent(ticket)) {
+            actionBusy.set(false)
         }
+    }
 
     private fun openQuickShare(d: SchematicDetail) {
         val format = d.format
