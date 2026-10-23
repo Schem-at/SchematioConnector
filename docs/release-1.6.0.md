@@ -56,8 +56,11 @@ that is available. When it skips the first choice, it says why in chat, for exam
 - **Logs.** Connector's own log lines show only the first characters of a quick-share
   code. The server's command log still records the full command a player typed.
 
-Loading a member's private schematic through a community server also needs a
-schemat.io backend change, which is tracked separately.
+- **Quick-share passwords** that contain spaces now work with `quickshareget` on Paper.
+
+On schemat.io, a community server can now load a member's private schematic when that
+member is in the community. An unknown ID now gets the same 404 as a private one, so the
+answer no longer reveals whether a private schematic exists.
 
 ## Installation
 
@@ -68,7 +71,7 @@ from the client, the server and the client both need 1.6.0.
 
 ## Validation
 
-- **Unit tests:** core 681 tests, Paper 41 and Fabric 68 (on 26.3 and on 1.21.8). They cover:
+- **Unit tests:** core 683 tests, Paper 49 and Fabric 68 (on 26.3 and on 1.21.8). They cover:
   - destination resolution and fallback;
   - flags;
   - per-world profiles;
