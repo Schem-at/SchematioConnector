@@ -343,7 +343,9 @@ object SchematicDetailPanel : Panel {
         var first = true
         for (dest in ClientDestinations.order()) {
             if (dest != Destination.LOCAL_FILE && dest in unavailable) continue
-            val disabled = actionsDisabled || (dest == Destination.SERVER_WORLDEDIT && pendingServerLoad)
+            // A pending server load blocks every load button: starting another would supersede
+            // its ticket and drop the server's eventual failure unseen.
+            val disabled = actionsDisabled || pendingServerLoad
             if (disabled) ImGui.beginDisabled()
             if (Widgets.button(buttonLabel(dest), accent = first)) { d?.let { startLoad(dest, it) } }
             if (disabled) ImGui.endDisabled()

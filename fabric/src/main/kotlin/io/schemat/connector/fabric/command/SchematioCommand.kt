@@ -468,7 +468,11 @@ object SchematioCommand {
                             403 -> parseErrorMessage(errorBody) ?: "Access denied"
                             404 -> io.schemat.connector.core.ipc.ServerReadiness.notFoundMessage(null)
                             410 -> parseErrorMessage(errorBody) ?: "This download has expired or been revoked."
-                            422 -> parseErrorMessage(errorBody) ?: "Invalid request."
+                            422 -> if (io.schemat.connector.core.ipc.ServerReadiness.isMissingSchematic(422, errorBody)) {
+                                io.schemat.connector.core.ipc.ServerReadiness.notFoundMessage(null)
+                            } else {
+                                parseErrorMessage(errorBody) ?: "Invalid request."
+                            }
                             429 -> parseErrorMessage(errorBody) ?: "Rate limited. Please try again later."
                             -1 -> "Connection failed."
                             else -> "Error (code: $statusCode)"

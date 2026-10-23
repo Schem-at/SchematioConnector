@@ -11,6 +11,15 @@ object ServerReadiness {
         hasPermission: Boolean,
     ): Boolean = worldEdit && tokenConfigured && downloadEnabled && hasPermission
 
+    private val MISSING_ID = Regex("\"errors\"\\s*:\\s*\\{[^}]*\"id\"\\s*:")
+
+    /**
+     * True when a download failed because the schematic is unknown or hidden. The backend
+     * answers an unknown id with a 422 on the `id` field rather than a 404.
+     */
+    fun isMissingSchematic(status: Int, errorBody: String?): Boolean =
+        status == 404 || (status == 422 && errorBody != null && MISSING_ID.containsMatchIn(errorBody))
+
     /** Player-facing 404 copy shared by both server implementations. */
     fun notFoundMessage(communityName: String?): String {
         val community = if (communityName.isNullOrBlank()) "this server's" else "the $communityName"

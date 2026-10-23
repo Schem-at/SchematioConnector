@@ -339,7 +339,13 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         422 -> {
-                            val msg = parseErrorMessage(errorBody) ?: "Invalid request"
+                            // The backend answers an unknown id with a 422 on `id`, not a 404.
+                            val msg = if (ServerReadiness.isMissingSchematic(422, errorBody)) {
+                                plugin.logger.warning("Schematic not found (422): id=$id player=${player.name}")
+                                ServerReadiness.notFoundMessage(plugin.communitySlug)
+                            } else {
+                                parseErrorMessage(errorBody) ?: "Invalid request"
+                            }
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         429 -> {

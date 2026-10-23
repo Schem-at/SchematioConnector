@@ -1,6 +1,7 @@
 package io.schemat.connector.core.ipc
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -36,5 +37,15 @@ class ServerReadinessTest {
         )
         for (bit in existing) assertEquals(0, Capabilities.SERVER_WORLDEDIT and bit)
         assertEquals(1 shl 5, Capabilities.SERVER_WORLDEDIT)
+    }
+
+    @Test
+    fun `unknown id 422 counts as missing`() {
+        val body = """{"errors":{"id":["The specified resource could not be found."]}}"""
+        assertTrue(ServerReadiness.isMissingSchematic(404, null))
+        assertTrue(ServerReadiness.isMissingSchematic(422, body))
+        assertFalse(ServerReadiness.isMissingSchematic(422, """{"errors":{"format":["Unsupported."]}}"""))
+        assertFalse(ServerReadiness.isMissingSchematic(422, null))
+        assertFalse(ServerReadiness.isMissingSchematic(500, body))
     }
 }
