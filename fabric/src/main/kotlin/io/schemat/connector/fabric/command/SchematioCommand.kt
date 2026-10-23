@@ -402,6 +402,8 @@ object SchematioCommand {
         }
 
         val label = if (isQuickShare) "quick share" else "schematic"
+        // Quick-share codes grant access, so logs only carry a masked prefix.
+        val logId = if (isQuickShare) InputValidator.maskShareCode(downloadId) else downloadId
         source.sendSystemMessage(Component.literal("\u00a77Downloading $label \u00a7f$downloadId\u00a77..."))
 
         mod.platformAdapter.runAsync {
@@ -434,7 +436,7 @@ object SchematioCommand {
                                 val size = clipboard.dimensions
                                 LOGGER.info(
                                     "Loaded {} {} ({}x{}x{}) into the WorldEdit clipboard of {}",
-                                    label, downloadId, size.x(), size.y(), size.z(), player.scoreboardName,
+                                    label, logId, size.x(), size.y(), size.z(), player.scoreboardName,
                                 )
                                 if (isDialog && !isQuickShare) {
                                     val dialogDef = DialogBuilders.downloadSuccessDialog(downloadId, "schem", mod.baseUrl)
@@ -473,7 +475,7 @@ object SchematioCommand {
                         }
                         LOGGER.warn(
                             "Download of {} {} for {} failed with HTTP {}: {}",
-                            label, downloadId, player.scoreboardName, statusCode, errorBody?.take(500),
+                            label, logId, player.scoreboardName, statusCode, errorBody?.take(500),
                         )
                         source.sendSystemMessage(Component.literal("\u00a7c$errorMsg"))
                     }

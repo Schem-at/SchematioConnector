@@ -335,7 +335,7 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         404 -> {
-                            plugin.logger.warning("Quick share not found (404): code=$accessCode player=${player.name}")
+                            plugin.logger.warning("Quick share not found (404): code=${InputValidator.maskShareCode(accessCode)} player=${player.name}")
                             audience.sendMessage(Component.text(ServerReadiness.notFoundMessage(plugin.communitySlug)).color(NamedTextColor.RED))
                         }
                         410 -> {

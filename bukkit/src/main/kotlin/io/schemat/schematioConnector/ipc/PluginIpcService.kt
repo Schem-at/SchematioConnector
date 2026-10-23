@@ -95,7 +95,7 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
             worldEditAvailable,
             plugin.clipboardUploadClient != null,
             tokenConfigured = plugin.httpUtil != null,
-            downloadEnabled = "download" !in plugin.config.getStringList("disabled-commands").map { it.lowercase() },
+            downloadEnabled = "download" !in plugin.config.getStringList("disabled-commands"),
             hasPermission = player.hasPermission("schematio.download"),
         )
 

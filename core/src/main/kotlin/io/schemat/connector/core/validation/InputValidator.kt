@@ -194,6 +194,12 @@ object InputValidator {
     }
 
     /**
+     * Mask a QuickShare access code for logs: the code grants access, so only a short
+     * prefix is kept (e.g. "qs_abc123" -> "qs_a…").
+     */
+    fun maskShareCode(code: String): String = if (code.length <= 4) "…" else code.take(4) + "…"
+
+    /**
      * Validate and extract a QuickShare access code.
      *
      * Accepts:
