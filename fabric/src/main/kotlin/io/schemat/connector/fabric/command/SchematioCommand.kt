@@ -402,6 +402,8 @@ object SchematioCommand {
         }
 
         val label = if (isQuickShare) "quick share" else "schematic"
+        // Quick-share codes grant access, so logs only carry a masked prefix.
+        val logId = if (isQuickShare) InputValidator.maskShareCode(downloadId) else downloadId
         source.sendSystemMessage(Component.literal("\u00a77Downloading $label \u00a7f$downloadId\u00a77..."))
 
         mod.platformAdapter.runAsync {
@@ -434,7 +436,7 @@ object SchematioCommand {
                                 val size = clipboard.dimensions
                                 LOGGER.info(
                                     "Loaded {} {} ({}x{}x{}) into the WorldEdit clipboard of {}",
-                                    label, downloadId, size.x(), size.y(), size.z(), player.scoreboardName,
+                                    label, logId, size.x(), size.y(), size.z(), player.scoreboardName,
                                 )
                                 if (isDialog && !isQuickShare) {
                                     val dialogDef = DialogBuilders.downloadSuccessDialog(downloadId, "schem", mod.baseUrl)
@@ -464,16 +466,20 @@ object SchematioCommand {
                                 }
                             }
                             403 -> parseErrorMessage(errorBody) ?: "Access denied"
-                            404 -> "Not found. Check the ID or code and try again."
+                            404 -> io.schemat.connector.core.ipc.ServerReadiness.notFoundMessage(null)
                             410 -> parseErrorMessage(errorBody) ?: "This download has expired or been revoked."
-                            422 -> parseErrorMessage(errorBody) ?: "Invalid request."
+                            422 -> if (io.schemat.connector.core.ipc.ServerReadiness.isMissingSchematic(422, errorBody)) {
+                                io.schemat.connector.core.ipc.ServerReadiness.notFoundMessage(null)
+                            } else {
+                                parseErrorMessage(errorBody) ?: "Invalid request."
+                            }
                             429 -> parseErrorMessage(errorBody) ?: "Rate limited. Please try again later."
                             -1 -> "Connection failed."
                             else -> "Error (code: $statusCode)"
                         }
                         LOGGER.warn(
                             "Download of {} {} for {} failed with HTTP {}: {}",
-                            label, downloadId, player.scoreboardName, statusCode, errorBody?.take(500),
+                            label, logId, player.scoreboardName, statusCode, errorBody?.take(500),
                         )
                         source.sendSystemMessage(Component.literal("\u00a7c$errorMsg"))
                     }

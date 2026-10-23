@@ -13,6 +13,7 @@ import io.schemat.connector.core.modapi.ApiResult
 import io.schemat.connector.core.validation.InputValidator
 import io.schemat.connector.core.validation.ValidationResult
 import io.schemat.connector.bukkit.adapter.BukkitPlayerStorage
+import io.schemat.connector.core.ipc.ServerReadiness
 import io.schemat.schematioConnector.SchematioConnector
 import io.schemat.schematioConnector.vcs.Checkout
 import io.schemat.schematioConnector.vcs.CheckoutStore
@@ -330,14 +331,21 @@ class DownloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         404 -> {
-                            audience.sendMessage(Component.text("Not found. Check the ID or code and try again.").color(NamedTextColor.RED))
+                            plugin.logger.warning("Schematic not found (404): id=$id player=${player.name}")
+                            audience.sendMessage(Component.text(ServerReadiness.notFoundMessage(plugin.communitySlug)).color(NamedTextColor.RED))
                         }
                         410 -> {
                             val msg = parseErrorMessage(errorBody) ?: "This download has expired or been revoked"
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         422 -> {
-                            val msg = parseErrorMessage(errorBody) ?: "Invalid request"
+                            // The backend answers an unknown id with a 422 on `id`, not a 404.
+                            val msg = if (ServerReadiness.isMissingSchematic(422, errorBody)) {
+                                plugin.logger.warning("Schematic not found (422): id=$id player=${player.name}")
+                                ServerReadiness.notFoundMessage(plugin.communitySlug)
+                            } else {
+                                parseErrorMessage(errorBody) ?: "Invalid request"
+                            }
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         429 -> {

@@ -500,4 +500,10 @@ class InputValidatorTest {
             assertFalse(mapped.isValid)
         }
     }
+
+    @Test
+    fun `share codes are masked for logs`() {
+        assertEquals("qs_a…", InputValidator.maskShareCode("qs_abc123"))
+        assertEquals("…", InputValidator.maskShareCode("abc"))
+    }
 }

@@ -9,6 +9,7 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction
 import io.papermc.paper.registry.data.dialog.body.DialogBody
 import io.papermc.paper.registry.data.dialog.input.DialogInput
 import io.papermc.paper.registry.data.dialog.type.DialogType
+import io.schemat.connector.core.ipc.ServerReadiness
 import io.schemat.schematioConnector.SchematioConnector
 import io.schemat.connector.core.validation.InputValidator
 import io.schemat.schematioConnector.utils.UIMode
@@ -32,6 +33,7 @@ import org.bukkit.entity.Player
  * - Dialog mode: Shows input dialog for access code and optional password
  *
  * Usage: /schematio quickshareget <accessCode|url> [password] [--chat|--dialog]
+ * The password may contain spaces; see [QuickShareGetArgs].
  *
  * @property plugin The main plugin instance
  */
@@ -69,12 +71,13 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
             return true
         }
 
-        // Resolve UI mode and clean args
-        val (uiMode, cleanedArgs) = resolver.resolveWithArgs(player, args)
+        // Resolve UI mode; the password may span several args (it can contain spaces)
+        val parsed = QuickShareGetArgs.parse(args)
+        val uiMode = resolver.resolve(player, parsed.flagMode)
 
         return when (uiMode) {
-            UIMode.CHAT -> executeChatMode(player, cleanedArgs)
-            UIMode.DIALOG -> executeDialogMode(player, cleanedArgs)
+            UIMode.CHAT -> executeChatMode(player, parsed)
+            UIMode.DIALOG -> executeDialogMode(player, parsed)
         }
     }
 
@@ -82,24 +85,25 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
     // CHAT MODE
     // ===========================================
 
-    private fun executeChatMode(player: Player, args: Array<String>): Boolean {
+    private fun executeChatMode(player: Player, args: QuickShareGetArgs): Boolean {
         val audience = player.audience()
 
         // Parse arguments
-        if (args.isEmpty()) {
+        val rawCode = args.code
+        if (rawCode == null) {
             audience.sendMessage(Component.text("Usage: /schematio quickshareget <accessCode|url> [password]").color(NamedTextColor.RED))
             return true
         }
 
         // Validate and extract access code
-        val codeValidation = InputValidator.validateQuickShareCode(args[0])
+        val codeValidation = InputValidator.validateQuickShareCode(rawCode)
         if (codeValidation is ValidationResult.Invalid) {
             audience.sendMessage(Component.text(codeValidation.message).color(NamedTextColor.RED))
             return true
         }
         val accessCode = codeValidation.getOrNull()!!
 
-        val password = if (args.size > 1) args[1] else null
+        val password = args.password
 
         // Check rate limit
         val remaining = plugin.rateLimiter.tryAcquire(player.uniqueId)
@@ -119,20 +123,21 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
     // DIALOG MODE
     // ===========================================
 
-    private fun executeDialogMode(player: Player, args: Array<String>): Boolean {
+    private fun executeDialogMode(player: Player, args: QuickShareGetArgs): Boolean {
         // If no code provided, show input dialog
-        if (args.isEmpty()) {
+        val rawCode = args.code
+        if (rawCode == null) {
             showInputDialog(player)
             return true
         }
 
-        val codeValidation = InputValidator.validateQuickShareCode(args[0])
+        val codeValidation = InputValidator.validateQuickShareCode(rawCode)
         if (codeValidation is ValidationResult.Invalid) {
             player.audience().sendMessage(Component.text(codeValidation.message).color(NamedTextColor.RED))
             return true
         }
         val accessCode = codeValidation.getOrNull()!!
-        val password = if (args.size > 1) args[1] else null
+        val password = args.password
 
         // Always try to download - if password is required, API will return 401
         // and we'll show the password dialog then
@@ -254,8 +259,10 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
             }
             player.showDialog(dialog)
         } catch (e: Exception) {
-            // Fall back to attempting download without password
-            downloadQuickShare(player, accessCode, null)
+            plugin.logger.warning("Failed to show quickshareget password dialog (code=${InputValidator.maskShareCode(accessCode)}): ${e.message}")
+            player.audience().sendMessage(
+                Component.text("Failed to open the password dialog. Use: /schematio quickshareget <code> <password>").color(NamedTextColor.RED)
+            )
         }
     }
 
@@ -334,7 +341,8 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         404 -> {
-                            audience.sendMessage(Component.text("Quick share not found.").color(NamedTextColor.RED))
+                            plugin.logger.warning("Quick share not found (404): code=${InputValidator.maskShareCode(accessCode)} player=${player.name}")
+                            audience.sendMessage(Component.text(ServerReadiness.notFoundMessage(plugin.communitySlug)).color(NamedTextColor.RED))
                         }
                         410 -> {
                             val msg = parseErrorMessage(errorBody) ?: "This share has expired or been revoked"
@@ -353,6 +361,10 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
                     }
                 })
             } catch (e: Exception) {
+                plugin.logger.warning(
+                    "Quick share download failed: code=${InputValidator.maskShareCode(accessCode)} player=${player.name}: " +
+                        "${e.javaClass.simpleName}: ${e.message}"
+                )
                 plugin.server.scheduler.runTask(plugin, Runnable {
                     audience.sendMessage(Component.text("Error: ${e.message}").color(NamedTextColor.RED))
                 })

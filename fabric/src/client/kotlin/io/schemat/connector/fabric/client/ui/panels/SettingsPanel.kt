@@ -1,15 +1,19 @@
 package io.schemat.connector.fabric.client.ui.panels
 
 import imgui.ImGui
+import imgui.flag.ImGuiDir
 import imgui.type.ImBoolean
 import io.schemat.connector.core.modapi.ApiError
 import io.schemat.connector.core.modapi.ApiResult
+import io.schemat.connector.core.routing.Destination
+import io.schemat.connector.core.routing.DestinationProfiles
 import io.schemat.connector.fabric.SchematioConnectorMod
 import io.schemat.connector.fabric.client.SchematioClientMod
 import io.schemat.connector.fabric.client.ipc.OpenUiPrefs
 import io.schemat.connector.fabric.client.ui.framework.Panel
 import io.schemat.connector.fabric.client.ui.framework.PanelManager
 import io.schemat.connector.fabric.client.render.CaptureSpike
+import io.schemat.connector.fabric.client.routing.ClientDestinations
 import io.schemat.connector.fabric.client.services.ClientServices
 import io.schemat.connector.fabric.client.ui.foundation.call
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
@@ -17,6 +21,7 @@ import io.schemat.connector.fabric.client.ui.theme.ImGuiColors
 import io.schemat.connector.fabric.client.ui.theme.ImGuiTheme
 import io.schemat.connector.fabric.client.ui.widgets.Widgets
 import net.fabricmc.loader.api.FabricLoader
+import net.minecraft.client.Minecraft
 //? if >=1.21.11 {
 import net.minecraft.util.Util
 //?} else {
@@ -43,6 +48,9 @@ object SettingsPanel : Panel {
     /** Transient status message shown after an action. */
     private var statusText: String? = null
     private var statusKind: Widgets.StatusKind = Widgets.StatusKind.INFO
+
+    /** Last destination-order save failed (ClientAuthManager logged why); cleared by the next success. */
+    private var destinationSaveFailed = false
 
     override fun render() {
         val open = ImBoolean(true)
@@ -148,6 +156,10 @@ object SettingsPanel : Panel {
 
         ImGui.spacing()
 
+        renderDownloadDestinations()
+
+        ImGui.spacing()
+
         // ---- ACTIONS section ----
         ImGui.textColored(
             ImGuiColors.ACCENT.x, ImGuiColors.ACCENT.y, ImGuiColors.ACCENT.z, ImGuiColors.ACCENT.w,
@@ -197,6 +209,83 @@ object SettingsPanel : Panel {
             Widgets.statusText(sText, statusKind)
         }
     }
+
+    // ---- Download destination ----
+
+    private fun renderDownloadDestinations() {
+        ImGui.textColored(
+            ImGuiColors.ACCENT.x, ImGuiColors.ACCENT.y, ImGuiColors.ACCENT.z, ImGuiColors.ACCENT.w,
+            "Download destination"
+        )
+        ImGui.separator()
+        if (destinationSaveFailed) {
+            ImGui.textColored(
+                ImGuiColors.DANGER.x, ImGuiColors.DANGER.y, ImGuiColors.DANGER.z, ImGuiColors.DANGER.w,
+                "Could not save: see the log"
+            )
+        }
+
+        val key = ClientDestinations.profileKey()
+        val unavailable = ClientDestinations.unavailable()
+        if (key == DestinationProfiles.DEFAULT_KEY) {
+            // Not in a world: there is no per-world profile to edit, only the shared default.
+            mutedText("Downloads try these in order, using the first one that is available.")
+            renderOrderControls(DestinationProfiles.DEFAULT_KEY, unavailable)
+            return
+        }
+
+        val world = if (key == DestinationProfiles.SINGLEPLAYER_KEY) {
+            "Singleplayer"
+        } else {
+            "This server (${Minecraft.getInstance().currentServer?.ip ?: "unknown address"})"
+        }
+        ImGui.text(world)
+        if (!ClientDestinations.hasOwnProfile(key)) mutedText("Using your default order")
+        renderOrderControls(key, unavailable)
+
+        ImGui.spacing()
+        if (ImGui.collapsingHeader("Default order")) {
+            mutedText("Used for worlds without their own order")
+            renderOrderControls(DestinationProfiles.DEFAULT_KEY, unavailable)
+        }
+    }
+
+    /** One numbered row per destination with move up/down buttons, plus a reset button, for profile [key]. */
+    private fun renderOrderControls(key: String, unavailable: Map<Destination, String>) {
+        ImGui.pushID(key)
+        val order = ClientDestinations.order(key)
+        order.forEachIndexed { index, dest ->
+            ImGui.pushID(index)
+            ImGui.text("${index + 1}.  ${dest.label}")
+            ImGui.sameLine()
+            if (index == 0) ImGui.beginDisabled()
+            if (ImGui.arrowButton("##up", ImGuiDir.Up)) saveOrder(key, swapped(order, index, index - 1))
+            if (index == 0) ImGui.endDisabled()
+            ImGui.sameLine()
+            if (index == order.lastIndex) ImGui.beginDisabled()
+            if (ImGui.arrowButton("##down", ImGuiDir.Down)) saveOrder(key, swapped(order, index, index + 1))
+            if (index == order.lastIndex) ImGui.endDisabled()
+            unavailable[dest]?.let {
+                ImGui.sameLine()
+                mutedText(it)
+            }
+            ImGui.popID()
+        }
+        if (Widgets.button("Reset to default")) saveOrder(key, null)
+        ImGui.popID()
+    }
+
+    private fun saveOrder(key: String, order: List<Destination>?) {
+        destinationSaveFailed = !ClientDestinations.save(key, order)
+    }
+
+    private fun swapped(order: List<Destination>, i: Int, j: Int): List<Destination> =
+        order.toMutableList().also { java.util.Collections.swap(it, i, j) }
+
+    private fun mutedText(text: String) = ImGui.textColored(
+        ImGuiColors.TEXT_MUTED.x, ImGuiColors.TEXT_MUTED.y, ImGuiColors.TEXT_MUTED.z, ImGuiColors.TEXT_MUTED.w,
+        text
+    )
 
     private fun reauthenticate() {
         statusText = null

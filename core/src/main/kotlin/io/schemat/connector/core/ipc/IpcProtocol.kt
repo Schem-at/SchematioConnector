@@ -7,6 +7,9 @@ object IpcProtocol {
 
     /** Current protocol version. Sent as a varint in every message; bump on breaking changes. */
     const val VERSION: Int = 2
+
+    /** Whether a channel registration (ids as "namespace:path") announces [CHANNEL]. */
+    fun registersChannel(channelIds: Iterable<String>): Boolean = CHANNEL in channelIds
 }
 
 /** First byte of every payload; selects the message type on a single multiplexed channel. */
@@ -51,6 +54,14 @@ object Capabilities {
     const val VERSION_CONTROL: Int = 1 shl 2      // reserved (north star)
     const val WANTS_COMMAND_OWNERSHIP: Int = 1 shl 3
     const val LOAD_CLIPBOARD: Int = 1 shl 4       // server can pull a REFERENCED schematic from the backend into a player's WorldEdit clipboard (reference-pull, protocol >= 2)
+    /** Server can load a schematic into the player's server-side WorldEdit clipboard right now (WorldEdit present, token configured, downloads enabled, player permitted). */
+    const val SERVER_WORLDEDIT: Int = 1 shl 5
+    /**
+     * CLIENT flag (HELLO_CLIENT.clientFlags): this client routes downloads between local and
+     * server destinations, so it understands a Fabric-server HELLO_SERVER. The Fabric server
+     * greets only clients carrying it; released 1.5.x clients never see a Fabric server.
+     */
+    const val ROUTES_DOWNLOADS: Int = 1 shl 6
 
     fun has(flags: Int, bit: Int): Boolean = (flags and bit) != 0
 }

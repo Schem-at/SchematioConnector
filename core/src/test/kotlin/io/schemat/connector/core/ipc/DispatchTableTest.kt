@@ -1,26 +1,59 @@
 package io.schemat.connector.core.ipc
 
-import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Test
 
 class DispatchTableTest {
 
+    private val forwardable = listOf(ClientAction.UPLOAD, ClientAction.QUICKSHARE)
+    private val routed = listOf(ClientAction.DOWNLOAD, ClientAction.QUICKSHARE_GET)
+
     @Test
-    fun `everything is local when no plugin`() {
+    fun `fabric server keeps upload local`() {
         for (a in ClientAction.entries) {
-            assertEquals(DispatchMode.LOCAL, DispatchTable.resolve(a, pluginPresent = false), a.name)
+            assertEquals(
+                DispatchMode.LOCAL,
+                DispatchTable.resolve(a, pluginPresent = true, platform = IpcPlatform.FABRIC_SERVER),
+                a.name,
+            )
         }
     }
 
     @Test
-    fun `browse stays local when plugin present`() {
-        assertEquals(DispatchMode.LOCAL, DispatchTable.resolve(ClientAction.BROWSE, pluginPresent = true))
+    fun `paper forwards upload and quickshare`() {
+        for (a in forwardable) {
+            assertEquals(
+                DispatchMode.SERVER_COMMAND,
+                DispatchTable.resolve(a, pluginPresent = true, platform = IpcPlatform.PAPER_PLUGIN),
+                a.name,
+            )
+        }
+        assertEquals(
+            DispatchMode.LOCAL,
+            DispatchTable.resolve(ClientAction.BROWSE, pluginPresent = true, platform = IpcPlatform.PAPER_PLUGIN),
+        )
     }
 
     @Test
-    fun `server-backed actions forward when plugin present`() {
-        for (a in listOf(ClientAction.DOWNLOAD, ClientAction.UPLOAD, ClientAction.QUICKSHARE, ClientAction.QUICKSHARE_GET)) {
-            assertEquals(DispatchMode.SERVER_COMMAND, DispatchTable.resolve(a, pluginPresent = true), a.name)
+    fun `legacy null platform forwards like paper`() {
+        for (a in forwardable) {
+            assertEquals(DispatchMode.SERVER_COMMAND, DispatchTable.resolve(a, pluginPresent = true, platform = null), a.name)
+        }
+    }
+
+    @Test
+    fun `download is never dispatched here`() {
+        for (platform in IpcPlatform.entries + listOf<IpcPlatform?>(null)) {
+            for (a in routed) {
+                assertEquals(DispatchMode.LOCAL, DispatchTable.resolve(a, pluginPresent = true, platform = platform), "$a $platform")
+            }
+        }
+    }
+
+    @Test
+    fun `no plugin is local`() {
+        for (a in ClientAction.entries) {
+            assertEquals(DispatchMode.LOCAL, DispatchTable.resolve(a, pluginPresent = false, platform = null), a.name)
         }
     }
 }

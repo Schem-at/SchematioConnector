@@ -153,6 +153,7 @@ class SetTokenSubcommand(private val plugin: SchematioConnector) : Subcommand {
             audience.sendMessage(Component.text("Reloading plugin...").color(NamedTextColor.YELLOW))
             plugin.loadConfiguration()
             plugin.refreshCommands()
+            plugin.ipcService?.regreetAll()
 
             // Report status
             if (plugin.isApiConnected) {

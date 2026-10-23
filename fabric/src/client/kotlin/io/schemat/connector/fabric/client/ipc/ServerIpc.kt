@@ -26,8 +26,8 @@ import io.schemat.connector.fabric.client.ui.panels.SchematicDetailPanel
 import io.schemat.connector.fabric.client.ui.panels.SettingsPanel
 import io.schemat.connector.fabric.client.ui.panels.SharesPanel
 import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel
+import io.schemat.connector.fabric.ipc.SchematioPayload
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
@@ -45,16 +45,8 @@ object ServerIpc {
     private val openUiGate = OpenUiGate()
 
     fun init() {
-        // Fabric networking API 6.x (>=26.1) renamed playS2C/playC2S to
-        // clientboundPlay/serverboundPlay.
-        //? if >=26.1 {
-        /*PayloadTypeRegistry.clientboundPlay().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
-        PayloadTypeRegistry.serverboundPlay().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
-        *///?} else {
-        PayloadTypeRegistry.playS2C().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
-        PayloadTypeRegistry.playC2S().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
-        //?}
-
+        // The payload type is registered once by the main initializer (FabricServerIpc.register),
+        // which also runs on the client.
         ClientPlayNetworking.registerGlobalReceiver(SchematioPayload.TYPE) { payload, _ ->
             // Fabric invokes this on the client thread.
             handle(payload.data)
@@ -66,7 +58,14 @@ object ServerIpc {
             when (IpcCodec.peekOpcode(data)) {
                 IpcOpcode.HELLO_SERVER -> {
                     val hello = IpcCodec.decodeHelloServer(data)
-                    ServerSession.adopt(hello)
+                    if (ServerSession.adopt(hello)) {
+                        // Re-hello on this connection (server reload / token change): adopt
+                        // rotated the nonce and re-armed HELLO_CLIENT, so this re-runs
+                        // attestation. No second "server detected" chat line.
+                        LOGGER.info("Schematio server re-announced v${hello.pluginVersion}; restarting the handshake")
+                        sendClientHello()
+                        return
+                    }
                     LOGGER.info("Connected to Schematio server v${hello.pluginVersion} (proto ${hello.protocolVersion})")
                     // 26.1 removed Player.displayClientMessage(Component, boolean);
                     // sendSystemMessage(Component) is the chat-log equivalent (the
@@ -122,7 +121,9 @@ object ServerIpc {
         // chat menus server-side (mid-session opt-out is enforced by the OpenUiGate drop).
         val allowOpenUi = SchematioClientMod.instance.services.authManager
             .getConfigFlag(OpenUiPrefs.KEY, OpenUiPrefs.DEFAULT)
-        val clientFlags = if (allowOpenUi) Capabilities.WANTS_COMMAND_OWNERSHIP else 0
+        // ROUTES_DOWNLOADS always: it is what lets a Fabric server greet us at all.
+        val clientFlags = Capabilities.ROUTES_DOWNLOADS or
+            (if (allowOpenUi) Capabilities.WANTS_COMMAND_OWNERSHIP else 0)
         val bytes = IpcCodec.encodeHelloClient(
             HelloClient(IpcProtocol.VERSION, version, clientFlags, ServerSession.nonce),
         )
@@ -151,6 +152,9 @@ object ServerIpc {
     ): Int? {
         if (!canLoadOnServer()) return null
         if (!ClientPlayNetworking.canSend(SchematioPayload.TYPE)) return null
+        // Validate BEFORE registering: an invalid ref throws IllegalArgumentException and
+        // must not leave a tracker entry that would later fire a spurious timeout.
+        LoadRequest(IpcProtocol.VERSION, 0, refType.wire, refId, versionId)
         val requestId = ClipboardLoadTracker.register(onStatus)
         val bytes = IpcCodec.encodeLoadRequest(
             LoadRequest(IpcProtocol.VERSION, requestId, refType.wire, refId, versionId),

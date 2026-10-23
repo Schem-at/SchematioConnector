@@ -39,6 +39,7 @@ class ReloadSubcommand(private val plugin: SchematioConnector) : Subcommand {
         
         // Refresh commands based on new config
         plugin.refreshCommands()
+        plugin.ipcService?.regreetAll()
         
         if (success) {
             audience.sendMessage(
