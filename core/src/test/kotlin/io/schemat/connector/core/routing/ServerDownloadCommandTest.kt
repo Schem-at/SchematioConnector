@@ -8,10 +8,28 @@ import kotlin.test.assertFailsWith
 class ServerDownloadCommandTest {
 
     @Test
-    fun `paper schematic`() {
+    fun `paper schematic carries an explicit schem format so it is never an OPEN_UI handoff`() {
+        // Two args (`download <id>`) is the Paper plugin's SCHEMATIC_DETAIL handoff shape;
+        // the third arg keeps the forwarded command on the real download path.
+        assertEquals(
+            "schematio download 44srfK schem",
+            ServerDownloadCommand.build(IpcPlatform.PAPER_PLUGIN, DownloadKind.SCHEMATIC, "44srfK", null),
+        )
+    }
+
+    @Test
+    fun `legacy null platform schematic is paper`() {
+        assertEquals(
+            "schematio download 44srfK schem",
+            ServerDownloadCommand.build(null, DownloadKind.SCHEMATIC, "44srfK", null),
+        )
+    }
+
+    @Test
+    fun `fabric server schematic has no format arg`() {
         assertEquals(
             "schematio download 44srfK",
-            ServerDownloadCommand.build(IpcPlatform.PAPER_PLUGIN, DownloadKind.SCHEMATIC, "44srfK", null),
+            ServerDownloadCommand.build(IpcPlatform.FABRIC_SERVER, DownloadKind.SCHEMATIC, "44srfK", null),
         )
     }
 

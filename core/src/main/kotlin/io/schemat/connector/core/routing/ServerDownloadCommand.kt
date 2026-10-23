@@ -11,7 +11,14 @@ object ServerDownloadCommand {
 
     /** A null [platform] (pre-v2 hello) is treated as Paper. */
     fun build(platform: IpcPlatform?, kind: DownloadKind, id: String, password: String?): String {
-        if (kind == DownloadKind.SCHEMATIC) return "schematio download $id"
+        if (kind == DownloadKind.SCHEMATIC) {
+            if (platform == IpcPlatform.FABRIC_SERVER) return "schematio download $id"
+            // Paper: a bare `download <id>` (2 args) is the plugin's command-ownership
+            // SCHEMATIC_DETAIL handoff, which would bounce the forwarded download back to
+            // the client UI. The explicit format (released plugins accept `schem` as the
+            // 2nd positional) makes it 3 args, so the plugin always runs the real download.
+            return "schematio download $id schem"
+        }
 
         if (platform == IpcPlatform.FABRIC_SERVER) {
             val result = InputValidator.validateQuickShareCode(id)

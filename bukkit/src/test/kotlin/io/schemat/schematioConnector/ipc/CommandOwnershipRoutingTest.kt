@@ -73,6 +73,9 @@ class CommandOwnershipRoutingTest {
         assertNull(CommandOwnershipRouting.handoffFor(listOf("settings", "ui", "chat")))
         assertNull(CommandOwnershipRouting.handoffFor(listOf("download")))             // no id -> usage message
         assertNull(CommandOwnershipRouting.handoffFor(listOf("download", "id", "x")))  // over-arity
+        // The client's forwarded server download (ServerDownloadCommand for Paper) is
+        // `download <id> schem`: it must run the real download, never bounce back as OPEN_UI.
+        assertNull(CommandOwnershipRouting.handoffFor(listOf("download", "44srfK", "schem")))
         assertNull(CommandOwnershipRouting.handoffFor(listOf("download", "a".repeat(65)))) // over-long id
         assertNull(CommandOwnershipRouting.handoffFor(listOf("info")))                 // status output, not a menu
         assertNull(CommandOwnershipRouting.handoffFor(listOf("reload")))               // admin action
