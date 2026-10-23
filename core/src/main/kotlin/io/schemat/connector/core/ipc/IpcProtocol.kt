@@ -7,6 +7,9 @@ object IpcProtocol {
 
     /** Current protocol version. Sent as a varint in every message; bump on breaking changes. */
     const val VERSION: Int = 2
+
+    /** Whether a channel registration (ids as "namespace:path") announces [CHANNEL]. */
+    fun registersChannel(channelIds: Iterable<String>): Boolean = CHANNEL in channelIds
 }
 
 /** First byte of every payload; selects the message type on a single multiplexed channel. */

@@ -23,6 +23,13 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
+//? if >=26.1 {
+/*import net.fabricmc.fabric.api.client.networking.v1.ServerboundPlayChannelEvents
+*///?} else {
+import net.fabricmc.fabric.api.client.networking.v1.C2SPlayChannelEvents
+//?}
+import io.schemat.connector.core.ipc.IpcProtocol
+import net.minecraft.client.Minecraft
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.network.chat.Component
 import net.minecraft.ChatFormatting
@@ -61,6 +68,19 @@ class SchematioClientMod : ClientModInitializer {
             ClipboardUploadFlow.reset()
             ServerIpc.sendClientHello() // fallback trigger; server greets on register-event too
         }
+        // A 1.6 Fabric server never speaks first, and a server (or a proxy relaying
+        // minecraft:register in the play phase) may announce schematio:c only after JOIN,
+        // when canSend was still false. Hello as soon as the channel becomes sendable.
+        // Networking API 6.x (26.1+) renamed C2SPlayChannelEvents to ServerboundPlayChannelEvents.
+        //? if >=26.1 {
+        /*ServerboundPlayChannelEvents.REGISTER.register { _, _, client, channels ->
+            onServerChannelsRegistered(client, channels.map { it.toString() })
+        }
+        *///?} else {
+        C2SPlayChannelEvents.REGISTER.register { _, _, client, channels ->
+            onServerChannelsRegistered(client, channels.map { it.toString() })
+        }
+        //?}
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             ServerSession.reset()
             ClipboardLoadTracker.reset()
@@ -166,5 +186,31 @@ class SchematioClientMod : ClientModInitializer {
         }
 
         LOGGER.info("Schematio Connector client initialized!")
+    }
+
+    /**
+     * Fabric's "server can now receive on these channels" callback. It may arrive off the
+     * client thread, so the hello hops to it; [ServerIpc.sendClientHello] is idempotent per
+     * connection, so a JOIN-time hello that already went out makes this a no-op.
+     */
+    private fun onServerChannelsRegistered(client: Minecraft, channelIds: List<String>) {
+        if (!IpcProtocol.registersChannel(channelIds)) return
+        client.execute {
+            try {
+                ServerIpc.sendClientHello()
+            } catch (e: Exception) {
+                LOGGER.error("Failed to send the Schematio hello after the server registered ${IpcProtocol.CHANNEL}", e)
+                val notice = Component.literal("[Schematio] ").withStyle(ChatFormatting.LIGHT_PURPLE)
+                    .append(
+                        Component.literal("Could not contact this server's Schematio integration: ${e.message}")
+                            .withStyle(ChatFormatting.RED)
+                    )
+                //? if >=26.1 {
+                /*client.player?.sendSystemMessage(notice)
+                *///?} else {
+                client.player?.displayClientMessage(notice, false)
+                //?}
+            }
+        }
     }
 }
