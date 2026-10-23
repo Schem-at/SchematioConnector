@@ -46,6 +46,7 @@ object ClientDestinations {
             serverCapabilities = ServerSession.capabilities,
             localWorldEdit = Bridges.worldEdit.isAvailable,
             litematica = Bridges.litematica.isAvailable,
+            pluginVersion = ServerSession.pluginVersion,
         ),
     )
 }
