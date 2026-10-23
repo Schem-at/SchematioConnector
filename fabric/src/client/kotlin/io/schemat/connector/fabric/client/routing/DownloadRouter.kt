@@ -11,9 +11,11 @@ import io.schemat.connector.core.routing.DownloadKind
 import io.schemat.connector.core.routing.ParsedDownload
 import io.schemat.connector.core.routing.Resolution
 import io.schemat.connector.core.routing.ServerDownloadCommand
+import io.schemat.connector.core.validation.InputValidator
 import io.schemat.connector.fabric.client.SchematioClientMod
 import io.schemat.connector.fabric.client.integration.Bridges
 import io.schemat.connector.fabric.client.integration.SchematicFiles
+import io.schemat.connector.fabric.client.ipc.ClipboardLoadTracker
 import io.schemat.connector.fabric.client.ipc.ServerIpc
 import io.schemat.connector.fabric.client.ipc.ServerSession
 import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
@@ -36,8 +38,9 @@ object DownloadRouter {
 
     private val services get() = SchematioClientMod.instance.services
 
-    /** Supersedes older local loads so a stale download cannot overwrite a newer one. */
-    private val transfers = TransferEpoch()
+    /** Supersede older loads per local destination, so they do not cancel each other. */
+    private val worldEditTransfers = TransferEpoch()
+    private val litematicaTransfers = TransferEpoch()
 
     fun route(kind: DownloadKind, parsed: ParsedDownload.Ok, reply: (String, Boolean) -> Unit) {
         val order = ClientDestinations.order()
@@ -48,7 +51,7 @@ object DownloadRouter {
                 val from = resolution.fellBackFrom
                 if (from != null) {
                     reply(
-                        "${from.label} unavailable: ${unavailable[from] ?: "not available"}. " +
+                        "${from.label} unavailable: ${(unavailable[from] ?: "not available").trimEnd('.')}. " +
                             "Loading into ${resolution.destination.label} instead.",
                         false,
                     )
@@ -78,10 +81,10 @@ object DownloadRouter {
                 // shrinks and can never revisit it (fall back at most once per destination).
                 val nowUnavailable = unavailable + (destination to detail)
                 when (val next = DestinationResolver.resolve(order, null, nowUnavailable)) {
-                    is Resolution.Unavailable -> reply("${destination.label} failed: $detail. ${next.reason}", true)
+                    is Resolution.Unavailable -> reply("${destination.label} failed: ${detail.trimEnd('.')}. ${next.reason}", true)
                     is Resolution.Chosen -> {
                         reply(
-                            "${destination.label} unavailable: $detail. Loading into ${next.destination.label} instead.",
+                            "${destination.label} unavailable: ${detail.trimEnd('.')}. Loading into ${next.destination.label} instead.",
                             false,
                         )
                         attempt(next.destination, kind, parsed, order, nowUnavailable, reply)
@@ -90,6 +93,10 @@ object DownloadRouter {
             }
         }
     }
+
+    /** Quick-share codes are credentials: never log them in full. */
+    private fun logId(kind: DownloadKind, id: String): String =
+        if (kind == DownloadKind.QUICK_SHARE) InputValidator.maskShareCode(id) else id
 
     private fun displayName(kind: DownloadKind, id: String): String =
         if (kind == DownloadKind.QUICK_SHARE) "quick share" else id
@@ -125,21 +132,31 @@ object DownloadRouter {
         reply: (String, Boolean) -> Unit,
         onFailure: (String) -> Unit,
     ) {
-        // LOAD_REQUEST carries no password, so a protected share goes through the command path.
-        if (ServerIpc.canLoadOnServer() && password.isNullOrEmpty()) {
-            val refType = if (kind == DownloadKind.QUICK_SHARE) LoadRefType.SHARE_TOKEN else LoadRefType.SCHEMATIC
-            val requestId = ServerIpc.sendLoadRequest(refType, id) { state, detail ->
-                if (!state.isTerminal) return@sendLoadRequest
-                services.onMainThread {
-                    if (state == StatusState.OK) {
-                        reply("Loaded \"$name\" into the server's WorldEdit clipboard", false)
-                    } else {
-                        onFailure(detail.ifBlank { state.name.lowercase().replace('_', ' ') })
+        // Only SCHEMATIC uses LOAD_REQUEST; quick shares always use the proven forwarded command (carries the password).
+        if (kind == DownloadKind.SCHEMATIC && ServerIpc.canLoadOnServer()) {
+            val requestId = try {
+                ServerIpc.sendLoadRequest(LoadRefType.SCHEMATIC, id) { state, detail ->
+                    if (!state.isTerminal) return@sendLoadRequest
+                    services.onMainThread {
+                        if (state == StatusState.OK) {
+                            reply("Loaded \"$name\" into the server's WorldEdit clipboard", false)
+                        } else if (state == StatusState.ERROR && detail == ClipboardLoadTracker.TIMEOUT_DETAIL) {
+                            // No fallback: a slow server may still finish, which would load twice.
+                            LOGGER.warn("Server load of {} timed out", logId(kind, id))
+                            reply("The server did not confirm the load in time. Check chat, or retry with --local.", true)
+                        } else {
+                            LOGGER.warn("Server load of {} failed ({}): {}", logId(kind, id), state, detail)
+                            onFailure(detail.ifBlank { state.name.lowercase().replace('_', ' ') })
+                        }
                     }
                 }
+            } catch (e: IllegalArgumentException) {
+                LOGGER.warn("Server load request for {} rejected: {}", logId(kind, id), e.message)
+                onFailure("Invalid schematic reference")
+                return
             }
             if (requestId == null) {
-                LOGGER.warn("Server load request for {} could not be sent", id)
+                LOGGER.warn("Server load request for {} could not be sent", logId(kind, id))
                 onFailure("No verified Schematio server connection")
             }
             return
@@ -191,9 +208,9 @@ object DownloadRouter {
         name: String,
         reply: (String, Boolean) -> Unit,
     ) {
-        val ticket = transfers.begin()
+        val ticket = worldEditTransfers.begin()
         val check: () -> String? = {
-            if (!transfers.isCurrent(ticket)) "A newer download replaced this request." else null
+            if (!worldEditTransfers.isCurrent(ticket)) "A newer download replaced this request." else null
         }
         download(kind, id, password, "schem", name, reply) { bytes ->
             services.onMainThread {
@@ -202,12 +219,12 @@ object DownloadRouter {
                         if (ok) {
                             reply("Loaded \"$name\" into your WorldEdit clipboard", false)
                         } else {
-                            LOGGER.warn("Local WorldEdit load of {} failed: {}", id, error)
+                            LOGGER.warn("Local WorldEdit load of {} failed: {}", logId(kind, id), error)
                             reply(error ?: "Failed to load \"$name\" into your WorldEdit clipboard", true)
                         }
                     }
                 } catch (e: Exception) {
-                    LOGGER.error("Local WorldEdit load of {} threw", id, e)
+                    LOGGER.error("Local WorldEdit load of {} threw", logId(kind, id), e)
                     reply("Failed to load \"$name\" into your WorldEdit clipboard: ${e.message ?: "unexpected error"}", true)
                 }
             }
@@ -221,10 +238,10 @@ object DownloadRouter {
         name: String,
         reply: (String, Boolean) -> Unit,
     ) {
-        val ticket = transfers.begin()
+        val ticket = litematicaTransfers.begin()
         val destinationCheck = Bridges.litematica.captureImportCheck()
         val check: () -> String? = {
-            if (!transfers.isCurrent(ticket)) "A newer download replaced this request." else destinationCheck()
+            if (!litematicaTransfers.isCurrent(ticket)) "A newer download replaced this request." else destinationCheck()
         }
         download(kind, id, password, "litematic", name, reply) { bytes ->
             val file = try {
@@ -232,7 +249,7 @@ object DownloadRouter {
                 Files.createDirectories(dir)
                 SchematicFiles.save(dir, name, "litematic", bytes)
             } catch (e: Exception) {
-                LOGGER.error("Could not save {}", id, e)
+                LOGGER.error("Could not save {}", logId(kind, id), e)
                 post(reply, "Could not save \"$name\": ${e.message ?: "unexpected error"}", true)
                 return@download
             }
@@ -243,7 +260,7 @@ object DownloadRouter {
                             if (ok) {
                                 reply("Loaded \"$name\" into Litematica", false)
                             } else {
-                                LOGGER.warn("Litematica load of {} failed: {}", id, error)
+                                LOGGER.warn("Litematica load of {} failed: {}", logId(kind, id), error)
                                 reply(error ?: "Failed to load \"$name\" into Litematica", true)
                             }
                         }
@@ -251,7 +268,7 @@ object DownloadRouter {
                         reply("Litematica is not installed - saved to $file", false)
                     }
                 } catch (e: Exception) {
-                    LOGGER.error("Litematica load of {} threw", id, e)
+                    LOGGER.error("Litematica load of {} threw", logId(kind, id), e)
                     reply("Failed to load \"$name\" into Litematica: ${e.message ?: "unexpected error"}", true)
                 }
             }
@@ -272,7 +289,7 @@ object DownloadRouter {
                 val file = SchematicFiles.save(dir, name, "litematic", bytes)
                 post(reply, "Saved to $file", false)
             } catch (e: Exception) {
-                LOGGER.error("Could not save {}", id, e)
+                LOGGER.error("Could not save {}", logId(kind, id), e)
                 post(reply, "Could not save \"$name\": ${e.message ?: "unexpected error"}", true)
             }
         }
@@ -297,14 +314,14 @@ object DownloadRouter {
                 when (val result = services.cached.download(id, format, password)) {
                     is ApiResult.Success -> onBytes(result.value)
                     is ApiResult.Failure -> {
-                        LOGGER.warn("Download of {} failed: {}", id, result.error)
+                        LOGGER.warn("Download of {} failed: {}", logId(kind, id), result.error)
                         post(reply, "Could not download $label \"$name\": ${result.error.toUserMessage()}", true)
                     }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                LOGGER.error("Download of {} threw", id, e)
+                LOGGER.error("Download of {} threw", logId(kind, id), e)
                 val message = ApiError.Unexpected(0, e.message ?: "Unexpected client error").toUserMessage()
                 post(reply, "Could not download $label \"$name\": $message", true)
             }

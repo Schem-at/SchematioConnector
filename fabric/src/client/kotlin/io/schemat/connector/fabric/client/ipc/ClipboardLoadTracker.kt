@@ -21,6 +21,9 @@ object ClipboardLoadTracker {
 
     const val TIMEOUT_MS: Long = 30_000
 
+    /** Detail of the synthetic ERROR fired on timeout; lets callers tell it from a real server ERROR. */
+    const val TIMEOUT_DETAIL = "Timed out waiting for the server"
+
     private data class Pending(
         val onStatus: (StatusState, String) -> Unit,
         val deadlineMs: Long,
@@ -63,7 +66,7 @@ object ClipboardLoadTracker {
     fun tick(nowMs: Long = System.currentTimeMillis()) {
         for ((id, entry) in pending) {
             if (nowMs >= entry.deadlineMs && pending.remove(id) != null) {
-                entry.onStatus(StatusState.ERROR, "Timed out waiting for the server")
+                entry.onStatus(StatusState.ERROR, TIMEOUT_DETAIL)
             }
         }
     }

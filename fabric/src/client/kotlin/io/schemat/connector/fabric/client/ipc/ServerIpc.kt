@@ -143,6 +143,9 @@ object ServerIpc {
     ): Int? {
         if (!canLoadOnServer()) return null
         if (!ClientPlayNetworking.canSend(SchematioPayload.TYPE)) return null
+        // Validate BEFORE registering: an invalid ref throws IllegalArgumentException and
+        // must not leave a tracker entry that would later fire a spurious timeout.
+        LoadRequest(IpcProtocol.VERSION, 0, refType.wire, refId, versionId)
         val requestId = ClipboardLoadTracker.register(onStatus)
         val bytes = IpcCodec.encodeLoadRequest(
             LoadRequest(IpcProtocol.VERSION, requestId, refType.wire, refId, versionId),

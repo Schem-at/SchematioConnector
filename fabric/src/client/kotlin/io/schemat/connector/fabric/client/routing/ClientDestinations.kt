@@ -16,7 +16,9 @@ object ClientDestinations {
 
     private val auth get() = SchematioClientMod.instance.services.authManager
 
-    /** Singleplayer, else the connected server's address, else the shared default. */
+    /**
+     * LAN-guest and Realms addresses may vary between sessions, so their profile may not persist.
+     * Singleplayer, else the connected server's address, else the shared default. */
     fun profileKey(): String {
         val client = Minecraft.getInstance()
         if (client.singleplayerServer != null) return DestinationProfiles.SINGLEPLAYER_KEY
