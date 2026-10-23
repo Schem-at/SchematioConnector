@@ -4,17 +4,20 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.schemat.connector.core.attest.Attestation
 import io.schemat.connector.core.attest.AttestationClient
 import io.schemat.connector.core.attest.bytesToHexLower
 import io.schemat.connector.core.ipc.Capabilities
 import io.schemat.connector.core.ipc.HelloClient
 import io.schemat.connector.core.ipc.IpcCodec
+import io.schemat.connector.core.ipc.IpcOpcode
 import io.schemat.connector.core.ipc.IpcPlatform
 import io.schemat.connector.core.ipc.IpcProtocol
 import io.schemat.schematioConnector.SchematioConnector
 import org.bukkit.Server
 import org.bukkit.entity.Player
+import org.bukkit.event.player.PlayerRegisterChannelEvent
 import org.bukkit.plugin.PluginDescriptionFile
 import org.bukkit.scheduler.BukkitScheduler
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -92,6 +95,33 @@ class PluginIpcServiceRegreetTest {
         )
         service.regreetAll()
         assertTrue(service.canOpenUi(player), "a released client is not re-greeted, so it keeps its attestation")
+    }
+
+    @Test
+    fun `regreetAll skips a player whose hello arrived before the first greet went out`() {
+        // HELLO_CLIENT lands before the client's minecraft:register, so the fallback greet
+        // cannot be sent yet, and its attestation is still in flight when the reload runs.
+        var channels: Set<String> = emptySet()
+        every { player.listeningPluginChannels } answers { channels }
+        val pendingAsync = mutableListOf<Runnable>()
+        every { scheduler.runTaskAsynchronously(plugin, any<Runnable>()) } answers {
+            pendingAsync += secondArg<Runnable>(); mockk(relaxed = true)
+        }
+        val service = PluginIpcService(plugin)
+
+        service.onPluginMessageReceived(IpcProtocol.CHANNEL, player, hello(ByteArray(16) { 1 }))
+        service.regreetAll()
+
+        // The channel registration arrives, the first greet goes out, the attestation lands.
+        channels = setOf(IpcProtocol.CHANNEL)
+        service.onRegisterChannel(PlayerRegisterChannelEvent(player, IpcProtocol.CHANNEL))
+        pendingAsync.toList().forEach { it.run() }
+
+        verify(exactly = 1) {
+            player.sendPluginMessage(plugin, IpcProtocol.CHANNEL, match { IpcCodec.peekOpcode(it) == IpcOpcode.HELLO_SERVER })
+        }
+        coVerify(exactly = 1) { attestClient.requestAttestation(any(), any()) }
+        assertTrue(service.canOpenUi(player), "the pending first greet completes and the hello is attested")
     }
 
     @Test

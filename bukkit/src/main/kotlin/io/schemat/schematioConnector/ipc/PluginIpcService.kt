@@ -107,12 +107,16 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
      * off (or loaded) for a client that is re-verifying, the next HELLO_CLIENT is accepted and
      * re-attested, and an in-flight attestation for the old hello is discarded by the
      * `clientHellos[...] !== hello` check. Released 1.5.x clients would drop to UNVERIFIED on
-     * a second hello and never re-attest, so they are left untouched. Must run on the main
-     * thread (Bukkit command handlers do).
+     * a second hello and never re-attest, so they are left untouched. So is a player whose
+     * HELLO_CLIENT arrived before their first greet could go out: clearing their hello would
+     * make the client read the later greet as its first, never re-hello, and stay UNVERIFIED,
+     * while their pending first greet (sent with the current capabilities) completes normally.
+     * Must run on the main thread (Bukkit command handlers do).
      */
     fun regreetAll() {
         for (player in plugin.server.onlinePlayers) {
             val id = player.uniqueId
+            if (id !in greeted) continue
             if (!Capabilities.has(clientFlags[id] ?: 0, Capabilities.ROUTES_DOWNLOADS)) continue
             greeted.remove(id)
             attested.remove(id)
