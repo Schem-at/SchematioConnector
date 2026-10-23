@@ -58,7 +58,14 @@ object ServerIpc {
             when (IpcCodec.peekOpcode(data)) {
                 IpcOpcode.HELLO_SERVER -> {
                     val hello = IpcCodec.decodeHelloServer(data)
-                    ServerSession.adopt(hello)
+                    if (ServerSession.adopt(hello)) {
+                        // Re-hello on this connection (server reload / token change): adopt
+                        // rotated the nonce and re-armed HELLO_CLIENT, so this re-runs
+                        // attestation. No second "server detected" chat line.
+                        LOGGER.info("Schematio server re-announced v${hello.pluginVersion}; restarting the handshake")
+                        sendClientHello()
+                        return
+                    }
                     LOGGER.info("Connected to Schematio server v${hello.pluginVersion} (proto ${hello.protocolVersion})")
                     // 26.1 removed Player.displayClientMessage(Component, boolean);
                     // sendSystemMessage(Component) is the chat-log equivalent (the

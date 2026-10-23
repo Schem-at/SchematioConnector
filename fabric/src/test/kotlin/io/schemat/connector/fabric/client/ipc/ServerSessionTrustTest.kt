@@ -118,6 +118,36 @@ class ServerSessionTrustTest {
     }
 
     @Test
+    fun `first hello after the join HELLO_CLIENT keeps the nonce already on the wire`() {
+        assertTrue(ServerSession.markHelloSent()) // join path sent HELLO_CLIENT with this nonce
+        val sent = ServerSession.nonce.copyOf()
+
+        val rehello = ServerSession.adopt(v2Hello())
+
+        assertFalse(rehello)
+        assertTrue(sent.contentEquals(ServerSession.nonce)) // the server attests THIS nonce
+        assertFalse(ServerSession.markHelloSent())          // reply path stays deduped
+    }
+
+    @Test
+    fun `re-hello on the same connection restarts the handshake`() {
+        assertFalse(ServerSession.adopt(v2Hello()))
+        assertTrue(ServerSession.markHelloSent())
+        val n1 = ServerSession.nonce.copyOf()
+        assertTrue(ServerSession.markVerified(n1))
+
+        // Server reload / token change: the server greets again on the same connection.
+        val rehello = ServerSession.adopt(v2Hello())
+
+        assertTrue(rehello)
+        assertEquals(TrustState.UNVERIFIED, ServerSession.trust)
+        assertFalse(n1.contentEquals(ServerSession.nonce)) // fresh nonce for re-attestation
+        assertTrue(ServerSession.markHelloSent())           // HELLO_CLIENT is re-armed
+        assertFalse(ServerSession.markVerified(n1))         // a late ATTEST for the old nonce is void
+        assertTrue(ServerSession.markVerified(ServerSession.nonce))
+    }
+
+    @Test
     fun `markHelloSent stays single-shot per connection`() {
         assertTrue(ServerSession.markHelloSent())
         assertFalse(ServerSession.markHelloSent())

@@ -51,7 +51,18 @@ object ServerSession {
 
     private fun newNonce(): ByteArray = ByteArray(16).also { random.nextBytes(it) }
 
-    fun adopt(hello: HelloServer) {
+    /**
+     * Applies a HELLO_SERVER. Returns true when it is a RE-HELLO: the server already greeted
+     * this connection (it re-announces after a reload or token change). A re-hello restarts
+     * the handshake: trust drops back to UNVERIFIED/LEGACY_V1, the nonce rotates (voiding any
+     * in-flight ATTEST for the old one) and HELLO_CLIENT is re-armed so the caller's
+     * [io.schemat.connector.fabric.client.ipc.ServerIpc.sendClientHello] actually sends again
+     * and the server re-attests. A first hello keeps the nonce the join-path HELLO_CLIENT
+     * already carried, since that is the one the server is attesting.
+     */
+    @Synchronized
+    fun adopt(hello: HelloServer): Boolean {
+        val rehello = pluginPresent
         pluginVersion = hello.pluginVersion
         protocolVersion = hello.protocolVersion
         capabilities = hello.capabilities
@@ -63,6 +74,11 @@ object ServerSession {
         communitySlug = hello.communitySlug
         pluginPresent = true
         trust = if (hello.protocolVersion >= 2) TrustState.UNVERIFIED else TrustState.LEGACY_V1
+        if (rehello) {
+            nonce = newNonce()
+            helloSent = false
+        }
+        return rehello
     }
 
     /**
