@@ -121,7 +121,9 @@ object ServerIpc {
         // chat menus server-side (mid-session opt-out is enforced by the OpenUiGate drop).
         val allowOpenUi = SchematioClientMod.instance.services.authManager
             .getConfigFlag(OpenUiPrefs.KEY, OpenUiPrefs.DEFAULT)
-        val clientFlags = if (allowOpenUi) Capabilities.WANTS_COMMAND_OWNERSHIP else 0
+        // ROUTES_DOWNLOADS always: it is what lets a Fabric server greet us at all.
+        val clientFlags = Capabilities.ROUTES_DOWNLOADS or
+            (if (allowOpenUi) Capabilities.WANTS_COMMAND_OWNERSHIP else 0)
         val bytes = IpcCodec.encodeHelloClient(
             HelloClient(IpcProtocol.VERSION, version, clientFlags, ServerSession.nonce),
         )

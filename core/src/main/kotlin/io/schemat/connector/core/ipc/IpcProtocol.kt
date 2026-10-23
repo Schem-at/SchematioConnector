@@ -53,6 +53,12 @@ object Capabilities {
     const val LOAD_CLIPBOARD: Int = 1 shl 4       // server can pull a REFERENCED schematic from the backend into a player's WorldEdit clipboard (reference-pull, protocol >= 2)
     /** Server can load a schematic into the player's server-side WorldEdit clipboard right now (WorldEdit present, token configured, downloads enabled, player permitted). */
     const val SERVER_WORLDEDIT: Int = 1 shl 5
+    /**
+     * CLIENT flag (HELLO_CLIENT.clientFlags): this client routes downloads between local and
+     * server destinations, so it understands a Fabric-server HELLO_SERVER. The Fabric server
+     * greets only clients carrying it; released 1.5.x clients never see a Fabric server.
+     */
+    const val ROUTES_DOWNLOADS: Int = 1 shl 6
 
     fun has(flags: Int, bit: Int): Boolean = (flags and bit) != 0
 }

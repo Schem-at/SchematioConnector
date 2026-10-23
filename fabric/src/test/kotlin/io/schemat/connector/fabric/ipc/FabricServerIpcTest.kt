@@ -3,7 +3,9 @@ package io.schemat.connector.fabric.ipc
 import io.schemat.connector.core.ipc.Capabilities
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class FabricServerIpcTest {
     @Test
@@ -24,6 +26,19 @@ class FabricServerIpcTest {
     @Test
     fun `disabled download hides server worldedit`() {
         assertEquals(Capabilities.DOWNLOAD_CMD, FabricServerIpc.capabilitiesFor(true, true, true, false))
+    }
+
+    @Test
+    fun `greets only a dedicated server's routing-capable clients`() {
+        val routes = Capabilities.ROUTES_DOWNLOADS
+        assertTrue(FabricServerIpc.shouldGreet(dedicated = true, clientFlags = routes))
+        assertTrue(FabricServerIpc.shouldGreet(dedicated = true, clientFlags = routes or Capabilities.WANTS_COMMAND_OWNERSHIP))
+        // Released 1.5.x clients send HELLO_CLIENT without the bit: they never see a Fabric server.
+        assertFalse(FabricServerIpc.shouldGreet(dedicated = true, clientFlags = 0))
+        assertFalse(FabricServerIpc.shouldGreet(dedicated = true, clientFlags = Capabilities.WANTS_COMMAND_OWNERSHIP))
+        // Integrated servers (singleplayer / LAN) never greet.
+        assertFalse(FabricServerIpc.shouldGreet(dedicated = false, clientFlags = routes))
+        assertFalse(FabricServerIpc.shouldGreet(dedicated = false, clientFlags = 0))
     }
 
     @Test

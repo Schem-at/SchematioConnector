@@ -1,6 +1,7 @@
 package io.schemat.connector.fabric.ipc
 
 import io.schemat.connector.core.ipc.Capabilities
+import io.schemat.connector.core.ipc.HelloClient
 import io.schemat.connector.core.ipc.HelloServer
 import io.schemat.connector.core.ipc.IpcCodec
 import io.schemat.connector.core.ipc.IpcOpcode
@@ -23,11 +24,22 @@ import java.util.concurrent.ConcurrentHashMap
  * Announces the Fabric *server* Connector to the client mod on `schematio:c`, so the client
  * routes `/schematio download` to this server's WorldEdit instead of local Litematica.
  * Only dedicated servers greet; an integrated server (singleplayer/LAN) stays silent.
+ *
+ * The server never speaks first: it greets only in reply to a HELLO_CLIENT whose flags carry
+ * [Capabilities.ROUTES_DOWNLOADS]. Released 1.5.x clients send HELLO_CLIENT without that bit
+ * (and would mistake any HELLO_SERVER for a Paper plugin), so they never see this server.
  */
 object FabricServerIpc {
     private val LOGGER = LoggerFactory.getLogger("SchematioServerIpc")
 
     private val greeted: MutableSet<UUID> = ConcurrentHashMap.newKeySet()
+
+    /** Players whose latest HELLO_CLIENT carried ROUTES_DOWNLOADS; [greetAll] re-greets only these. */
+    private val routingClients: MutableSet<UUID> = ConcurrentHashMap.newKeySet()
+
+    /** Whether a HELLO_CLIENT with [clientFlags] earns a HELLO_SERVER reply. */
+    internal fun shouldGreet(dedicated: Boolean, clientFlags: Int): Boolean =
+        dedicated && Capabilities.has(clientFlags, Capabilities.ROUTES_DOWNLOADS)
     @Volatile private var mod: SchematioConnectorMod? = null
     private var registered = false
 
@@ -60,16 +72,15 @@ object FabricServerIpc {
         PayloadTypeRegistry.playC2S().register(SchematioPayload.TYPE, SchematioPayload.CODEC)
         //?}
 
-        ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
-            greet(handler.player)
-        }
+        // No JOIN greet: the client's HELLO_CLIENT (sent on its own join) starts the handshake.
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             greeted.remove(handler.player.uuid)
+            routingClients.remove(handler.player.uuid)
         }
         ServerPlayNetworking.registerGlobalReceiver(SchematioPayload.TYPE) { payload, context ->
             try {
                 when (IpcCodec.peekOpcode(payload.data)) {
-                    IpcOpcode.HELLO_CLIENT -> greet(context.player())
+                    IpcOpcode.HELLO_CLIENT -> onHelloClient(context.player(), IpcCodec.decodeHelloClient(payload.data))
                     else -> LOGGER.debug("Ignoring schematio:c opcode from {}", context.player().scoreboardName)
                 }
             } catch (t: Exception) {
@@ -78,12 +89,29 @@ object FabricServerIpc {
         }
     }
 
-    /** Re-announces to every online player (config reload / token change), on the server thread. */
+    private fun onHelloClient(player: ServerPlayer, hello: HelloClient) {
+        val server = mod?.server ?: return
+        if (!shouldGreet(server.isDedicatedServer, hello.clientFlags)) {
+            routingClients.remove(player.uuid)
+            LOGGER.debug("Not greeting {}: client does not route downloads (flags={})", player.scoreboardName, hello.clientFlags)
+            return
+        }
+        routingClients.add(player.uuid)
+        // Deduped by [greeted]: the client's re-hello after a [greetAll] gets no second reply.
+        greet(player)
+    }
+
+    /**
+     * Re-announces to every online routing-capable player (config reload / token change), on
+     * the server thread. Same reset semantics as Paper's regreetAll: the greet is forgotten and
+     * re-sent, the client treats it as a re-hello and sends a fresh HELLO_CLIENT, which
+     * refreshes [routingClients] (no attestation state exists on this server to clear).
+     */
     fun greetAll() {
         val server = mod?.server ?: return
         server.execute {
             greeted.clear()
-            server.playerList.players.forEach { greet(it) }
+            server.playerList.players.filter { it.uuid in routingClients }.forEach { greet(it) }
         }
     }
 

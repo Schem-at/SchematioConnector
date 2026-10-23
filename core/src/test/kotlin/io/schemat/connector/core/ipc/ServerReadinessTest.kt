@@ -40,6 +40,16 @@ class ServerReadinessTest {
     }
 
     @Test
+    fun `routes downloads client bit is distinct`() {
+        val existing = listOf(
+            Capabilities.DOWNLOAD_CMD, Capabilities.UPLOAD, Capabilities.VERSION_CONTROL,
+            Capabilities.WANTS_COMMAND_OWNERSHIP, Capabilities.LOAD_CLIPBOARD, Capabilities.SERVER_WORLDEDIT,
+        )
+        for (bit in existing) assertEquals(0, Capabilities.ROUTES_DOWNLOADS and bit)
+        assertEquals(1 shl 6, Capabilities.ROUTES_DOWNLOADS)
+    }
+
+    @Test
     fun `unknown id 422 counts as missing`() {
         val body = """{"errors":{"id":["The specified resource could not be found."]}}"""
         assertTrue(ServerReadiness.isMissingSchematic(404, null))
