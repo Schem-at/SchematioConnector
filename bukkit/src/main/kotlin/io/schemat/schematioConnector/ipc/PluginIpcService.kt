@@ -17,6 +17,7 @@ import io.schemat.connector.core.ipc.LoadRefType
 import io.schemat.connector.core.ipc.LoadRequest
 import io.schemat.connector.core.ipc.OpenUi
 import io.schemat.connector.core.ipc.OpenUiSurface
+import io.schemat.connector.core.ipc.ServerReadiness
 import io.schemat.connector.core.ipc.Status
 import io.schemat.connector.core.ipc.StatusState
 import io.schemat.connector.core.ipc.UploadClipboard
@@ -89,8 +90,24 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
      * the backend connection, which races plugin startup (spec: "advertised only when
      * WorldEdit + backend configured").
      */
-    private fun currentCapabilities(): Int =
-        capabilitiesFor(worldEditAvailable, plugin.clipboardUploadClient != null)
+    private fun currentCapabilities(player: Player): Int =
+        capabilitiesFor(
+            worldEditAvailable,
+            plugin.clipboardUploadClient != null,
+            tokenConfigured = plugin.httpUtil != null,
+            downloadEnabled = "download" !in plugin.config.getStringList("disabled-commands").map { it.lowercase() },
+            hasPermission = player.hasPermission("schematio.download"),
+        )
+
+    /**
+     * Forgets every greeting and re-greets all online players so a reload or token change
+     * re-advertises per-player capabilities. Must run on the main thread (Bukkit command
+     * handlers do).
+     */
+    fun regreetAll() {
+        greeted.clear()
+        plugin.server.onlinePlayers.forEach { greet(it) }
+    }
 
     fun register() {
         val messenger = plugin.server.messenger
@@ -230,7 +247,10 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
 
     /** Main thread only: WorldEdit session APIs + sendPluginMessage. */
     private fun finishLoadRequest(player: Player, requestId: Int, outcome: ClipboardResolveOutcome) {
-        LoadRequestGuards.statusFor(outcome)?.let { (state, detail) ->
+        LoadRequestGuards.statusFor(outcome)?.let { (state, guardDetail) ->
+            val detail = if (outcome == ClipboardResolveOutcome.NotFound) {
+                ServerReadiness.notFoundMessage(plugin.communitySlug)
+            } else guardDetail
             sendStatus(player, requestId, state, detail)
             return
         }
@@ -298,7 +318,7 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
         val hello = HelloServer(
             protocolVersion = IpcProtocol.VERSION,
             pluginVersion = plugin.description.version,
-            capabilities = currentCapabilities(),
+            capabilities = currentCapabilities(player),
             platform = IpcPlatform.PAPER_PLUGIN,
             serverSoftware = "${plugin.server.name} ${plugin.server.minecraftVersion}",
             mcVersion = plugin.server.minecraftVersion,
@@ -342,10 +362,19 @@ class PluginIpcService(private val plugin: SchematioConnector) : PluginMessageLi
             hello.protocolVersion >= 2 && hello.nonce.size == 16
 
         /** Pure gate for tests: which capability bits a build/config combination advertises. */
-        fun capabilitiesFor(worldEditAvailable: Boolean, uploadConfigured: Boolean): Int =
+        fun capabilitiesFor(
+            worldEditAvailable: Boolean,
+            uploadConfigured: Boolean,
+            tokenConfigured: Boolean,
+            downloadEnabled: Boolean,
+            hasPermission: Boolean,
+        ): Int =
             Capabilities.DOWNLOAD_CMD or
                 Capabilities.WANTS_COMMAND_OWNERSHIP or
                 (if (worldEditAvailable) Capabilities.LOAD_CLIPBOARD else 0) or
-                (if (worldEditAvailable && uploadConfigured) Capabilities.UPLOAD else 0)
+                (if (worldEditAvailable && uploadConfigured) Capabilities.UPLOAD else 0) or
+                (if (ServerReadiness.serverWorldEdit(worldEditAvailable, tokenConfigured, downloadEnabled, hasPermission)) {
+                    Capabilities.SERVER_WORLDEDIT
+                } else 0)
     }
 }

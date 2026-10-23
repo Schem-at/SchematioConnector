@@ -9,6 +9,7 @@ import io.papermc.paper.registry.data.dialog.action.DialogAction
 import io.papermc.paper.registry.data.dialog.body.DialogBody
 import io.papermc.paper.registry.data.dialog.input.DialogInput
 import io.papermc.paper.registry.data.dialog.type.DialogType
+import io.schemat.connector.core.ipc.ServerReadiness
 import io.schemat.schematioConnector.SchematioConnector
 import io.schemat.connector.core.validation.InputValidator
 import io.schemat.schematioConnector.utils.UIMode
@@ -334,7 +335,8 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
                             audience.sendMessage(Component.text(msg).color(NamedTextColor.RED))
                         }
                         404 -> {
-                            audience.sendMessage(Component.text("Quick share not found.").color(NamedTextColor.RED))
+                            plugin.logger.warning("Quick share not found (404): code=$accessCode player=${player.name}")
+                            audience.sendMessage(Component.text(ServerReadiness.notFoundMessage(plugin.communitySlug)).color(NamedTextColor.RED))
                         }
                         410 -> {
                             val msg = parseErrorMessage(errorBody) ?: "This share has expired or been revoked"
