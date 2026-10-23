@@ -39,8 +39,8 @@ object ClientDestinations {
 
     fun hasOwnProfile(key: String): Boolean = store.hasOwnProfile(key)
 
-    /** Stores [order] for [key]; null resets the profile. */
-    fun save(key: String, order: List<Destination>?) = store.save(key, order)
+    /** Stores [order] for [key]; null resets the profile. False when it could not be written (logged). */
+    fun save(key: String, order: List<Destination>?): Boolean = store.save(key, order)
 
     fun unavailable(): Map<Destination, String> = ClientAvailability.unavailable(
         AvailabilityInput(

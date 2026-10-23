@@ -58,9 +58,18 @@ object DownloadArgs {
             val v = InputValidator.validateQuickShareCode(id)
             if (v is ValidationResult.Invalid) return ParsedDownload.Error(v.message)
         } else {
+            positional.getOrNull(1)?.let { extra ->
+                return ParsedDownload.Error("Unexpected argument '$extra'. Use flags: --we, --lm, --file, --server, --local.")
+            }
             SCHEMATIC_URL.find(id)?.let { id = it.groupValues[1] }
         }
-        val password = if (quickShare) positional.getOrNull(1) else null
+        // Every positional after the code is the password, so passwords with spaces survive
+        // the whitespace split (runs of whitespace join as a single space).
+        val password = if (quickShare) {
+            positional.drop(1).joinToString(" ").takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
         val filter = if (side == null && tool == null) null else DestinationFilter(side, tool)
         return ParsedDownload.Ok(id, password, filter)
     }

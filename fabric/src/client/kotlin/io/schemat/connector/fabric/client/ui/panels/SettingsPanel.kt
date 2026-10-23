@@ -49,6 +49,9 @@ object SettingsPanel : Panel {
     private var statusText: String? = null
     private var statusKind: Widgets.StatusKind = Widgets.StatusKind.INFO
 
+    /** Last destination-order save failed (ClientAuthManager logged why); cleared by the next success. */
+    private var destinationSaveFailed = false
+
     override fun render() {
         val open = ImBoolean(true)
         ImGui.setNextWindowSize(520f, 440f, imgui.flag.ImGuiCond.FirstUseEver)
@@ -215,6 +218,12 @@ object SettingsPanel : Panel {
             "Download destination"
         )
         ImGui.separator()
+        if (destinationSaveFailed) {
+            ImGui.textColored(
+                ImGuiColors.DANGER.x, ImGuiColors.DANGER.y, ImGuiColors.DANGER.z, ImGuiColors.DANGER.w,
+                "Could not save: see the log"
+            )
+        }
 
         val key = ClientDestinations.profileKey()
         val unavailable = ClientDestinations.unavailable()
@@ -250,11 +259,11 @@ object SettingsPanel : Panel {
             ImGui.text("${index + 1}.  ${dest.label}")
             ImGui.sameLine()
             if (index == 0) ImGui.beginDisabled()
-            if (ImGui.arrowButton("##up", ImGuiDir.Up)) ClientDestinations.save(key, swapped(order, index, index - 1))
+            if (ImGui.arrowButton("##up", ImGuiDir.Up)) saveOrder(key, swapped(order, index, index - 1))
             if (index == 0) ImGui.endDisabled()
             ImGui.sameLine()
             if (index == order.lastIndex) ImGui.beginDisabled()
-            if (ImGui.arrowButton("##down", ImGuiDir.Down)) ClientDestinations.save(key, swapped(order, index, index + 1))
+            if (ImGui.arrowButton("##down", ImGuiDir.Down)) saveOrder(key, swapped(order, index, index + 1))
             if (index == order.lastIndex) ImGui.endDisabled()
             unavailable[dest]?.let {
                 ImGui.sameLine()
@@ -262,8 +271,12 @@ object SettingsPanel : Panel {
             }
             ImGui.popID()
         }
-        if (Widgets.button("Reset to default")) ClientDestinations.save(key, null)
+        if (Widgets.button("Reset to default")) saveOrder(key, null)
         ImGui.popID()
+    }
+
+    private fun saveOrder(key: String, order: List<Destination>?) {
+        destinationSaveFailed = !ClientDestinations.save(key, order)
     }
 
     private fun swapped(order: List<Destination>, i: Int, j: Int): List<Destination> =

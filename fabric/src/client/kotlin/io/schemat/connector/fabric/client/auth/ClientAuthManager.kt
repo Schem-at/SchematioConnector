@@ -214,14 +214,19 @@ class ClientAuthManager(private val configDir: Path) {
         }
     }
 
-    /** Persist a string value to config.properties; a null [value] removes the key. */
-    fun setConfigString(name: String, value: String?) {
-        try {
+    /**
+     * Persist a string value to config.properties; a null [value] removes the key.
+     * Returns false (after logging) when the file could not be written.
+     */
+    fun setConfigString(name: String, value: String?): Boolean {
+        return try {
             updateConfig { props ->
                 if (value == null) props.remove(name) else props.setProperty(name, value)
             }
+            true
         } catch (e: Exception) {
             LOGGER.warn("Failed to persist config value $name: ${e.message}")
+            false
         }
     }
 

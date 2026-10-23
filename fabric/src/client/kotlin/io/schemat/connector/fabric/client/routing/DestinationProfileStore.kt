@@ -11,7 +11,8 @@ import io.schemat.connector.core.routing.DestinationProfiles
  */
 class DestinationProfileStore(
     private val read: (String) -> String?,
-    private val write: (String, String?) -> Unit,
+    /** Persists a value (null removes it); returns false on failure. */
+    private val write: (String, String?) -> Boolean,
 ) {
     /** A decoded profile; [order] is null when the key is absent or invalid on disk. */
     private class Entry(val order: List<Destination>?)
@@ -27,12 +28,20 @@ class DestinationProfileStore(
 
     fun hasOwnProfile(key: String): Boolean = profile(key) != null
 
-    /** Stores [order] for [key]; null resets the profile. */
-    fun save(key: String, order: List<Destination>?) {
+    /**
+     * Stores [order] for [key]; null resets the profile. Returns false when the write failed
+     * (the writer logs why). The cache then forgets everything: a failed write may have left
+     * config.properties in any state, so the next lookups re-read what is really on disk.
+     */
+    fun save(key: String, order: List<Destination>?): Boolean {
         val encoded = order?.let { DestinationProfiles.encode(it) }
-        write(PREFIX + key, encoded)
+        if (!write(PREFIX + key, encoded)) {
+            cache.clear()
+            return false
+        }
         // Decode what was written so the cache matches a fresh read exactly.
         cache[key] = Entry(DestinationProfiles.decode(encoded))
+        return true
     }
 
     /** Drops every cached profile; the next lookup re-reads disk. */

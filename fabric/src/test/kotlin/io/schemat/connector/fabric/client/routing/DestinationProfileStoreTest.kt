@@ -12,12 +12,16 @@ class DestinationProfileStoreTest {
     private val disk = mutableMapOf<String, String>()
     private val reads = mutableListOf<String>()
     private val writes = mutableListOf<Pair<String, String?>>()
+    private var diskWritable = true
 
     private fun store() = DestinationProfileStore(
         read = { name -> reads += name; disk[name] },
         write = { name, value ->
             writes += name to value
-            if (value == null) disk.remove(name) else disk[name] = value
+            if (diskWritable) {
+                if (value == null) disk.remove(name) else disk[name] = value
+            }
+            diskWritable
         },
     )
 
@@ -53,12 +57,12 @@ class DestinationProfileStoreTest {
         assertEquals(Destination.DEFAULT_ORDER, s.order("server:c"))
         reads.clear()
 
-        s.save("server:c", custom)
+        assertTrue(s.save("server:c", custom))
         assertEquals(listOf<Pair<String, String?>>("download_destinations.server:c" to DestinationProfiles.encode(custom)), writes)
         assertEquals(custom, s.order("server:c"))
         assertTrue(s.hasOwnProfile("server:c"))
 
-        s.save("server:c", null) // reset
+        assertTrue(s.save("server:c", null)) // reset
         assertFalse(s.hasOwnProfile("server:c"))
         assertEquals(Destination.DEFAULT_ORDER, s.order("server:c"))
         assertEquals(emptyList<String>(), reads)
@@ -70,6 +74,18 @@ class DestinationProfileStoreTest {
         assertEquals(Destination.DEFAULT_ORDER, s.order("server:d"))
         s.save(DestinationProfiles.DEFAULT_KEY, custom)
         assertEquals(custom, s.order("server:d"))
+    }
+
+    @Test
+    fun `a failed save reports false and keeps showing what is on disk`() {
+        val s = store()
+        assertEquals(Destination.DEFAULT_ORDER, s.order("server:f"))
+        diskWritable = false
+
+        assertFalse(s.save("server:f", custom))
+
+        assertFalse(s.hasOwnProfile("server:f"))
+        assertEquals(Destination.DEFAULT_ORDER, s.order("server:f"))
     }
 
     @Test

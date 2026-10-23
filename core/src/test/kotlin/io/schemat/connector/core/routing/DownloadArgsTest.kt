@@ -38,6 +38,30 @@ class DownloadArgsTest {
     }
 
     @Test
+    fun `quick share password keeps its spaces`() {
+        assertEquals(
+            ParsedDownload.Ok("qs_abc123", "correct horse battery", DestinationFilter(tool = Tool.LITEMATICA)),
+            DownloadArgs.parse("qs_abc123 correct horse --lm battery", true),
+        )
+        assertEquals(
+            ParsedDownload.Ok("qs_abc123", "two spaces", null), // runs of spaces join as one
+            DownloadArgs.parse("qs_abc123 two   spaces", true),
+        )
+    }
+
+    @Test
+    fun `schematic with an extra positional is an error`() {
+        assertEquals(
+            ParsedDownload.Error("Unexpected argument 'schem'. Use flags: --we, --lm, --file, --server, --local."),
+            DownloadArgs.parse("44srfK schem", false),
+        )
+        assertEquals(
+            ParsedDownload.Error("Unexpected argument 'x'. Use flags: --we, --lm, --file, --server, --local."),
+            DownloadArgs.parse("--we 44srfK x y", false),
+        )
+    }
+
+    @Test
     fun `unknown flag is an error`() {
         assertEquals(
             ParsedDownload.Error("Unknown flag --x. Use --we, --lm, --file, --server or --local."),
