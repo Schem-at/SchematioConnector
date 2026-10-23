@@ -6,19 +6,17 @@ import com.mojang.brigadier.context.CommandContext
 import io.schemat.connector.core.ipc.ClientAction
 import io.schemat.connector.core.ipc.DispatchMode
 import io.schemat.connector.core.ipc.DispatchTable
-import io.schemat.connector.core.modapi.ApiError
-import io.schemat.connector.core.modapi.ApiResult
-import io.schemat.connector.fabric.client.SchematioClientMod
+import io.schemat.connector.core.routing.DownloadArgs
+import io.schemat.connector.core.routing.DownloadKind
+import io.schemat.connector.core.routing.ParsedDownload
+import io.schemat.connector.fabric.client.routing.DownloadRouter
 import io.schemat.connector.fabric.client.ipc.ServerSession
 import io.schemat.connector.fabric.client.ui.framework.ImGuiOverlay
 import io.schemat.connector.fabric.client.ui.framework.PanelManager
-import io.schemat.connector.fabric.client.integration.Bridges
 import io.schemat.connector.fabric.client.services.ChatNotice
-import io.schemat.connector.fabric.client.ui.foundation.toUserMessage
 import io.schemat.connector.fabric.client.ui.panels.BrowsePanel
 import io.schemat.connector.fabric.client.ui.panels.QuickShareCreatePanel
 import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel
-import kotlinx.coroutines.launch
 // Fabric API for 26.x (command-api-v2 3.x) renamed ClientCommandManager to
 // ClientCommands (same statics); the alias keeps call sites identical.
 //? if >=26.1 {
@@ -27,11 +25,9 @@ import kotlinx.coroutines.launch
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager
 //?}
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource
-import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.network.chat.Component
 import net.minecraft.ChatFormatting
-import java.nio.file.Files
-import java.nio.file.Path
+import org.slf4j.LoggerFactory
 
 /**
  * `/schematio` client command tree (Fabric Client Command API v2 / Brigadier).
@@ -40,46 +36,47 @@ import java.nio.file.Path
  * - `/schematio open` | `browse` - same as bare command
  * - `/schematio upload` - open the upload wizard (uses the current Litematica
  *   selection as the source when one exists, like the Home screen button)
- * - `/schematio download <id>` - download a schematic (short id / uuid / slug)
- *   as `.litematic` and load it into Litematica
- * - `/schematio quickshareget <accessCode> [password]` - download a quick share
- *   by its access code (e.g. `qs_re3LyVO5Dn`) and load it into Litematica.
- *   The backend resolves access codes through the same
- *   `POST /schematics/{id}/download` route, consulting `password` for protected shares.
+ * - `/schematio download <id|link> [--we|--lm|--file] [--server|--local]` - download a
+ *   schematic (short id / uuid / slug / schemat.io link) to your preferred destination
+ *   (see [DownloadRouter] and the "Download destination" settings)
+ * - `/schematio quickshareget <code> [password] [flags]` - download a quick share
+ *   by its access code (e.g. `qs_re3LyVO5Dn`) to your preferred destination. The backend
+ *   resolves access codes through the same `POST /schematics/{id}/download` route,
+ *   consulting `password` for protected shares.
  * - `/schematio quickshare` - open the quick-share creation screen
  * - `/schematio help` - print this list to chat
  *
  * Screens are opened via `client.schedule { ... }` so the closing chat screen does not
- * immediately replace them. Downloads run on [io.schemat.connector.fabric.client.services.ClientServices.scope]
- * (IO dispatcher); file writes happen there too, then the Litematica load and all chat
- * feedback are marshalled to the render thread ([ChatNotice] hops internally).
+ * immediately replace them. Downloads are handed to [DownloadRouter], which picks the
+ * destination, runs the transfer off-thread and replies on the client thread.
  */
 object SchematioClientCommands {
 
-    private const val LITEMATIC_EXTENSION = ".litematic"
-
-    private val services get() = SchematioClientMod.instance.services
+    private val LOGGER = LoggerFactory.getLogger("SchematioClientCommands")
 
     /** True when the connected server's plugin should own this action (forward instead of handling locally). */
     private fun forwards(action: ClientAction): Boolean =
         DispatchTable.resolve(action, ServerSession.pluginPresent, ServerSession.platform) == DispatchMode.SERVER_COMMAND
 
     /**
-     * Sends a `/`-less command line straight to the server as an unsigned command packet.
-     *
-     * MUST NOT use `ClientPacketListener.sendCommand(...)`: Fabric's client-command API
-     * mixins into the HEAD of `sendCommand` and re-dispatches any *client*-registered
-     * command through its own dispatcher, cancelling the vanilla server send. Because
-     * `/schematio` is registered client-side, forwarding `schematio …` there re-enters this
-     * command's executor → `forwardToServer` again → infinite recursion (StackOverflowError).
-     * We instead send the exact packet vanilla `sendCommand` sends for a no-signable-argument
-     * command (`ServerboundChatCommandPacket`) via `connection.send(...)`, which the mixin
-     * does not touch. All `/schematio` forwards have only plain string args, so unsigned is
-     * the correct vanilla behaviour.
+     * Forwards [command] to the server plugin via [DownloadRouter.forwardToServer]; a failed
+     * forward is logged and reported to the player.
      */
-    private fun forwardToServer(command: String): Int {
-        val connection = net.minecraft.client.Minecraft.getInstance().player?.connection ?: return 0
-        connection.send(net.minecraft.network.protocol.game.ServerboundChatCommandPacket(command))
+    private fun forward(command: String): Int {
+        if (DownloadRouter.forwardToServer(command)) return 1
+        LOGGER.warn("Could not forward '{}' to the server: no server connection", command)
+        ChatNotice.error("Not connected to a server")
+        return 0
+    }
+
+    private fun download(args: String, quickShare: Boolean): Int {
+        val kind = if (quickShare) DownloadKind.QUICK_SHARE else DownloadKind.SCHEMATIC
+        when (val parsed = DownloadArgs.parse(args, quickShare)) {
+            is ParsedDownload.Error -> ChatNotice.error(parsed.message)
+            is ParsedDownload.Ok -> DownloadRouter.route(kind, parsed) { text, isError ->
+                if (isError) ChatNotice.error(text) else ChatNotice.info(text)
+            }
+        }
         return 1
     }
 
@@ -98,46 +95,29 @@ object SchematioClientCommands {
                 .then(
                     ClientCommandManager.literal("upload")
                         .executes { ctx ->
-                            if (forwards(ClientAction.UPLOAD)) forwardToServer("schematio upload")
+                            if (forwards(ClientAction.UPLOAD)) forward("schematio upload")
                             else openPanel(ctx) { UploadWizardPanel.open() }
                         }
                 )
                 .then(
                     ClientCommandManager.literal("quickshare")
                         .executes { ctx ->
-                            if (forwards(ClientAction.QUICKSHARE)) forwardToServer("schematio quickshare")
+                            if (forwards(ClientAction.QUICKSHARE)) forward("schematio quickshare")
                             else openPanel(ctx) { QuickShareCreatePanel.show(null) }
                         }
                 )
                 .then(
                     ClientCommandManager.literal("download")
                         .then(
-                            ClientCommandManager.argument("id", StringArgumentType.word())
-                                .executes { ctx ->
-                                    val id = StringArgumentType.getString(ctx, "id")
-                                    if (forwards(ClientAction.DOWNLOAD)) forwardToServer("schematio download $id")
-                                    else downloadAndLoad(id, password = null, label = "schematic")
-                                }
+                            ClientCommandManager.argument("args", StringArgumentType.greedyString())
+                                .executes { ctx -> download(StringArgumentType.getString(ctx, "args"), quickShare = false) }
                         )
                 )
                 .then(
                     ClientCommandManager.literal("quickshareget")
                         .then(
-                            ClientCommandManager.argument("accessCode", StringArgumentType.word())
-                                .executes { ctx ->
-                                    val code = StringArgumentType.getString(ctx, "accessCode")
-                                    if (forwards(ClientAction.QUICKSHARE_GET)) forwardToServer("schematio quickshareget $code")
-                                    else downloadAndLoad(code, password = null, label = "quick share")
-                                }
-                                .then(
-                                    ClientCommandManager.argument("password", StringArgumentType.greedyString())
-                                        .executes { ctx ->
-                                            val code = StringArgumentType.getString(ctx, "accessCode")
-                                            val password = StringArgumentType.getString(ctx, "password")
-                                            if (forwards(ClientAction.QUICKSHARE_GET)) forwardToServer("schematio quickshareget $code $password")
-                                            else downloadAndLoad(code, password = password, label = "quick share")
-                                        }
-                                )
+                            ClientCommandManager.argument("args", StringArgumentType.greedyString())
+                                .executes { ctx -> download(StringArgumentType.getString(ctx, "args"), quickShare = true) }
                         )
                 )
                 .then(
@@ -169,73 +149,6 @@ object SchematioClientCommands {
         return 1
     }
 
-    // ------------------------------------------------------------------ download / quick share get
-
-    /**
-     * Download [id] (schematic id/short-id/slug, or a quick-share access code - the
-     * backend's download route resolves both) as `.litematic`, write it into the
-     * Litematica schematics directory (or `<game>/schematics/schemat.io` without
-     * Litematica) and create a placement via [Bridges.litematica].
-     */
-    private val commandTransfers = io.schemat.connector.core.TransferEpoch()
-
-    private fun downloadAndLoad(id: String, password: String?, label: String): Int {
-        val ticket = commandTransfers.begin()
-        val destinationCheck = Bridges.litematica.captureImportCheck()
-        val check: () -> String? = {
-            if (!commandTransfers.isCurrent(ticket)) "A newer download replaced this request." else destinationCheck()
-        }
-        ChatNotice.info("Downloading $label \"$id\"…")
-        services.scope.launch {
-            val result = try {
-                services.cached.download(id, "litematic", password)
-            } catch (e: Exception) {
-                ApiResult.Failure(ApiError.Unexpected(0, e.message ?: "Unexpected client error"))
-            }
-            when (result) {
-                is ApiResult.Success -> saveAndLoad(id, result.value, check)
-                is ApiResult.Failure -> ChatNotice.error(
-                    "Could not download $label \"$id\": ${result.error.toUserMessage()}"
-                )
-            }
-        }
-        return 1
-    }
-
-    /** IO thread. Write [bytes] to disk, then load into Litematica on the render thread. */
-    private fun saveAndLoad(name: String, bytes: ByteArray, check: () -> String?) {
-        val file = try {
-            val dir = downloadDirectory()
-            Files.createDirectories(dir)
-            io.schemat.connector.fabric.client.integration.SchematicFiles.save(dir, sanitizeFileName(name), "litematic", bytes)
-        } catch (e: Exception) {
-            ChatNotice.error("Could not save \"$name\": ${e.message ?: "unexpected error"}")
-            return
-        }
-        services.onMainThread {
-            if (Bridges.litematica.isAvailable) {
-                Bridges.litematica.loadSchematic(file.toFile(), name, check) { ok, error ->
-                    if (ok) {
-                        ChatNotice.info("Loaded \"$name\" into Litematica")
-                    } else {
-                        ChatNotice.error(error ?: "Failed to load \"$name\" into Litematica")
-                    }
-                }
-            } else {
-                ChatNotice.info("Litematica is not installed - saved to $file")
-            }
-        }
-    }
-
-    /** Downloads land in Litematica's schematics dir when known, else `<game>/schematics/schemat.io`. */
-    private fun downloadDirectory(): Path =
-        Bridges.litematica.schematicsDirectory()
-            ?: FabricLoader.getInstance().gameDir.resolve("schematics").resolve("schemat.io")
-
-    /** Defensive file-name sanitizer (ids/access codes are already safe). */
-    private fun sanitizeFileName(name: String): String =
-        name.replace(Regex("[^a-zA-Z0-9._\\- ]"), "_").ifBlank { "schematic" }
-
     // ------------------------------------------------------------------ help
 
     private fun sendHelp(source: FabricClientCommandSource): Int {
@@ -247,8 +160,8 @@ object SchematioClientCommands {
             "/schematio" to "open the schematic browser",
             "/schematio open|browse" to "open the schematic browser",
             "/schematio upload" to "upload the current selection / a local file",
-            "/schematio download <id>" to "download a schematic into Litematica",
-            "/schematio quickshareget <code> [password]" to "load a quick share by access code",
+            "/schematio download <id|link> [--we|--lm|--file] [--server|--local]" to "download to your preferred destination",
+            "/schematio quickshareget <code> [password] [flags]" to "load a quick share by access code",
             "/schematio quickshare" to "create a quick share",
             "/schematio help" to "show this list",
         ).forEach { (cmd, desc) ->
