@@ -9,6 +9,7 @@ import io.schemat.connector.fabric.adapter.FabricPlatformAdapter
 import io.schemat.connector.fabric.command.SchematioCommand
 import io.schemat.connector.fabric.dialog.FabricDialogService
 import io.schemat.connector.fabric.ipc.FabricServerIpc
+import io.schemat.connector.fabric.worldedit.WorldEditShutdown
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
@@ -206,10 +207,13 @@ class SchematioConnectorMod : ModInitializer {
             )
         }
 
-        ServerLifecycleEvents.SERVER_STOPPED.register {
+        ServerLifecycleEvents.SERVER_STOPPED.register { stopped ->
             httpUtil?.close()
             if (::platformAdapter.isInitialized) {
                 platformAdapter.shutdown()
+            }
+            if (stopped.isDedicatedServer) {
+                WorldEditShutdown.releaseProgressTimer()
             }
             this.server = null
         }
