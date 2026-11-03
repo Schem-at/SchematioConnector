@@ -37,12 +37,26 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
                             strikethrough = span.strikethrough,
                             color = span.color,
                             link = span.link,
-                            bullet = span.bullet && i == 0,
+                            code = span.code,
+                            line = lineFormatOf(span, listHead = i == 0, lineStart = chars.lastOrNull().let { it == null || it.ch == '\n' }),
                         )
                     )
                 }
             }
             return RichDocument(chars)
+        }
+
+        /**
+         * The line format a char carries when it heads a line: the list kind on the first
+         * char of a bullet span, heading/quote on any char that starts a line.
+         */
+        private fun lineFormatOf(span: RichSpan, listHead: Boolean, lineStart: Boolean): LineFormat {
+            val list = when {
+                !(span.bullet && listHead) -> ListKind.NONE
+                span.ordered -> ListKind.ORDERED
+                else -> ListKind.BULLET
+            }
+            return if (lineStart) LineFormat(list, span.heading, span.quote) else LineFormat(list)
         }
 
         /** Build from sanitizer-allowed website HTML (via [RichText.htmlToSpans]). */
@@ -52,7 +66,16 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
     // ---- nested types ----
 
     /** The formatting flags the ImGui toolbar can toggle. */
-    enum class StyleFlag { BOLD, ITALIC, UNDERLINE, STRIKETHROUGH }
+    enum class StyleFlag { BOLD, ITALIC, UNDERLINE, STRIKETHROUGH, CODE }
+
+    /** What list, if any, a line belongs to. */
+    enum class ListKind { NONE, BULLET, ORDERED }
+
+    /**
+     * Line-level (block) formatting, carried by the first character of a line:
+     * list membership, heading level (0, 2 or 3) and blockquote.
+     */
+    data class LineFormat(val list: ListKind = ListKind.NONE, val heading: Int = 0, val quote: Boolean = false)
 
     /**
      * The style applied to newly inserted characters.  Mirrors the vanilla
@@ -65,6 +88,7 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
         val strikethrough: Boolean = false,
         val color: Int? = null,
         val link: String? = null,
+        val code: Boolean = false,
     )
 
     // ---- internal character model ----
@@ -78,8 +102,9 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
         val strikethrough: Boolean = false,
         val color: Int? = null,
         val link: String? = null,
-        /** Set on the first character of a bullet line (line-level flag). */
-        val bullet: Boolean = false,
+        val code: Boolean = false,
+        /** Line-level format; meaningful only on the first character of a line. */
+        val line: LineFormat = LineFormat(),
     )
 
     // ---- read-only properties ----
@@ -105,7 +130,7 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
             else -> chars[offset]
         }
         if (rc.ch == '\n') return Style()
-        return Style(rc.bold, rc.italic, rc.underline, rc.strikethrough, rc.color, rc.link)
+        return styleKeyOf(rc)
     }
 
     // ---- insertText ----
@@ -131,7 +156,7 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
         for (c in text) {
             if (chars.size >= MAX_LENGTH) break
             if (c != '\n' && c.code < 0x20) continue
-            chars.add(insertAt, RChar(c, style.bold, style.italic, style.underline, style.strikethrough, style.color, style.link))
+            chars.add(insertAt, RChar(c, style.bold, style.italic, style.underline, style.strikethrough, style.color, style.link, style.code))
             insertAt++
         }
     }
@@ -176,6 +201,62 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
         }
     }
 
+    // ---- colour / link ----
+
+    /**
+     * Set the text colour of the non-newline chars in [[start], [end]); null clears it.
+     * A colour outside [RichPalette] is ignored (the contract allows only the palette).
+     */
+    fun setColor(start: Int, end: Int, color: Int?) {
+        if (color != null && !RichPalette.contains(color)) return
+        val argb = color?.let { RichPalette.entryOf(it)!!.argb }
+        forRange(start, end) { it.copy(color = argb) }
+    }
+
+    /**
+     * Make the non-newline chars in [[start], [end]) a link to [url]; null removes the
+     * link. A URL that fails [RichText.isAllowedHref] is ignored.
+     */
+    fun setLink(start: Int, end: Int, url: String?) {
+        if (url != null && !RichText.isAllowedHref(url)) return
+        val target = url?.trim()
+        forRange(start, end) { it.copy(link = target) }
+    }
+
+    private fun forRange(start: Int, end: Int, change: (RChar) -> RChar) {
+        val a = start.coerceIn(0, chars.size)
+        val b = end.coerceIn(a, chars.size)
+        for (i in a until b) {
+            if (chars[i].ch != '\n') chars[i] = change(chars[i])
+        }
+    }
+
+    // ---- line formats ----
+
+    /** Index of the first char of the line containing [offset]. */
+    private fun lineStart(offset: Int): Int {
+        var i = offset.coerceIn(0, chars.size)
+        while (i > 0 && chars[i - 1].ch != '\n') i--
+        return i
+    }
+
+    /** The [LineFormat] of the line containing [offset] (default for an empty line). */
+    fun lineFormatAt(offset: Int): LineFormat {
+        val ls = lineStart(offset)
+        return chars.getOrNull(ls)?.takeIf { it.ch != '\n' }?.line ?: LineFormat()
+    }
+
+    /**
+     * Set the [LineFormat] of the line containing [offset]. An empty line has no char to
+     * carry it, so it is left unchanged. Heading levels other than 2 and 3 clear the heading.
+     */
+    fun setLineFormat(offset: Int, format: LineFormat) {
+        val ls = lineStart(offset)
+        if (ls >= chars.size || chars[ls].ch == '\n') return
+        val heading = if (format.heading == 2 || format.heading == 3) format.heading else 0
+        chars[ls] = chars[ls].copy(line = format.copy(heading = heading))
+    }
+
     // ---- serialisation ----
 
     /**
@@ -188,6 +269,8 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
         val plain = Style()
         var runKey: Style? = null
         var runBullet = false
+        var runLine = LineFormat()
+        var line = LineFormat()
         val sb = StringBuilder()
 
         fun flush() {
@@ -198,6 +281,10 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
                         sb.toString(),
                         k.bold, k.italic, k.underline, k.strikethrough,
                         runBullet, k.color, k.link,
+                        ordered = runBullet && runLine.list == ListKind.ORDERED,
+                        heading = runLine.heading,
+                        quote = runLine.quote,
+                        code = k.code,
                     )
                 )
                 sb.clear()
@@ -207,11 +294,15 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
 
         chars.forEachIndexed { i, rc ->
             val lineStart = i == 0 || chars[i - 1].ch == '\n'
+            if (lineStart) line = if (rc.ch == '\n') LineFormat() else rc.line
             val key = if (rc.ch == '\n') plain else styleKeyOf(rc)
-            val bulletStart = lineStart && rc.ch != '\n' && rc.bullet
-            if (key != runKey || bulletStart) {
+            // Newlines carry no block format, so a heading/quote never leaks into the gap.
+            val blockKey = if (rc.ch == '\n') LineFormat() else line.copy(list = ListKind.NONE)
+            val bulletStart = lineStart && rc.ch != '\n' && rc.line.list != ListKind.NONE
+            if (key != runKey || blockKey != runLine.copy(list = ListKind.NONE) || bulletStart) {
                 flush()
                 runKey = key
+                runLine = if (rc.ch == '\n') LineFormat() else line
                 if (bulletStart) runBullet = true
             }
             sb.append(rc.ch)
@@ -232,13 +323,14 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
     // ---- private helpers ----
 
     private fun styleKeyOf(rc: RChar): Style =
-        Style(rc.bold, rc.italic, rc.underline, rc.strikethrough, rc.color, rc.link)
+        Style(rc.bold, rc.italic, rc.underline, rc.strikethrough, rc.color, rc.link, rc.code)
 
     private fun flagOf(rc: RChar, flag: StyleFlag): Boolean = when (flag) {
         StyleFlag.BOLD -> rc.bold
         StyleFlag.ITALIC -> rc.italic
         StyleFlag.UNDERLINE -> rc.underline
         StyleFlag.STRIKETHROUGH -> rc.strikethrough
+        StyleFlag.CODE -> rc.code
     }
 
     private fun withFlag(rc: RChar, flag: StyleFlag, value: Boolean): RChar = when (flag) {
@@ -246,5 +338,6 @@ class RichDocument private constructor(private val chars: MutableList<RChar>) {
         StyleFlag.ITALIC -> rc.copy(italic = value)
         StyleFlag.UNDERLINE -> rc.copy(underline = value)
         StyleFlag.STRIKETHROUGH -> rc.copy(strikethrough = value)
+        StyleFlag.CODE -> rc.copy(code = value)
     }
 }

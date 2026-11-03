@@ -58,6 +58,7 @@ object SchematicDetailPanel : Panel {
     // ---- current target ----
     private var summary: SchematicSummary? = null
     private var detail: SchematicDetail? = null
+    private val descriptionView = io.schemat.connector.fabric.client.ui.widgets.RichTextView("detail-desc")
 
     // ---- async state ----
     private var fetchError: String? = null
@@ -309,9 +310,8 @@ object SchematicDetailPanel : Panel {
     private fun renderDescription(d: SchematicDetail?) {
         val desc = d?.description ?: return
         if (desc.isBlank()) return
-        ImGui.pushStyleColor(imgui.flag.ImGuiCol.Text, ImGuiColors.TEXT_SECONDARY.x, ImGuiColors.TEXT_SECONDARY.y, ImGuiColors.TEXT_SECONDARY.z, ImGuiColors.TEXT_SECONDARY.w)
-        ImGui.textWrapped(desc)
-        ImGui.popStyleColor()
+        // Descriptions are contract HTML (bug #3): render them, never show raw tags.
+        descriptionView.render(desc)
     }
 
     // ---- authorship check ----

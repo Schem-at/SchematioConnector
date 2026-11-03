@@ -4,6 +4,9 @@ import io.schemat.connector.fabric.client.ui.theme.argbToImVec4
 import imgui.ImGui
 import imgui.flag.ImGuiKey
 import imgui.flag.ImGuiMouseButton
+import io.schemat.connector.core.text.RichDocument.LineFormat
+import io.schemat.connector.core.text.RichDocument.ListKind
+import io.schemat.connector.core.text.RichPalette
 import io.schemat.connector.core.text.RichSpan
 import io.schemat.connector.core.text.RichText
 import dev.harrison.panellib.framework.ImGuiGl3Renderer
@@ -34,7 +37,11 @@ import kotlin.math.min
  *   atlas, with the two *top* corners shifted right by `slant * (glyph height above
  *   baseline)` ([ITALIC_SLANT]). Bold+italic does the shear twice (offset pass).
  * - **Underline / strike** = a thin `addLine` under / through the run.
- * - **Color** = the run's text color (default = [Theme.TEXT_PRIMARY]).
+ * - **Color** = the run's text color (default = [Theme.TEXT_PRIMARY]); only the 16
+ *   [RichPalette] colours can be applied.
+ * - **Code** = a [Theme.SURFACE_RAISED] box behind the run, text in [Theme.WARNING].
+ * - **Headings** use the H2 / SemiBold faces; **quotes** get a left bar and indent;
+ *   **lists** a bullet (see RichGlyphs) or "N. " prefix.
  *
  * Selection is a translucent `addRectFilled`; the caret is a 1px `addRectFilled` that
  * blinks. The font atlas texture id comes from [ImGuiGl3Renderer.fontTextureId] (our
@@ -48,7 +55,9 @@ import kotlin.math.min
  * uses an `invisibleButton` surface + `getMousePosX/Y` against the laid-out per-char xs.
  *
  * Load/save round-trips website HTML through the shared [RichText] parser:
- * [setHtml] (`htmlToSpans`) and [toHtml] (`spansToHtml`).
+ * [setHtml] (`htmlToSpans`) and [toHtml] (`spansToHtml`), so the editor emits only the
+ * shared description contract (see [RichText]). [renderReadOnly] draws the same layout
+ * without the toolbar or caret, for displaying a description.
  *
  * Lives under `ui/imgui/` (not `ui/imgui/panels/`), so it is exempt from
  * `checkThemeDiscipline`; it still sources all colors from [Theme] for consistency.
@@ -59,11 +68,10 @@ import kotlin.math.min
 class RichTextEditorWidget(internal val id: String) {
 
     // ---- supported styles (mirrors RichSpan's editable fields) ----
-    enum class StyleFlag { BOLD, ITALIC, UNDERLINE, STRIKE }
+    enum class StyleFlag { BOLD, ITALIC, UNDERLINE, STRIKE, CODE }
 
     companion object {
         private const val MAX_LENGTH = 5000
-        internal const val BULLET_PREFIX = "• "
         /** Faux-bold thickening: second addText pass offset, in px. */
         internal const val BOLD_OFFSET = 0.6f
         /** Faux-italic shear factor (x-shift per px of glyph height above baseline). */
@@ -71,16 +79,12 @@ class RichTextEditorWidget(internal val id: String) {
         internal const val PAD = 6f
         /** Extra leading between visual rows (px), on top of the font line height. */
         internal const val LINE_GAP = 2f
+        /** Left indent of a blockquote line; the quote bar sits in it. */
+        internal const val QUOTE_INDENT = 12f
         private const val CARET_BLINK_MS = 500L
 
-        /** Toolbar color swatches (null = theme default). Ported from RichDescriptionEditor. */
-        internal val SWATCHES: List<Int?> = listOf(
-            null,
-            Theme.ACCENT,
-            0xFFE03E2D.toInt(),
-            0xFF2DC26B.toInt(),
-            0xFF3598DB.toInt(),
-        )
+        /** Toolbar color swatches: theme default (null), then the 16 [RichPalette] colours. */
+        internal val SWATCHES: List<Int?> = listOf<Int?>(null) + RichPalette.COLORS.map { it.argb }
     }
 
     // ---- document model (ported) ----
@@ -94,8 +98,9 @@ class RichTextEditorWidget(internal val id: String) {
         val strikethrough: Boolean = false,
         val color: Int? = null,
         val link: String? = null,
-        /** Set on the first character of a bullet line (line-level flag). */
-        val bullet: Boolean = false,
+        val code: Boolean = false,
+        /** Line-level (list / heading / quote) format; meaningful only on a line's first char. */
+        val line: LineFormat = LineFormat(),
     )
 
     /** The style a newly typed character receives (bullet handled separately). */
@@ -106,6 +111,7 @@ class RichTextEditorWidget(internal val id: String) {
         val strikethrough: Boolean = false,
         val color: Int? = null,
         val link: String? = null,
+        val code: Boolean = false,
     )
 
     internal val chars = ArrayList<RChar>()
@@ -116,6 +122,16 @@ class RichTextEditorWidget(internal val id: String) {
 
     /** Toolbar-toggled style for the next typed char; cleared when the caret moves. */
     private var pendingOverride: TypingStyle? = null
+
+    /**
+     * A line format picked on an empty line (which has no char to carry it); applied to
+     * the first char typed there, dropped when the caret leaves that line.
+     */
+    private var pendingLine: LineFormat? = null
+    private var pendingLineStart = -1
+
+    /** Inner padding; 0 in [renderReadOnly] so a description sits flush with the panel text. */
+    internal var pad = PAD
 
     private var blinkBase = System.currentTimeMillis()
 
@@ -156,10 +172,17 @@ class RichTextEditorWidget(internal val id: String) {
         chars.clear()
         for (span in RichText.htmlToSpans(html)) {
             span.text.forEachIndexed { i, c ->
+                val lineStart = chars.lastOrNull().let { it == null || it.ch == '\n' }
+                val list = when {
+                    !(span.bullet && i == 0) -> ListKind.NONE
+                    span.ordered -> ListKind.ORDERED
+                    else -> ListKind.BULLET
+                }
+                val line = if (lineStart) LineFormat(list, span.heading, span.quote) else LineFormat(list)
                 chars.add(
                     RChar(
                         c, span.bold, span.italic, span.underline, span.strikethrough,
-                        span.color, span.link, bullet = span.bullet && i == 0,
+                        span.color, span.link, span.code, line,
                     )
                 )
             }
@@ -167,6 +190,7 @@ class RichTextEditorWidget(internal val id: String) {
         cursor = 0
         selAnchor = -1
         pendingOverride = null
+        pendingLine = null
         layoutDirty = true
         initialHtml = currentHtml()
     }
@@ -180,6 +204,7 @@ class RichTextEditorWidget(internal val id: String) {
         cursor = 0
         selAnchor = -1
         pendingOverride = null
+        pendingLine = null
         layoutDirty = true
         initialHtml = ""
     }
@@ -206,6 +231,28 @@ class RichTextEditorWidget(internal val id: String) {
     fun render(editorHeight: Float = 120f, @Suppress("UNUSED_PARAMETER") previewHeight: Float = 120f) {
         toolbar.render()
         renderSurface(editorHeight)
+    }
+
+    /**
+     * Draw the document read-only at the available width, as tall as its content, with no
+     * toolbar, background, caret or input. Hovering a link shows its URL.
+     */
+    fun renderReadOnly() {
+        if (isEmpty()) return
+        pad = 0f
+        focused = false
+        val originX = ImGui.getCursorScreenPosX()
+        val originY = ImGui.getCursorScreenPosY()
+        val width = ImGui.getContentRegionAvailX().coerceAtLeast(32f)
+        layout.ensureLayout(width)
+        val height = layout.contentHeight().coerceAtLeast(1f)
+        ImGui.invisibleButton("##$id-view", width, height)
+        if (ImGui.isItemHovered()) {
+            layout.charAt(ImGui.getMousePosX(), ImGui.getMousePosY(), originX, originY)
+                ?.let { chars.getOrNull(it)?.link }
+                ?.let { ImGui.setTooltip(it) }
+        }
+        drawContent(ImGui.getWindowDrawList(), originX, originY, width, height)
     }
 
     // ============================ surface (draw + input) ============================
@@ -267,7 +314,7 @@ class RichTextEditorWidget(internal val id: String) {
     private fun typingStyle(): TypingStyle = pendingOverride ?: derivedStyle()
 
     private fun styleKeyOf(rc: RChar) =
-        TypingStyle(rc.bold, rc.italic, rc.underline, rc.strikethrough, rc.color, rc.link)
+        TypingStyle(rc.bold, rc.italic, rc.underline, rc.strikethrough, rc.color, rc.link, rc.code)
 
     private fun derivedStyle(): TypingStyle {
         if (hasSelection()) {
@@ -287,17 +334,21 @@ class RichTextEditorWidget(internal val id: String) {
         return i
     }
 
-    private fun bulletForInsert(c: Char): Boolean {
-        if (c == '\n') return false
+    /** A char typed at a line head inherits the line's format (or the pending one for an empty line). */
+    private fun lineForInsert(c: Char): LineFormat {
+        if (c == '\n') return LineFormat()
         val ls = logicalLineStart(cursor)
-        return cursor == ls && chars.getOrNull(ls)?.let { it.ch != '\n' && it.bullet } == true
+        if (cursor != ls) return LineFormat()
+        val head = chars.getOrNull(ls)?.takeIf { it.ch != '\n' }
+        if (head != null) return head.line
+        return pendingLine?.takeIf { pendingLineStart == ls }?.also { pendingLine = null } ?: LineFormat()
     }
 
     private fun insertChar(c: Char) {
         if (hasSelection()) deleteSelection()
         if (chars.size >= MAX_LENGTH) return
         val st = typingStyle()
-        chars.add(cursor, RChar(c, st.bold, st.italic, st.underline, st.strikethrough, st.color, st.link, bulletForInsert(c)))
+        chars.add(cursor, RChar(c, st.bold, st.italic, st.underline, st.strikethrough, st.color, st.link, st.code, lineForInsert(c)))
         cursor++
         edited()
     }
@@ -328,6 +379,7 @@ class RichTextEditorWidget(internal val id: String) {
         }
         cursor = clamped
         if (selAnchor == cursor) selAnchor = -1
+        if (pendingLine != null && logicalLineStart(cursor) != pendingLineStart) pendingLine = null
         // A toolbar-armed pending style (e.g. a just-picked color, or B/I/U/S toggled
         // with no selection) deliberately SURVIVES caret placement, so the natural flow
         // "pick a colour → click to position → type" keeps the colour. The pending style
@@ -372,7 +424,7 @@ class RichTextEditorWidget(internal val id: String) {
         for (c in clip) {
             if (chars.size >= MAX_LENGTH) break
             if (c != '\n' && c.code < 0x20) continue
-            chars.add(cursor, RChar(c, st.bold, st.italic, st.underline, st.strikethrough, st.color, st.link, false))
+            chars.add(cursor, RChar(c, st.bold, st.italic, st.underline, st.strikethrough, st.color, st.link, st.code))
             cursor++
             inserted = true
         }
@@ -397,6 +449,7 @@ class RichTextEditorWidget(internal val id: String) {
         StyleFlag.ITALIC -> k.italic
         StyleFlag.UNDERLINE -> k.underline
         StyleFlag.STRIKE -> k.strikethrough
+        StyleFlag.CODE -> k.code
     }
 
     private fun withFlag(rc: RChar, flag: StyleFlag, value: Boolean): RChar = when (flag) {
@@ -404,6 +457,7 @@ class RichTextEditorWidget(internal val id: String) {
         StyleFlag.ITALIC -> rc.copy(italic = value)
         StyleFlag.UNDERLINE -> rc.copy(underline = value)
         StyleFlag.STRIKE -> rc.copy(strikethrough = value)
+        StyleFlag.CODE -> rc.copy(code = value)
     }
 
     private fun withFlag(k: TypingStyle, flag: StyleFlag, value: Boolean): TypingStyle = when (flag) {
@@ -411,6 +465,7 @@ class RichTextEditorWidget(internal val id: String) {
         StyleFlag.ITALIC -> k.copy(italic = value)
         StyleFlag.UNDERLINE -> k.copy(underline = value)
         StyleFlag.STRIKE -> k.copy(strikethrough = value)
+        StyleFlag.CODE -> k.copy(code = value)
     }
 
     internal fun toggleStyle(flag: StyleFlag) {
@@ -437,6 +492,8 @@ class RichTextEditorWidget(internal val id: String) {
     }
 
     internal fun setColor(color: Int?) {
+        // The contract allows only the palette; SWATCHES never offer anything else.
+        if (color != null && !RichPalette.contains(color)) return
         if (hasSelection()) {
             for (i in selMin() until selMax()) {
                 if (chars[i].ch != '\n') chars[i] = chars[i].copy(color = color)
@@ -451,12 +508,72 @@ class RichTextEditorWidget(internal val id: String) {
     internal fun activeColor(): Int? =
         if (hasSelection()) chars.getOrNull(selMin())?.color else typingStyle().color
 
-    internal fun toggleBulletLine() {
+    // ---- line formats (list / heading / quote) ----
+
+    /** The format of the caret's line (or the pending one picked on an empty line). */
+    internal fun lineFormat(): LineFormat {
         val ls = logicalLineStart(cursor)
-        if (ls >= chars.size || chars[ls].ch == '\n') return
-        val makeBullet = !chars[ls].bullet
-        chars[ls] = chars[ls].copy(bullet = makeBullet)
+        chars.getOrNull(ls)?.takeIf { it.ch != '\n' }?.let { return it.line }
+        return pendingLine?.takeIf { pendingLineStart == ls } ?: LineFormat()
+    }
+
+    /** Apply [change] to every line the selection touches (or the caret's line). */
+    private fun updateLines(change: (LineFormat) -> LineFormat) {
+        val from = logicalLineStart(if (hasSelection()) selMin() else cursor)
+        val to = if (hasSelection()) selMax() else cursor
+        var ls = from
+        var touched = false
+        while (ls <= to && ls <= chars.size) {
+            if (ls < chars.size && chars[ls].ch != '\n') {
+                chars[ls] = chars[ls].copy(line = change(chars[ls].line))
+                touched = true
+            } else if (!hasSelection()) {
+                // Empty line: remember the format for the first char typed here.
+                pendingLine = change(lineFormat())
+                pendingLineStart = ls
+            }
+            var next = ls
+            while (next < chars.size && chars[next].ch != '\n') next++
+            ls = next + 1
+        }
+        if (touched) edited() else resetBlink()
+    }
+
+    /** Toggle the caret's line(s) in or out of a [kind] list (switching kinds directly). */
+    internal fun toggleList(kind: ListKind) {
+        val target = if (lineFormat().list == kind) ListKind.NONE else kind
+        updateLines { it.copy(list = target, quote = if (target != ListKind.NONE) false else it.quote) }
+    }
+
+    /** Toggle heading [level] (2 or 3) on the caret's line(s). */
+    internal fun toggleHeading(level: Int) {
+        val target = if (lineFormat().heading == level) 0 else level
+        updateLines { it.copy(heading = target) }
+    }
+
+    internal fun toggleQuote() {
+        val target = !lineFormat().quote
+        updateLines { it.copy(quote = target, list = if (target) ListKind.NONE else it.list) }
+    }
+
+    // ---- links ----
+
+    internal fun hasSelectionForLink(): Boolean = hasSelection()
+
+    /** The link on the selection's first char (or under the caret), for prefilling the link popup. */
+    internal fun activeLink(): String? =
+        if (hasSelection()) chars.getOrNull(selMin())?.link else chars.getOrNull(cursor - 1)?.link
+
+    /** Link the selection to [url] (http/https only); null removes links from the selection. */
+    internal fun setLink(url: String?): Boolean {
+        if (!hasSelection()) return false
+        val target = url?.trim()?.ifEmpty { null }
+        if (target != null && !RichText.isAllowedHref(target)) return false
+        for (i in selMin() until selMax()) {
+            if (chars[i].ch != '\n') chars[i] = chars[i].copy(link = target)
+        }
         edited()
+        return true
     }
 
     // ---- document -> HTML ----
@@ -469,22 +586,37 @@ class RichTextEditorWidget(internal val id: String) {
         val plain = TypingStyle()
         var runKey: TypingStyle? = null
         var runBullet = false
+        var runLine = LineFormat()
+        var line = LineFormat()
         val sb = StringBuilder()
         fun flush() {
             val k = runKey ?: return
             if (sb.isNotEmpty()) {
-                spans.add(RichSpan(sb.toString(), k.bold, k.italic, k.underline, k.strikethrough, runBullet, k.color, k.link))
+                spans.add(
+                    RichSpan(
+                        sb.toString(), k.bold, k.italic, k.underline, k.strikethrough, runBullet, k.color, k.link,
+                        ordered = runBullet && runLine.list == ListKind.ORDERED,
+                        heading = runLine.heading,
+                        quote = runLine.quote,
+                        code = k.code,
+                    )
+                )
                 sb.clear()
             }
             runBullet = false
         }
+        // Mirrors RichDocument.toSpans: a line's block format applies to all of its spans;
+        // newlines carry none.
         chars.forEachIndexed { i, rc ->
             val lineStart = i == 0 || chars[i - 1].ch == '\n'
+            if (lineStart) line = if (rc.ch == '\n') LineFormat() else rc.line
             val key = if (rc.ch == '\n') plain else styleKeyOf(rc)
-            val bulletStart = lineStart && rc.ch != '\n' && rc.bullet
-            if (key != runKey || bulletStart) {
+            val block = if (rc.ch == '\n') LineFormat() else line.copy(list = ListKind.NONE)
+            val bulletStart = lineStart && rc.ch != '\n' && rc.line.list != ListKind.NONE
+            if (key != runKey || block != runLine.copy(list = ListKind.NONE) || bulletStart) {
                 flush()
                 runKey = key
+                runLine = if (rc.ch == '\n') LineFormat() else line
                 if (bulletStart) runBullet = true
             }
             sb.append(rc.ch)
@@ -637,24 +769,23 @@ class RichTextEditorWidget(internal val id: String) {
         width: Float,
         height: Float,
     ) {
-        val baseX = originX + PAD
-        val baseY = originY + PAD
-        val lineH = layout.lineHeight()
-        val fontH = layout.fontSize()
+        val baseX = originX + pad
+        val baseY = originY + pad
 
         // Clip to the inner surface.
         drawList.pushClipRect(originX + 1f, originY + 1f, originX + width - 1f, originY + height - 1f, true)
 
         if (chars.isEmpty() && !focused) {
-            drawText(drawList, "Description...", baseX, baseY, abgr(Theme.TEXT_FAINT), bold = false, italic = false)
+            drawText(drawList, "Description...", baseX, baseY, abgr(Theme.TEXT_FAINT), bold = false, italic = false, layout.font(), layout.fontSize())
         }
 
         val selecting = hasSelection()
         val a = if (selecting) selMin() else 0
         val b = if (selecting) selMax() else 0
 
-        lines.forEachIndexed { li, vl ->
-            val ry = baseY + li * lineH
+        for (vl in lines) {
+            val ry = baseY + vl.y
+            val fontH = vl.size
 
             // selection highlight
             if (selecting && a <= vl.end && b >= vl.start) {
@@ -670,26 +801,29 @@ class RichTextEditorWidget(internal val id: String) {
                 }
             }
 
-            if (vl.bulletHead) {
-                drawText(drawList, BULLET_PREFIX, baseX, ry, abgr(Theme.TEXT_SECONDARY), bold = false, italic = false)
+            if (vl.quote) {
+                drawList.addRectFilled(baseX + 2f, ry - 1f, baseX + 4f, ry + vl.height, abgr(Theme.ACCENT_DIM))
             }
-            drawLineRuns(drawList, vl, baseX + vl.indent, ry, fontH)
+            vl.prefix?.let { prefix ->
+                val px = baseX + vl.indent - layout.textWidth(prefix, vl.font, vl.size)
+                drawText(drawList, prefix, px, ry, abgr(Theme.TEXT_SECONDARY), bold = false, italic = false, vl.font, vl.size)
+            }
+            drawLineRuns(drawList, vl, baseX + vl.indent, ry, fontH, vl.quote)
         }
 
         // caret
         if (focused && lines.isNotEmpty() && caretBlinkOn()) {
-            val li = layout.lineIndexAt(cursor)
-            val vl = lines[li]
+            val vl = lines[layout.lineIndexAt(cursor)]
             val cx = baseX + vl.indent + vl.xs[(cursor - vl.start).coerceIn(0, vl.xs.size - 1)]
-            val cy = baseY + li * lineH
-            drawList.addRectFilled(cx, cy - 1f, cx + 1f, cy + fontH + 1f, abgr(Theme.ACCENT))
+            val cy = baseY + vl.y
+            drawList.addRectFilled(cx, cy - 1f, cx + 1f, cy + vl.size + 1f, abgr(Theme.ACCENT))
         }
 
         drawList.popClipRect()
     }
 
     /** Draw one visual row's characters, grouped into same-style runs. */
-    private fun drawLineRuns(drawList: imgui.ImDrawList, vl: VLine, startX: Float, y: Float, fontH: Float) {
+    private fun drawLineRuns(drawList: imgui.ImDrawList, vl: VLine, startX: Float, y: Float, fontH: Float, quote: Boolean) {
         if (vl.start >= vl.end) return
         var i = vl.start
         while (i < vl.end) {
@@ -702,8 +836,11 @@ class RichTextEditorWidget(internal val id: String) {
             }
             val runStartX = startX + vl.xs[i - vl.start]
             val runEndX = startX + vl.xs[j - vl.start]
-            val color = runColor(key)
-            drawText(drawList, sb.toString(), runStartX, y, color, key.bold, key.italic)
+            if (key.code) {
+                drawList.addRectFilled(runStartX - 1f, y - 1f, runEndX + 1f, y + fontH + 1f, abgr(Theme.SURFACE_RAISED), 3f)
+            }
+            val color = runColor(key, quote)
+            drawText(drawList, sb.toString(), runStartX, y, color, key.bold, key.italic, vl.font, vl.size)
 
             val lineColor = color
             if (key.underline || key.link != null) {
@@ -717,26 +854,39 @@ class RichTextEditorWidget(internal val id: String) {
         }
     }
 
-    private fun runColor(k: TypingStyle): Int {
-        val argb = k.color ?: (if (k.link != null) Theme.INFO else Theme.TEXT_PRIMARY)
+    private fun runColor(k: TypingStyle, quote: Boolean): Int {
+        val argb = k.color ?: when {
+            k.link != null -> Theme.INFO
+            k.code -> Theme.WARNING
+            quote -> Theme.TEXT_SECONDARY
+            else -> Theme.TEXT_PRIMARY
+        }
         return abgr(argb)
     }
 
     /**
-     * Draw [text] at ([x],[y]) in [colAbgr]. [bold] thickens via a second offset pass;
-     * [italic] renders glyph-by-glyph with a faux shear via [addItalicRun].
+     * Draw [text] at ([x],[y]) in [colAbgr] using [font] at [size]. [bold] thickens via a
+     * second offset pass; [italic] renders glyph-by-glyph with a faux shear via [addItalicRun].
      */
-    private fun drawText(drawList: imgui.ImDrawList, text: String, x: Float, y: Float, colAbgr: Int, bold: Boolean, italic: Boolean) {
+    private fun drawText(
+        drawList: imgui.ImDrawList,
+        text: String,
+        x: Float,
+        y: Float,
+        colAbgr: Int,
+        bold: Boolean,
+        italic: Boolean,
+        font: imgui.ImFont,
+        size: Float,
+    ) {
         if (text.isEmpty()) return
         if (italic) {
-            addItalicRun(drawList, text, x, y, colAbgr)
-            if (bold) addItalicRun(drawList, text, x + BOLD_OFFSET, y, colAbgr)
+            addItalicRun(drawList, text, x, y, colAbgr, font, size)
+            if (bold) addItalicRun(drawList, text, x + BOLD_OFFSET, y, colAbgr, font, size)
         } else {
-            val f = layout.font()
-            // addText(ImFont, int fontSize, float x, float y, int colAbgr, String): fontSize is int.
-            val size = ImGui.getFontSize()
-            drawList.addText(f, size, x, y, colAbgr, text)
-            if (bold) drawList.addText(f, size, x + BOLD_OFFSET, y, colAbgr, text)
+            // addText takes an int font size; the layout rounds sizes so measuring matches.
+            drawList.addText(font, size.toInt(), x, y, colAbgr, text)
+            if (bold) drawList.addText(font, size.toInt(), x + BOLD_OFFSET, y, colAbgr, text)
         }
     }
 
@@ -745,9 +895,8 @@ class RichTextEditorWidget(internal val id: String) {
      * is shifted right relative to its bottom edge by [ITALIC_SLANT] times the glyph's
      * height above the baseline, using the font atlas texture + the glyph's UVs.
      */
-    private fun addItalicRun(drawList: imgui.ImDrawList, text: String, x: Float, y: Float, colAbgr: Int) {
-        val f = layout.font()
-        val scale = layout.fontSize() / f.fontSize
+    private fun addItalicRun(drawList: imgui.ImDrawList, text: String, x: Float, y: Float, colAbgr: Int, f: imgui.ImFont, size: Float) {
+        val scale = size / f.fontSize
         val texId = ImGuiGl3Renderer.fontTextureId.toLong()
         drawList.pushTextureID(texId)
         var penX = x
