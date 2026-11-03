@@ -1,0 +1,21 @@
+{
+  "name": "browse-communities",
+  "description": "Browse > Communities lists the member's community, picking it scopes Browse, and Manage opens the community panel.",
+  "steps": [
+    {"signin": "MOD_TOKEN_MEMBER", "title": "Sign in as the community member"},
+    {"close_panels": true, "title": "Start from a clean overlay"},
+    {"open_panel": "schematioconnector:browse", "wait": 40},
+    {"click": "All", "window": "Browse", "title": "Reset the scope to All"},
+    {"expect_item": "Communities", "window": "Browse", "check": "The Communities picker is drawn"},
+    {"click": "##communities", "window": "Browse", "title": "Click Communities"},
+    {"shot": "01-communities-open"},
+    {"expect_item": "QA Connector", "window": "Browse >", "check": "The dropdown lists the member's community"},
+    {"click": "QA Connector", "window": "Browse >", "wait": 30},
+    {"shot": "02-community-scope"},
+    {"expect_item": "Manage", "window": "Browse", "check": "The community scope offers Manage"},
+    {"click": "Manage", "window": "Browse", "wait": 40},
+    {"shot": "03-manage-community"},
+    {"expect_js": "Packages.dev.harrison.panellib.PanelLib.INSTANCE.api().panel('schematioconnector:community-detail').isOpen()",
+     "equals": true, "check": "Manage opens the community panel"}
+  ]
+}

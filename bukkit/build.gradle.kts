@@ -112,26 +112,31 @@ tasks.processResources {
 // switching versions never downgrade-corrupts a world.
 // ---------------------------------------------------------------------------
 val paperRunVersion: String = (project.findProperty("paperRunVersion") as String?) ?: "1.21.8"
+// Paper 26.x requires Java 25 to RUN; 1.21.x runs on 21 (-PpaperRunJava=25 runs it on 25, e.g. for WorldEdit 7.4).
+val paperRunJava: Int = (project.findProperty("paperRunJava") as String?)?.toInt()
+    ?: if (paperRunVersion.startsWith("26")) 25 else 21
 
 tasks.runServer {
     minecraftVersion(paperRunVersion)
-    val versionedRunDir = layout.projectDirectory.dir("run/$paperRunVersion")
+    // -PpaperRunDir=<dir> keeps a throwaway server (scripts/ingame-qa) apart from your dev world.
+    val versionedRunDir: File = (project.findProperty("paperRunDir") as String?)?.let { file(it) }
+        ?: file("run/$paperRunVersion")
     runDirectory.set(versionedRunDir)
 
-    // Paper 26.x requires Java 25 to RUN; 1.21.x runs on 21. The project still
-    // BUILDS on Java 21 either way — this only picks the server JVM.
+    // The project still BUILDS on Java 21 either way; this only picks the server JVM.
     javaLauncher.set(
         javaToolchains.launcherFor {
-            languageVersion.set(JavaLanguageVersion.of(if (paperRunVersion.startsWith("26")) 25 else 21))
+            languageVersion.set(JavaLanguageVersion.of(paperRunJava))
         }
     )
 
     downloadPlugins {
-        // WorldEdit: 7.4.x is compiled for Java 25 (26.x servers); 1.21.x servers run
-        // Java 21 and need 7.3.x; 26.3 needs 7.4.6+. Modrinth version ids.
+        // WorldEdit: 7.4.x is compiled for Java 25 (26.x servers, or 1.21.11 on Java 25); 1.21.x
+        // servers on Java 21 need 7.3.x; 26.3 needs 7.4.6+. Modrinth version ids.
         val worldEditVersion = when {
             paperRunVersion.startsWith("26.3") -> "YFnqiUlL" // 7.4.6
             paperRunVersion.startsWith("26") -> "qNuPcliz"   // 7.4.4
+            paperRunJava >= 25 -> "YFnqiUlL"                  // 7.4.6
             else -> "2YDdVDmG"
         }
         modrinth("worldedit", worldEditVersion)
@@ -141,7 +146,7 @@ tasks.runServer {
     }
 
     doFirst {
-        val runDir = versionedRunDir.asFile
+        val runDir = versionedRunDir
         runDir.mkdirs()
         // Accept the Mojang EULA for this LOCAL test server only (https://aka.ms/MinecraftEULA).
         // Delete the run dir's eula.txt if you do not agree.

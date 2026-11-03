@@ -1,0 +1,13 @@
+{
+  "name": "plugin-tools",
+  "description": "The plugin's /schematio tool, as the community member on the local Paper server (offline-mode UUID matches the fixture player).",
+  "steps": [
+    {"close_panels": true, "title": "Start from a clean overlay"},
+    {"command": "/schematio tool list", "expect_chat": "Tools you can run|No tools are available", "check": "tool list answers"},
+    {"command": "/schematio tool list", "expect_chat": "Tools you can run \\(", "check": "the member's Toolsmith role grants tools"},
+    {"tool": "press_key", "args": {"key": "t"}, "title": "Open chat to show the reply"},
+    {"wait": 10},
+    {"shot": "01-tool-list"},
+    {"tool": "press_key", "args": {"key": "escape"}, "title": "Close chat"}
+  ]
+}
