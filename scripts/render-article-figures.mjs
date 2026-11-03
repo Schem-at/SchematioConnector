@@ -13,13 +13,13 @@ const { exportSvg, exportPng, exportAnimatedSvg } = await import(pathToFileURL(`
 const previews = resolve(article, '../../build/release-readiness/figure-review');
 await fs.mkdir(previews, { recursive: true });
 const build = `data:image/png;base64,${(await fs.readFile(`${article}/media/copperlight-render.png`)).toString('base64')}`;
-for (const name of ['server-workflow', 'bridge-detection', 'minecraft-command']) {
+for (const name of ['server-workflow', 'bridge-detection', 'minecraft-command', 'tool-workflow', 'tool-command']) {
   const module = await import(pathToFileURL(`${article}/scenes/${name}.mjs`));
   for (const width of [320, 390, 720, 960]) {
     const scene = resolveScene(module.default, { width, theme: module.theme });
     if (scene.diagnostics.length) throw new Error(JSON.stringify(scene.diagnostics));
     const options = { background: 'transparent', surfaces: () => ({ observatory: build }), idPrefix: `${name}-${width}` };
-    const svg = name === 'minecraft-command' ? exportAnimatedSvg(scene, { ...options, fps: 24 }) : exportSvg(scene, options);
+    const svg = name.endsWith('-command') ? exportAnimatedSvg(scene, { ...options, fps: 24 }) : exportSvg(scene, options);
     await fs.writeFile(`${article}/media/${name}-${width}.svg`, svg);
     if (width === 320 || width === 960) await fs.writeFile(`${previews}/${name}-${width}.png`, await exportPng(scene, options));
   }

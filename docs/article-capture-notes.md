@@ -122,3 +122,50 @@ Compilation and jar assembly passed. The MC-Inspector suite passed 47 of 48 test
 its tool-documentation parity check fails on the existing tool registry/docs
 mismatch. The capture fix and the earlier 26.1/26.2 inspector compatibility edits
 remain local to that project. They are not Connector release changes.
+
+## Production draft, 6 September 2026
+
+The article is now available to its author and administrators at
+<https://schemat.io/articles/schematio-connector>, with the editor at
+<https://schemat.io/articles/schematio-connector/edit>. Its status is `draft` and
+`published_at` is null. The public page returns 404, its cover returns 403 to
+guests, and the article is absent from the public sitemap.
+
+The production bundle contains 21 files, including all six original game
+captures, nine responsive SVG assets, and the example schematic ZIP. All 16
+supporting asset routes return 200 for the author. The signed-in browser renders
+the guide and grouped download catalogue.
+
+Seven verified Connector 1.3.4 jars are hosted through shared Downloads and
+attached to this draft. Each stored file matches the CI SHA-256 recorded in
+[hosted-downloads.json](hosted-downloads.json). The article labels these as a
+release candidate and links their exact source revision, `bd12b82`. GitHub's
+latest published Connector release is still 1.3.2. The screenshots retain their
+original 1.3.3 capture provenance described above.
+
+The production bundle SHA-256 is
+`72aa3df02bfa8db0248f1fe09a9371d42aafa3b2c789b79dc87d27e328637c73`.
+
+## Remote tools sections, 3 November 2026 (not published)
+
+The guide now has **Server setup**, **Communities** and **Tools in game** sections,
+and Downloads names Connector 1.7.0. That release does not exist yet; it will ship
+remote tools and the rich-text description fix. The GitHub `releases/latest` link
+remains the stable pointer.
+
+Before publishing:
+
+- Build and release 1.7.0, then replace the seven 1.3.4 entries in
+  [hosted-downloads.json](hosted-downloads.json) with the eight 1.7.0 jars (26.3
+  added) and their CI SHA-256 hashes. Until then the catalogue still lists 1.3.4.
+- The Schematio session confirmed the quoted labels, that tokens are create-or-revoke
+  only with no `run_tools` backfill, and the membership rules (active row, active
+  community, creator only while still a member, Admin roles backfilled).
+- The Schematio session reviewed Communities and Tools in game and adopted this text.
+- Capture the mod's Tools panel and a plugin run in game. Neither has been tested in
+  game yet, so the section has no screenshot.
+
+Two new Kineglyph scenes follow the existing style: `tool-workflow` (three steps,
+static SVG) and `tool-command` (animated `/schematio tool list`, script-free SVG).
+`scripts/render-article-figures.mjs` now renders all five scenes; the 20 layouts
+resolve without diagnostics and the existing twelve SVGs are byte-identical.
