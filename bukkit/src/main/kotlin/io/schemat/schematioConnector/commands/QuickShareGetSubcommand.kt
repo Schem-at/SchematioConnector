@@ -87,35 +87,15 @@ class QuickShareGetSubcommand(private val plugin: SchematioConnector) : Subcomma
 
     private fun executeChatMode(player: Player, args: QuickShareGetArgs): Boolean {
         val audience = player.audience()
-
-        // Parse arguments
-        val rawCode = args.code
-        if (rawCode == null) {
-            audience.sendMessage(Component.text("Usage: /schematio quickshareget <accessCode|url> [password]").color(NamedTextColor.RED))
-            return true
+        // downloadQuickShare does the rate limiting and the "Downloading..." line exactly once.
+        when (val request = args.chatRequest()) {
+            QuickShareGetArgs.ChatRequest.Usage ->
+                audience.sendMessage(Component.text("Usage: /schematio quickshareget <accessCode|url> [password]").color(NamedTextColor.RED))
+            is QuickShareGetArgs.ChatRequest.Invalid ->
+                audience.sendMessage(Component.text(request.message).color(NamedTextColor.RED))
+            is QuickShareGetArgs.ChatRequest.Download ->
+                downloadQuickShare(player, request.accessCode, request.password)
         }
-
-        // Validate and extract access code
-        val codeValidation = InputValidator.validateQuickShareCode(rawCode)
-        if (codeValidation is ValidationResult.Invalid) {
-            audience.sendMessage(Component.text(codeValidation.message).color(NamedTextColor.RED))
-            return true
-        }
-        val accessCode = codeValidation.getOrNull()!!
-
-        val password = args.password
-
-        // Check rate limit
-        val remaining = plugin.rateLimiter.tryAcquire(player.uniqueId)
-        if (remaining == null) {
-            val waitTime = plugin.rateLimiter.getWaitTimeSeconds(player.uniqueId)
-            audience.sendMessage(Component.text("Rate limited. Please wait ${waitTime}s before making another request.").color(NamedTextColor.RED))
-            return true
-        }
-
-        audience.sendMessage(Component.text("Downloading quick share...").color(NamedTextColor.YELLOW))
-        downloadQuickShare(player, accessCode, password)
-
         return true
     }
 

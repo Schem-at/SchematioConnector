@@ -14,6 +14,7 @@ import io.schemat.connector.fabric.client.ui.panels.SchematicDetailPanel
 import io.schemat.connector.fabric.client.ui.panels.SchematicEditPanel
 import io.schemat.connector.fabric.client.ui.panels.SettingsPanel
 import io.schemat.connector.fabric.client.ui.panels.SharesPanel
+import io.schemat.connector.fabric.client.ui.panels.ToolsPanel
 import io.schemat.connector.fabric.client.ui.panels.UploadWizardPanel
 import io.schemat.connector.fabric.client.ui.theme.Icons
 import io.schemat.connector.fabric.client.ui.widgets.TagSelectorPopup
@@ -34,6 +35,7 @@ object SchematioPanels : PanelLibEntrypoint {
         raw(BrowsePanel, "Browse", Icons.SEARCH)
         raw(UploadWizardPanel, "Upload", Icons.UPLOAD)
         raw(SharesPanel, "My Quick Shares", Icons.SHARE)
+        raw(ToolsPanel, "Tools", Icons.DIAGRAM)
         raw(SettingsPanel, "Settings", Icons.GEAR)
         // Context panels: opened from other panels, not from the menu.
         raw(QuickShareCreatePanel, "New Quick Share", Icons.BOLT, listed = false)

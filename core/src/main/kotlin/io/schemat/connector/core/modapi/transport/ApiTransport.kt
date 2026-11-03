@@ -37,6 +37,8 @@ data class ApiRequest(
     val query: Map<String, String> = emptyMap(),
     val jsonBody: String? = null,
     val multipart: MultipartRequest? = null,
+    /** Extra request headers (e.g. `X-Actor-Uuid` for plugin tool calls). */
+    val headers: Map<String, String> = emptyMap(),
 )
 
 /**

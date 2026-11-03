@@ -1,6 +1,7 @@
 package io.schemat.connector.fabric.client.ui.panels
 
 import imgui.ImGui
+import imgui.flag.ImGuiHoveredFlags
 import imgui.type.ImBoolean
 import io.schemat.connector.core.modapi.FilterConstraint
 import io.schemat.connector.fabric.client.SchematioClientMod
@@ -25,6 +26,8 @@ import io.schemat.connector.fabric.client.ui.panels.SchematicListView.sameAs
 object BrowsePanel : Panel {
 
     override val id = "browse"
+
+    private const val COMMUNITIES_POPUP = "##browse_communities"
 
     private val services: ClientServices get() = SchematioClientMod.instance.services
 
@@ -74,16 +77,7 @@ object BrowsePanel : Panel {
         ImGui.sameLine()
         scopeButton("Mine", scope is BrowseScope.Mine) { setScope(BrowseScope.Mine) }
         ImGui.sameLine()
-        val communities = services.me?.communities.orEmpty()
-        val communityLabel = (scope as? BrowseScope.Community)?.name ?: "Communities"
-        if (ImGui.beginMenu("$communityLabel  ${Icons.CHEVRON_DOWN}", communities.isNotEmpty())) {
-            for (c in communities) {
-                if (ImGui.menuItem(c.name, "", scope.let { it is BrowseScope.Community && it.slug == c.slug })) {
-                    setScope(BrowseScope.Community(c.slug, c.name))
-                }
-            }
-            ImGui.endMenu()
-        }
+        renderCommunityPicker()
         // "Manage community" only in a Community scope
         (scope as? BrowseScope.Community)?.let { cs ->
             ImGui.sameLine()
@@ -130,6 +124,34 @@ object BrowsePanel : Panel {
         SchematicListView.renderStatusBanners(state, retryButtonId = "Retry") { loadNextPage() }
 
         SchematicListView.tickSearchDebounce(state) { resetAndLoad() }
+    }
+
+    /**
+     * "Communities ▾": a button that opens its list right under itself on click. (A beginMenu outside a
+     * menu bar opens on hover, beside the whole panel, and closes again when the pointer crosses the panel.)
+     */
+    private fun renderCommunityPicker() {
+        services.ensureMe()
+        val me = services.me
+        val communities = me?.communities.orEmpty()
+        val current = scope as? BrowseScope.Community
+        val label = "${current?.name ?: "Communities"}  ${Icons.CHEVRON_DOWN}##communities"
+        if (communities.isEmpty()) ImGui.beginDisabled()
+        val clicked = if (current != null) Widgets.primaryButton(label) else Widgets.secondaryButton(label)
+        if (communities.isEmpty()) {
+            ImGui.endDisabled()
+            if (ImGui.isItemHovered(ImGuiHoveredFlags.AllowWhenDisabled)) {
+                ImGui.setTooltip(if (me == null) "Loading your communities..." else "You are not in a community yet.")
+            }
+        }
+        if (clicked) ImGui.openPopup(COMMUNITIES_POPUP)
+        ImGui.setNextWindowPos(ImGui.getItemRectMinX(), ImGui.getItemRectMaxY() + 2f)
+        if (ImGui.beginPopup(COMMUNITIES_POPUP)) {
+            for (c in communities) {
+                if (ImGui.menuItem(c.name, "", current?.slug == c.slug)) setScope(BrowseScope.Community(c.slug, c.name))
+            }
+            ImGui.endPopup()
+        }
     }
 
     private fun scopeButton(label: String, active: Boolean, onClick: () -> Unit) {

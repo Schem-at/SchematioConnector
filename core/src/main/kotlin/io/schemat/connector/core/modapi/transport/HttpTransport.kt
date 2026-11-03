@@ -106,6 +106,7 @@ class HttpTransport(
                 HttpMethod.DELETE -> HttpDelete(url)
             }
             httpRequest.addHeader("Accept", "application/json")
+            request.headers.forEach { (name, value) -> httpRequest.addHeader(name, value) }
             if (bearerToken != null) {
                 httpRequest.addHeader("Authorization", "Bearer $bearerToken")
             }

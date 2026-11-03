@@ -69,7 +69,7 @@ object DownloadRouter {
         unavailable: Map<Destination, String>,
         reply: (String, Boolean) -> Unit,
     ) {
-        val name = displayName(kind, parsed.id)
+        val name = parsed.displayName(kind)
         load(destination, kind, parsed.id, parsed.password, name, reply) { detail ->
             // Hop to the client thread: the failure may be reported from a network callback.
             services.onMainThread {
@@ -97,9 +97,6 @@ object DownloadRouter {
     /** Quick-share codes are credentials: never log them in full. */
     private fun logId(kind: DownloadKind, id: String): String =
         if (kind == DownloadKind.QUICK_SHARE) InputValidator.maskShareCode(id) else id
-
-    private fun displayName(kind: DownloadKind, id: String): String =
-        if (kind == DownloadKind.QUICK_SHARE) "quick share" else id
 
     /**
      * Executes a single [destination]. Only the server WorldEdit path reports failures through
@@ -333,7 +330,7 @@ object DownloadRouter {
     }
 
     /** Downloads land in Litematica's schematics dir when known, else `<game>/schematics/schemat.io`. */
-    private fun downloadDirectory(): Path =
+    internal fun downloadDirectory(): Path =
         Bridges.litematica.schematicsDirectory()
             ?: FabricLoader.getInstance().gameDir.resolve("schematics").resolve("schemat.io")
 }

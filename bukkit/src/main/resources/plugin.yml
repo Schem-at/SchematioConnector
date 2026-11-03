@@ -40,6 +40,9 @@ permissions:
     schematio.password:
         description: Set your own schemat.io API password
         default: true
+    schematio.tool:
+        description: Run schemat.io remote tools; results go into your clipboard
+        default: true
     schematio.admin:
         description: Admin commands (reload, settoken)
         default: op
