@@ -4,11 +4,13 @@ package io.schemat.connector.core.text
  * Rich-text descriptions: parse the website's HTML into styled [RichSpan]s for
  * display, and convert between HTML and the mod's editor markup.
  *
- * **HTML** (what the website stores; `flux:editor` output, sanitized by
- * `App\Helpers\Sanitizer::cleanHtml`): `<b>/<strong>`, `<i>/<em>`, `<u>`,
- * `<s>/<strike>/<del>`, `<p>`, `<br>`, `<ul>/<li>`, plus
- * `<span style="color: ...">` and `<a href="...">` (viewing only - [markupToHtml]
- * still emits only the plain allowlist: `p`, `br`, `strong`, `em`, `u`, `s`, `ul`, `li`).
+ * **HTML** (what the website stores) follows the shared description contract that the
+ * website's sanitizer also enforces: `p`, `br`, `strong` (`b`), `em` (`i`), `u`,
+ * `s` (`del`/`strike`), `ul`/`ol`/`li`, `h2`/`h3` (`h1` becomes `h2`), `a href` with an
+ * http(s) URL only, `code`, `blockquote`, and `span style="color:#rrggbb"` with a
+ * [RichPalette] colour only. [htmlToSpans] drops any other colour or link scheme and
+ * strips other tags (keeping their text); [spansToHtml] emits nothing outside the
+ * contract. ([markupToHtml] emits the subset `p`, `br`, `strong`, `em`, `u`, `s`, `ul`, `li`.)
  *
  * **Markup** (what the mod's description editor edits; markdown-ish):
  * `**bold**`, `*italic*` (or `_italic_`), `__underline__`, `~~strike~~`,
@@ -62,9 +64,15 @@ object RichText {
         var italic = 0
         var underline = 0
         var strike = 0
+        var code = 0
+        var quote = 0
+        var heading = 0
         var pending = 0
         var bulletPending = false
+        var orderedPending = false
         var started = false
+        // One entry per open <ul>/<ol>: true for an ordered list.
+        val lists = mutableListOf<Boolean>()
         // One entry per open <span>/<a> (null when the tag carries no color/href),
         // so each closing tag pops its own entry and nesting propagates naturally.
         val colors = mutableListOf<Int?>()
@@ -85,6 +93,10 @@ object RichText {
                     bullet = bulletPending,
                     color = colors.lastOrNull { it != null },
                     link = linkOverride ?: links.lastOrNull { it != null },
+                    ordered = bulletPending && orderedPending,
+                    heading = heading,
+                    quote = quote > 0,
+                    code = code > 0,
                 )
             )
             bulletPending = false
@@ -126,7 +138,8 @@ object RichText {
             if (match.range.first > index) emitChunk(source.substring(index, match.range.first))
             index = match.range.last + 1
             val closing = match.value.length > 1 && match.value[1] == '/'
-            when (TAG_NAME.find(match.value)?.groupValues?.get(1)?.lowercase()) {
+            val tagName = TAG_NAME.find(match.value)?.groupValues?.get(1)?.lowercase()
+            when (tagName) {
                 "b", "strong" -> if (closing) bold = (bold - 1).coerceAtLeast(0) else bold++
                 "i", "em" -> if (closing) italic = (italic - 1).coerceAtLeast(0) else italic++
                 "u" -> if (closing) underline = (underline - 1).coerceAtLeast(0) else underline++
@@ -143,9 +156,27 @@ object RichText {
                     } else {
                         links.add(parseHref(match.value))
                     }
+                "code" -> if (closing) code = (code - 1).coerceAtLeast(0) else code++
                 "br" -> pending = (pending + 1).coerceAtMost(2)
-                "p", "div" -> if (closing) pending = 2
-                "ul", "ol" -> if (closing) pending = 2
+                "p", "div", "pre" -> if (closing) pending = 2
+                // Deeper headings are outside the contract: plain paragraphs.
+                "h4", "h5", "h6" -> if (closing || started) pending = 2
+                "h1", "h2", "h3" -> {
+                    // A heading is its own block; h1 is normalised to h2.
+                    if (started) pending = 2
+                    heading = if (closing) 0 else if (tagName == "h3") 3 else 2
+                }
+                "blockquote" -> {
+                    if (started) pending = 2
+                    if (closing) quote = (quote - 1).coerceAtLeast(0) else quote++
+                }
+                "ul", "ol" ->
+                    if (closing) {
+                        if (lists.isNotEmpty()) lists.removeAt(lists.lastIndex)
+                        pending = 2
+                    } else {
+                        lists.add(tagName == "ol")
+                    }
                 "li" ->
                     if (closing) {
                         pending = pending.coerceAtLeast(1)
@@ -154,6 +185,7 @@ object RichText {
                         // it (even right after a </p>), matching the markup "intro\n- item".
                         if (started) pending = 1
                         bulletPending = true
+                        orderedPending = lists.lastOrNull() == true
                     }
                 else -> {} // Unknown tag: stripped, its text kept.
             }
@@ -279,8 +311,16 @@ object RichText {
      * starts a new paragraph, so a single newline there widens to a paragraph break).
      */
     fun spansToHtml(spans: List<RichSpan>): String {
-        class Line(var bullet: Boolean = false, val segments: MutableList<RichSpan> = mutableListOf()) {
+        class Line(
+            var bullet: Boolean = false,
+            var ordered: Boolean = false,
+            val segments: MutableList<RichSpan> = mutableListOf(),
+        ) {
             val isEmpty get() = !bullet && segments.isEmpty()
+
+            /** Block-level attributes come from the line's first segment. */
+            val heading get() = when (segments.firstOrNull()?.heading ?: 0) { 1, 2 -> 2; 3 -> 3; else -> 0 }
+            val quote get() = !bullet && segments.firstOrNull()?.quote == true
         }
 
         val lines = mutableListOf(Line())
@@ -288,8 +328,11 @@ object RichText {
             span.text.split("\n").forEachIndexed { index, part ->
                 if (index > 0) lines.add(Line())
                 val line = lines.last()
-                if (span.bullet && index == 0 && line.segments.isEmpty()) line.bullet = true
-                if (part.isNotEmpty()) line.segments.add(span.copy(text = part, bullet = false))
+                if (span.bullet && index == 0 && line.segments.isEmpty()) {
+                    line.bullet = true
+                    line.ordered = span.ordered
+                }
+                if (part.isNotEmpty()) line.segments.add(span.copy(text = part, bullet = false, ordered = false))
             }
         }
         while (lines.isNotEmpty() && lines.first().isEmpty) lines.removeAt(0)
@@ -299,58 +342,95 @@ object RichText {
         val sb = StringBuilder()
         var i = 0
         while (i < lines.size) {
+            val first = lines[i]
             when {
-                lines[i].isEmpty -> i++ // Paragraph gap - the surrounding blocks imply it.
-                lines[i].bullet -> {
-                    sb.append("<ul>")
-                    while (i < lines.size && lines[i].bullet) {
+                first.isEmpty -> i++ // Paragraph gap - the surrounding blocks imply it.
+                first.bullet -> {
+                    val tag = if (first.ordered) "ol" else "ul"
+                    sb.append("<$tag>")
+                    while (i < lines.size && lines[i].bullet && lines[i].ordered == first.ordered) {
                         sb.append("<li>").append(spanRunHtml(lines[i].segments)).append("</li>")
                         i++
                     }
-                    sb.append("</ul>")
+                    sb.append("</$tag>")
+                }
+                first.quote -> {
+                    // One blockquote for the whole run; blank lines inside it split paragraphs.
+                    sb.append("<blockquote>")
+                    while (i < lines.size && lines[i].quote) {
+                        val rows = mutableListOf<String>()
+                        while (i < lines.size && lines[i].quote) {
+                            rows.add(spanRunHtml(lines[i].segments))
+                            i++
+                        }
+                        sb.append("<p>").append(rows.joinToString("<br>")).append("</p>")
+                        var gap = i
+                        while (gap < lines.size && lines[gap].isEmpty) gap++
+                        if (gap > i && gap < lines.size && lines[gap].quote) i = gap
+                    }
+                    sb.append("</blockquote>")
                 }
                 else -> {
+                    val level = first.heading
                     val rows = mutableListOf<String>()
-                    while (i < lines.size && !lines[i].bullet && !lines[i].isEmpty) {
+                    while (i < lines.size && !lines[i].bullet && !lines[i].isEmpty && !lines[i].quote &&
+                        lines[i].heading == level
+                    ) {
                         rows.add(spanRunHtml(lines[i].segments))
                         i++
                     }
-                    sb.append("<p>").append(rows.joinToString("<br>")).append("</p>")
+                    val tag = if (level == 0) "p" else "h$level"
+                    sb.append("<$tag>").append(rows.joinToString("<br>")).append("</$tag>")
                 }
             }
         }
         return sb.toString()
     }
 
-    /** One line's segments as inline HTML, innermost formatting closest to the text. */
+    /**
+     * One line's segments as inline HTML, innermost formatting closest to the text. A
+     * colour outside [RichPalette] or a link that fails [isAllowedHref] is dropped.
+     */
     private fun spanRunHtml(segments: List<RichSpan>): String =
         segments.joinToString("") { span ->
+            val link = span.link?.takeIf { isAllowedHref(it) }
+            val color = span.color?.takeIf { RichPalette.contains(it) }
             buildString {
-                span.link?.let { append("<a href=\"").append(HtmlText.escapeHtml(it)).append("\">") }
-                span.color?.let { append("<span style=\"color: #%06x;\">".format(it and 0xFFFFFF)) }
+                link?.let { append("<a href=\"").append(HtmlText.escapeHtml(it)).append("\">") }
+                color?.let { append("<span style=\"color:").append(RichPalette.hex(it)).append("\">") }
                 if (span.bold) append("<strong>")
                 if (span.italic) append("<em>")
                 if (span.underline) append("<u>")
                 if (span.strikethrough) append("<s>")
+                if (span.code) append("<code>")
                 append(HtmlText.escapeHtml(span.text))
+                if (span.code) append("</code>")
                 if (span.strikethrough) append("</s>")
                 if (span.underline) append("</u>")
                 if (span.italic) append("</em>")
                 if (span.bold) append("</strong>")
-                if (span.color != null) append("</span>")
-                if (span.link != null) append("</a>")
+                if (color != null) append("</span>")
+                if (link != null) append("</a>")
             }
         }
 
+    /** True for an absolute `http://` or `https://` URL, the only link targets the contract allows. */
+    fun isAllowedHref(url: String): Boolean = ALLOWED_HREF.matches(url.trim())
+
+    private val ALLOWED_HREF = Regex("""^https?://[^\s"<>]+$""", RegexOption.IGNORE_CASE)
+
     // ---- html attribute parsing ----
 
-    /** ARGB color from an opening tag's `style="...; color: ...;"`, null when absent/unparseable. */
+    /**
+     * ARGB color from an opening tag's `style="...; color: ...;"`, null when absent,
+     * unparseable or not a [RichPalette] colour.
+     */
     private fun parseStyleColor(tag: String): Int? {
         val style = STYLE_ATTR.find(tag)
             ?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }
             ?: return null
         val value = STYLE_COLOR.find(style)?.groupValues?.get(1)?.trim() ?: return null
-        return parseCssColor(value)
+        return parseCssColor(value)?.takeIf { RichPalette.contains(it) }
     }
 
     /** `#RGB`/`#RRGGBB`/`rgb(r,g,b)`/`rgba(r,g,b,a)` as opaque ARGB, null otherwise. */
@@ -370,12 +450,12 @@ object RichText {
         return null
     }
 
-    /** The `href` of an opening `<a>` tag (entities decoded), null when absent/blank. */
+    /** The `href` of an opening `<a>` tag (entities decoded), null when absent or not http(s). */
     private fun parseHref(tag: String): String? {
         val raw = HREF_ATTR.find(tag)
             ?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }
             ?: return null
-        return HtmlText.decodeEntities(raw).trim().ifEmpty { null }
+        return HtmlText.decodeEntities(raw).trim().takeIf { isAllowedHref(it) }
     }
 
     // ---- shared internals ----

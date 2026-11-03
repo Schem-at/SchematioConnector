@@ -47,6 +47,7 @@ object CommunityDetailPanel : Panel {
     private var community: CommunitySummary? = null
     private var communityFetched = false
     private var communityIsStale = false
+    private val descriptionView = io.schemat.connector.fabric.client.ui.widgets.RichTextView("community-desc")
     private val fetchBusy = AtomicBoolean(false)
     private var fetchError: String? = null
 
@@ -316,7 +317,7 @@ object CommunityDetailPanel : Panel {
         // Description
         val desc = c.description?.trim()?.takeIf { it.isNotBlank() }
         if (desc != null) {
-            ImGui.textWrapped(desc)
+            descriptionView.render(desc)
         }
 
         // Stale data banner — shown when community data came from cache (offline)

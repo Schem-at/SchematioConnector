@@ -60,7 +60,8 @@ internal fun UploadWizardPanel.renderCapturedPreviewImage() {
     if (previewTexBuiltFor !== png) buildPreviewTexture(png)
     val glId = previewTexGlId ?: return
     if (previewTexW <= 0 || previewTexH <= 0) return
-    val drawW = PREVIEW_BOX_W
+    // Never wider than the panel: a fixed 320px box overflowed narrow wizard windows (bug #5).
+    val drawW = minOf(PREVIEW_BOX_W, ImGui.getContentRegionAvailX()).coerceAtLeast(1f)
     val drawH = drawW * previewTexH.toFloat() / previewTexW.toFloat()
     // uv0=(0,0) uv1=(1,1): NativeImage is top-down, so no V-flip is needed here
     // (unlike the bottom-up framebuffer blit in ThumbnailCapture.drawTargetInto).

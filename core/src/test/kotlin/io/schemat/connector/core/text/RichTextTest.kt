@@ -135,7 +135,7 @@ class RichTextTest {
         fun `unknown tags are stripped but their text kept`() {
             assertEquals(
                 listOf(span("See the wiki for more")),
-                RichText.htmlToSpans("""See <code>the wiki</code> for <blockquote class="x">more</blockquote>"""),
+                RichText.htmlToSpans("""See <kbd>the wiki</kbd> for <aside class="x">more</aside>"""),
             )
             // <a>/<span> without href/color contribute no styling and the text merges.
             assertEquals(
@@ -193,25 +193,25 @@ class RichTextTest {
         }
 
         @Test
-        fun `span style hex color is parsed (real website example)`() {
+        fun `span style palette hex color is parsed`() {
             assertEquals(
                 listOf(
                     span("By "),
-                    RichSpan("Auzifriend", color = 0xFFE03E2D.toInt()),
+                    RichSpan("Auzifriend", color = 0xFFAA0000.toInt()),
                 ),
-                RichText.htmlToSpans("""<p>By <span style="color: #e03e2d;">Auzifriend</span></p>"""),
+                RichText.htmlToSpans("""<p>By <span style="color: #aa0000;">Auzifriend</span></p>"""),
             )
         }
 
         @Test
         fun `span style rgb color is parsed, short hex expands, colorless span is plain`() {
             assertEquals(
-                listOf(RichSpan("x", color = 0xFFE03E2D.toInt())),
-                RichText.htmlToSpans("""<span style="color: rgb(224, 62, 45)">x</span>"""),
+                listOf(RichSpan("x", color = 0xFFAA0000.toInt())),
+                RichText.htmlToSpans("""<span style="color: rgb(170, 0, 0)">x</span>"""),
             )
             assertEquals(
-                listOf(RichSpan("x", color = 0xFFFF0000.toInt())),
-                RichText.htmlToSpans("""<span style="color:#f00">x</span>"""),
+                listOf(RichSpan("x", color = 0xFFFF5555.toInt())),
+                RichText.htmlToSpans("""<span style="color:#f55">x</span>"""),
             )
             // No color declaration (or unparseable one) → no color, text kept.
             assertEquals(listOf(span("x")), RichText.htmlToSpans("""<span style="font-size: 12px">x</span>"""))
@@ -221,8 +221,8 @@ class RichTextTest {
         @Test
         fun `nested span color propagates and combines with formatting`() {
             assertEquals(
-                listOf(RichSpan("hot", bold = true, color = 0xFFE03E2D.toInt())),
-                RichText.htmlToSpans("""<span style="color:#e03e2d"><b>hot</b></span>"""),
+                listOf(RichSpan("hot", bold = true, color = 0xFFAA0000.toInt())),
+                RichText.htmlToSpans("""<span style="color:#aa0000"><b>hot</b></span>"""),
             )
         }
 
@@ -488,8 +488,8 @@ class RichTextTest {
         @Test
         fun `color becomes a styled span tag`() {
             assertEquals(
-                "<p><span style=\"color: #e03e2d;\">red</span></p>",
-                RichText.spansToHtml(listOf(RichSpan("red", color = 0xFFE03E2D.toInt()))),
+                "<p><span style=\"color:#aa0000\">red</span></p>",
+                RichText.spansToHtml(listOf(RichSpan("red", color = 0xFFAA0000.toInt()))),
             )
         }
 
@@ -530,7 +530,7 @@ class RichTextTest {
 
         @Test
         fun `colored author credit round-trips through spansToHtml`() {
-            assertSpansStable("""<p>By <span style="color:#e03e2d;">Auzifriend</span></p>""")
+            assertSpansStable("""<p>By <span style="color:#aa0000;">Auzifriend</span></p>""")
         }
 
         @Test
@@ -549,13 +549,13 @@ class RichTextTest {
         @Test
         fun `colored bold link round-trips through spansToHtml`() {
             assertSpansStable(
-                """<p><a href="https://schemat.io/s/1"><strong><span style="color: #2dc26b;">Download</span></strong></a> it <s>now</s></p>"""
+                """<p><a href="https://schemat.io/s/1"><strong><span style="color: #55ff55;">Download</span></strong></a> it <s>now</s></p>"""
             )
         }
 
         @Test
         fun `canonical spans html is reproduced exactly`() {
-            val html = "<p>By <span style=\"color: #e03e2d;\">Auzifriend</span></p>" +
+            val html = "<p>By <span style=\"color:#aa0000\">Auzifriend</span></p>" +
                 "<ul><li><strong>fast</strong></li></ul>"
             assertEquals(html, RichText.spansToHtml(RichText.htmlToSpans(html)))
         }

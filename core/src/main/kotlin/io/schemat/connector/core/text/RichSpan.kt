@@ -19,14 +19,23 @@ data class RichSpan(
     val underline: Boolean = false,
     val strikethrough: Boolean = false,
     val bullet: Boolean = false,
-    /** ARGB text color (e.g. `<span style="color: #e03e2d">`); null = theme default. */
+    /** ARGB text color, always a [RichPalette] colour (`<span style="color:#aa0000">`); null = theme default. */
     val color: Int? = null,
     /** Target URL when this span is a link (`<a href>` or an autolinked bare URL). */
     val link: String? = null,
+    /** On a [bullet] span: the item belongs to a numbered (`<ol>`) list. */
+    val ordered: Boolean = false,
+    /** Heading level of the line this span sits on: 0 = body text, 2 = `<h2>`, 3 = `<h3>`. */
+    val heading: Int = 0,
+    /** The span sits inside a `<blockquote>`. */
+    val quote: Boolean = false,
+    /** Inline `<code>`. */
+    val code: Boolean = false,
 ) {
-    /** True when both spans carry the same formatting (bullet excluded). */
+    /** True when both spans carry the same formatting (bullet and ordered excluded). */
     internal fun sameFormatting(other: RichSpan): Boolean =
         bold == other.bold && italic == other.italic &&
             underline == other.underline && strikethrough == other.strikethrough &&
-            color == other.color && link == other.link
+            color == other.color && link == other.link &&
+            heading == other.heading && quote == other.quote && code == other.code
 }
