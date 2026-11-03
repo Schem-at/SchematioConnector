@@ -3,8 +3,14 @@ gradle.beforeProject { project ->
     project.afterEvaluate {
         def inspectorRoot = System.getProperty('schematio.inspector.root')
         if (inspectorRoot && project.path.startsWith(':fabric:')) {
-            def jar = new File(inspectorRoot, "build/libs/0.1.0/MC-Inspector-mc${project.name}-0.1.0.jar")
-            if (!jar.isFile()) throw new GradleException("Missing MC-Inspector jar: $jar")
+            // -Dschematio.inspector.jar=<path> pins a jar; otherwise the newest build for this version.
+            def pinned = System.getProperty('schematio.inspector.jar')
+            def jar = pinned ? new File(pinned) : (new File(inspectorRoot, 'build/libs').listFiles() ?: [])
+                .findAll { it.isDirectory() }
+                .collectMany { dir -> (dir.listFiles() ?: []).findAll { it.name ==~ /MC-Inspector-mc${java.util.regex.Pattern.quote(project.name)}-[0-9.]+\.jar/ } }
+                .max { it.lastModified() }
+            // Every :fabric: version is configured; only the one being run needs a jar.
+            if (jar == null || !jar.isFile()) { project.logger.info("No MC-Inspector jar for ${project.name}"); return }
             project.dependencies.add(project.name.startsWith('26.') ? 'runtimeOnly' : 'modRuntimeOnly', project.files(jar))
             // Loom's development classpath does not unpack this optional mod's nested jars.
             project.dependencies.add('runtimeOnly', 'org.mozilla:rhino:1.7.15')
@@ -30,6 +36,8 @@ gradle.projectsEvaluated {
                 runDirectory.set(output)
                 jvmArguments.set(jvmArguments.get().findAll { !it.startsWith('-Ddevauth.enabled=') })
                 jvmArguments.add('-XX:ActiveProcessorCount=4')
+                def smokeUser = System.getProperty('schematio.smoke.username')
+                if (smokeUser) programArgs('--username', smokeUser)
                 systemProperties.put('devauth.enabled', System.getProperty('schematio.smoke.authenticated', 'false'))
                 systemProperties.put('schematio.smoke.output', output.absolutePath)
                 if (!System.getProperty('schematio.smoke.interactive', 'false').toBoolean()) {
