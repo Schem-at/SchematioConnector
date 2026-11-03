@@ -4,7 +4,11 @@ import io.schemat.connector.core.validation.InputValidator
 import io.schemat.connector.core.validation.ValidationResult
 
 sealed interface ParsedDownload {
-    data class Ok(val id: String, val password: String?, val filter: DestinationFilter?) : ParsedDownload
+    /** [label] names the result in replies and Litematica placements (for example a tool's name). */
+    data class Ok(val id: String, val password: String?, val filter: DestinationFilter?, val label: String? = null) : ParsedDownload {
+        fun displayName(kind: DownloadKind): String =
+            label?.takeIf { it.isNotBlank() } ?: if (kind == DownloadKind.QUICK_SHARE) "quick share" else id
+    }
 
     data class Error(val message: String) : ParsedDownload
 }

@@ -16,7 +16,8 @@ sealed class ApiError {
     /** Network unreachable / timeout - no HTTP response. */
     data object Offline : ApiError()
     data class Unauthorized(val message: String) : ApiError()
-    data class Forbidden(val message: String) : ApiError()
+    /** [code] is the body's machine-readable `error` when it also carries a `message`. */
+    data class Forbidden(val message: String, val code: String? = null) : ApiError()
     data class NotFound(val message: String) : ApiError()
     data class Validation(val message: String, val fieldErrors: Map<String, List<String>>) : ApiError()
 
@@ -40,7 +41,7 @@ sealed class ApiError {
                 ?: "Request failed (HTTP ${response.status})"
             return when (response.status) {
                 401 -> Unauthorized(message)
-                403 -> Forbidden(message)
+                403 -> Forbidden(message, json.safeGetString("error"))
                 404 -> NotFound(message)
                 422 -> {
                     val fields = mutableMapOf<String, List<String>>()

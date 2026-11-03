@@ -51,3 +51,19 @@ class QuickShareGetArgsTest {
         assertEquals(QuickShareGetArgs(null, null, null), parse())
     }
 }
+
+class QuickShareGetChatRequestTest {
+
+    @Test
+    fun `chat mode prepares exactly one download and leaves rate limiting and the announcement to it`() {
+        // executeChatMode used to take a rate-limit token and print "Downloading quick share..."
+        // before calling downloadQuickShare, which did both again: two tokens, two chat lines.
+        assertEquals(
+            QuickShareGetArgs.ChatRequest.Download("qs_abc123", "pw"),
+            QuickShareGetArgs(null, "qs_abc123", "pw").chatRequest(),
+        )
+        assertEquals(QuickShareGetArgs.ChatRequest.Usage, QuickShareGetArgs(null, null, null).chatRequest())
+        val invalid = QuickShareGetArgs(null, "not a code!", null).chatRequest()
+        org.junit.jupiter.api.Assertions.assertTrue(invalid is QuickShareGetArgs.ChatRequest.Invalid, "got $invalid")
+    }
+}

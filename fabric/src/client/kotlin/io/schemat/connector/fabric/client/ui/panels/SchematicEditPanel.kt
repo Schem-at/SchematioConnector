@@ -186,8 +186,7 @@ object SchematicEditPanel : Panel {
             ImGuiColors.TEXT_SECONDARY.z, ImGuiColors.TEXT_SECONDARY.w,
             "Description",
         )
-        val availH = ImGui.getContentRegionAvail().y - 60f
-        val editorH = (availH * 0.5f).coerceIn(70f, 160f)
+        val editorH = EditorLayout.descriptionHeight(ImGui.getContentRegionAvail().y)
         if (busy) ImGui.beginDisabled()
         descEditor.render(editorHeight = editorH, previewHeight = editorH)
         if (busy) ImGui.endDisabled()

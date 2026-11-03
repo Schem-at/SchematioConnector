@@ -78,6 +78,10 @@ class SchematioConnector : JavaPlugin(), Listener {
         private set
     private var versionTransport: io.schemat.connector.core.modapi.transport.HttpTransport? = null
 
+    // Remote tools client (/tools routes); shares versionTransport and the community token.
+    var toolsApi: io.schemat.connector.core.tools.ToolsApi? = null
+        private set
+
     private var _hasWorldEdit = false
 
     // Platform adapters for core module integration
@@ -380,6 +384,7 @@ class SchematioConnector : JavaPlugin(), Listener {
         // Tear down version clients up front: every early-return below means "API not
         // configured", and the happy path recreates them next to httpUtil.
         versionApi = null
+        toolsApi = null
         versionTransport?.close()
         versionTransport = null
         attestationClient = null
@@ -440,6 +445,7 @@ class SchematioConnector : JavaPlugin(), Listener {
         // ApiTransport (multipart + typed error mapping needed by the diff/commit flow).
         versionTransport = io.schemat.connector.core.modapi.transport.HttpTransport(apiEndpoint, logger, trustAllCerts)
         versionApi = io.schemat.connector.core.modapi.VersionApi(versionTransport!!) { communityToken.takeIf { it.isNotEmpty() } }
+        toolsApi = io.schemat.connector.core.tools.ToolsApi(versionTransport!!) { communityToken.takeIf { it.isNotEmpty() } }
 
         attestationClient = io.schemat.connector.core.attest.AttestationClient(
             versionTransport!!,
@@ -619,6 +625,7 @@ class SchematioConnector : JavaPlugin(), Listener {
                 QuickShareGetSubcommand(this),
                 DiffSubcommand(this),
                 CommitSubcommand(this),
+                ToolSubcommand(this),
             )
 
             for (cmd in optionalCommands) {

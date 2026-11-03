@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.client.Minecraft
@@ -74,6 +75,18 @@ class ClientServices(val authManager: ClientAuthManager) {
 
     /** TTL-cached decorator for read endpoints; UI should prefer this for listings/identity. */
     val cached = CachedSchematioApi(api)
+
+    /** Remote tools (`/tools` routes) on the player's JWT; see [withReauth] for 401 handling. */
+    val tools = io.schemat.connector.core.tools.ToolsApi(transport, authManager::tokenProvider)
+
+    /** Runs [block]; on a missing/expired session, re-authenticates once and retries. */
+    suspend fun <T> withReauth(block: suspend () -> ApiResult<T>): ApiResult<T> {
+        val first = block()
+        if (first is ApiResult.Failure && first.error is ApiError.Unauthorized && authManager.ensureAuthenticated()) {
+            return block()
+        }
+        return first
+    }
 
     /** Background scope for API calls; cancelled on [shutdown]. */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -269,6 +282,20 @@ class ClientServices(val authManager: ClientAuthManager) {
             }
         }
         return me
+    }
+
+    private val meGate = MeRefreshGate()
+
+    /**
+     * Fetch [me] in the background when it is missing (the startup fetch failed, or the player
+     * signed in later). Cheap to call every frame: [MeRefreshGate] limits it to one request per interval.
+     */
+    fun ensureMe() {
+        if (me != null || !authManager.isAuthenticated) return
+        if (!meGate.tryStart(System.currentTimeMillis())) return
+        scope.launch {
+            try { refreshMe() } finally { meGate.finish() }
+        }
     }
 
     /** Cancel background work and release the HTTP transport. */

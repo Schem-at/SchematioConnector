@@ -1,5 +1,7 @@
 package io.schemat.schematioConnector.commands
 
+import io.schemat.connector.core.validation.InputValidator
+import io.schemat.connector.core.validation.ValidationResult
 import io.schemat.schematioConnector.utils.UIMode
 import io.schemat.schematioConnector.utils.UIModeResolver
 
@@ -16,6 +18,24 @@ data class QuickShareGetArgs(val flagMode: UIMode?, val code: String?, val passw
     /** Never prints the password, so the parsed args are safe to log. */
     override fun toString(): String =
         "QuickShareGetArgs(flagMode=$flagMode, code=$code, password=${if (password == null) "none" else "<redacted>"})"
+
+    /** What chat mode should do. Side-effect free: the download itself rate-limits and announces. */
+    sealed interface ChatRequest {
+        data object Usage : ChatRequest
+        data class Invalid(val message: String) : ChatRequest
+        data class Download(val accessCode: String, val password: String?) : ChatRequest {
+            override fun toString(): String =
+                "Download(accessCode=$accessCode, password=${if (password == null) "none" else "<redacted>"})"
+        }
+    }
+
+    fun chatRequest(): ChatRequest {
+        val raw = code ?: return ChatRequest.Usage
+        return when (val v = InputValidator.validateQuickShareCode(raw)) {
+            is ValidationResult.Invalid -> ChatRequest.Invalid(v.message)
+            else -> ChatRequest.Download(v.getOrNull()!!, password)
+        }
+    }
 
     companion object {
         fun parse(args: Array<out String>): QuickShareGetArgs {

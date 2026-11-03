@@ -7,6 +7,14 @@ import org.junit.jupiter.api.Test
 class DownloadArgsTest {
 
     @Test
+    fun `display name prefers the caller's label over the generic quick share name`() {
+        assertEquals("quick share", ParsedDownload.Ok("AB12CD", null, null).displayName(DownloadKind.QUICK_SHARE))
+        assertEquals("44srfK", ParsedDownload.Ok("44srfK", null, null).displayName(DownloadKind.SCHEMATIC))
+        assertEquals("Skin statue", ParsedDownload.Ok("AB12CD", null, null, label = "Skin statue").displayName(DownloadKind.QUICK_SHARE))
+        assertEquals("quick share", ParsedDownload.Ok("AB12CD", null, null, label = " ").displayName(DownloadKind.QUICK_SHARE))
+    }
+
+    @Test
     fun `plain id`() {
         assertEquals(ParsedDownload.Ok("44srfK", null, null), DownloadArgs.parse("44srfK", false))
     }

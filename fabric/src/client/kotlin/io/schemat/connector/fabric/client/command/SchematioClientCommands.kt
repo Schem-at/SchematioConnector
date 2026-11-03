@@ -124,8 +124,18 @@ object SchematioClientCommands {
                     ClientCommandManager.literal("help")
                         .executes { ctx -> sendHelp(ctx.source) }
                 )
+                // Anything else (tool, info, list, ...) belongs to the server plugin. Fabric only
+                // falls back to the server for unknown root commands, so forward it explicitly;
+                // brigadier tries the literals above first.
+                .then(
+                    ClientCommandManager.argument("server", StringArgumentType.greedyString())
+                        .executes { ctx -> forward(serverCommand(StringArgumentType.getString(ctx, "server"))) }
+                )
         )
     }
+
+    /** The server command for a `/schematio` subcommand the mod does not handle itself. */
+    fun serverCommand(rest: String): String = "schematio ${rest.trim()}"
 
     // ------------------------------------------------------------------ panels
 
