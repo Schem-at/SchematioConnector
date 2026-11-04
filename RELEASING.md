@@ -37,12 +37,15 @@ that tag publishes the release once its build and packaged runtime checks pass.
 The tag must match `gradle.properties`; a mismatch fails the workflow.
 
 ```sh
-git tag -a v1.3.3 -F docs/release-notes-1.3.3.md
-git push origin v1.3.3
+git tag -a --cleanup=verbatim v1.7.0 -F docs/release-1.7.0.md
+git push origin v1.7.0
 ```
 
+Keep `--cleanup=verbatim`. Without it, git treats lines that start with `#` as
+comments and strips every Markdown heading from the notes.
+
 The annotation's first line is its subject; the remaining body becomes the GitHub
-release notes. Verify seven jars and `SHA256SUMS` on the release page. Download
+release notes. Verify eight jars and `SHA256SUMS` on the release page. Download
 them into a clean directory and run `sha256sum -c SHA256SUMS` (or
 `shasum -a 256 -c SHA256SUMS` on macOS).
 
